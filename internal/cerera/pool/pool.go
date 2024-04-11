@@ -1,0 +1,191 @@
+package pool
+
+import (
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"sync"
+	"time"
+	"unsafe"
+
+	"github.com/cerera/internal/cerera/common"
+
+	"github.com/cerera/internal/cerera/types"
+)
+
+var p Pool
+
+type MemPoolInfo struct {
+	Size             int     // current tx count
+	Bytes            int     // size of tx
+	Usage            uintptr // Total mem for mempool
+	MaxMempool       int     // Maximum mem for mempool
+	Mempoolminfee    int     // min fee for tx
+	UnbroadCastCount int
+	Hashes           []common.Hash
+	Txs              []types.GTransaction
+}
+
+type Pool struct {
+	Funnel chan []*types.GTransaction // input funnel
+
+	maxSize        int
+	minGas         uint64
+	memPool        []*types.GTransaction
+	maintainTicker *time.Ticker
+
+	Status   byte
+	Prepared []*types.GTransaction
+
+	mu sync.Mutex
+}
+
+func InitPool(minGas uint64, maxSize int) *Pool {
+
+	mPool := make([]*types.GTransaction, 0)
+	p = Pool{
+		memPool:        mPool,
+		maintainTicker: time.NewTicker(time.Second * 5),
+		maxSize:        maxSize,
+		minGas:         minGas,
+
+		Prepared: nil,
+
+		Funnel: make(chan []*types.GTransaction),
+		Status: 0xa,
+	}
+	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%d\r\n\tMAX_SIZE:%d\r\n", p.minGas, p.maxSize)
+
+	go p.PoolServiceLoop()
+	return &p
+}
+
+func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
+	if len(p.memPool) < p.maxSize {
+		p.memPool = append(p.memPool, tx)
+		// network.BroadcastTx(tx)
+	}
+	fmt.Println(p.memPool)
+}
+
+func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
+	if len(p.memPool) < p.maxSize {
+		p.memPool = append(p.memPool, tx)
+		// network.BroadcastTx(tx)
+	}
+}
+
+func (p *Pool) GetInfo() MemPoolInfo {
+	var txPoolSize = 0
+	var usage uintptr
+	var hashes = make([]common.Hash, 0)
+	var cp = make([]types.GTransaction, 0)
+	for _, k := range p.memPool {
+		var txSize = k.Size()
+		txPoolSize += int(txSize)
+		var txBts = unsafe.Sizeof(k)
+		usage += txBts
+		hashes = append(hashes, k.Hash())
+		cp = append(cp, *k)
+	}
+	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
+	var result = MemPoolInfo{
+		Size:             txPoolSize,
+		Usage:            usage,
+		UnbroadCastCount: txPoolSize,
+		MaxMempool:       p.maxSize,
+		Mempoolminfee:    int(p.minGas),
+		Hashes:           hashes,
+		Txs:              cp,
+	}
+	return result
+}
+
+func (p *Pool) GetRawMemPool() []interface{} {
+	var result []interface{}
+
+	for i := range p.memPool {
+		var tx = p.memPool[i]
+		result = append(result, tx.Hash())
+	}
+	return result
+}
+
+func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
+	for _, tx := range p.memPool {
+		if tx.Hash() == transactionHash {
+			return tx
+		}
+	}
+	return nil
+}
+
+func (p *Pool) PoolServiceLoop() {
+	var errc chan error
+	for errc == nil {
+		select {
+		case <-p.maintainTicker.C:
+			fmt.Printf("Pool maintain loop\r\n")
+			p.mu.Lock()
+			p.Prepared = make([]*types.GTransaction, 0)
+			for _, tx := range p.memPool {
+				var r, s, v = tx.RawSignatureValues()
+				// fmt.Printf("%s to %s - signed %s%s \r\n", tx.Hash(), tx.To(), r, s)
+				// if tx signed - add it to block
+				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
+					p.Prepared = append(p.Prepared, tx)
+				}
+			}
+
+			// p.memPool = nil
+			// p.memPool = make([]*types.GTransaction, 0)
+			// p.memPool = append(p.memPool, dirtyPool...)
+			p.mu.Unlock()
+			fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
+			fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
+		case txs := <-p.Funnel:
+			fmt.Printf("Funnel data arrive\r\n")
+			for _, tx := range txs {
+				p.AddRawTransaction(tx)
+			}
+		}
+	}
+	errc <- nil
+}
+
+func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) common.Hash {
+	for i, tx := range p.memPool {
+		if txHash == tx.Hash() {
+			pemBlock, _ := pem.Decode([]byte(signKey))
+			aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
+			if err1 != nil {
+				fmt.Printf("Error ParsePKC58: %s\r\n", signKey)
+				return common.EmptyHash()
+			}
+			// ecdsaPkey := aKey.(ecdsa.PrivateKey)
+			signTx, err2 := types.SignTx(tx, signer, aKey)
+			if err2 != nil {
+				fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
+				return common.EmptyHash()
+			}
+			p.memPool[i] = signTx
+			// network.PublishData("OP_TX_SIGNED", tx)
+			return signTx.Hash()
+		}
+	}
+	return common.EmptyHash()
+}
+
+func (p *Pool) Clear() {
+	p.memPool = nil
+	p.memPool = make([]*types.GTransaction, 0)
+}
+
+func (p *Pool) GetMinimalGasValue() uint64 {
+	return p.minGas
+}
+
+func Get() *Pool {
+	return &p
+}

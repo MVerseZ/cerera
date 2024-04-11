@@ -1,0 +1,165 @@
+package chain
+
+import (
+	"fmt"
+	"math/big"
+	"time"
+	"unsafe"
+
+	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/coinbase"
+)
+
+type BlockChainStatus struct {
+	Total     int         `json:"total,omitempty"`
+	ChainWork int         `json:"chainWork,omitempty"`
+	Latest    common.Hash `json:"latest,omitempty"`
+}
+
+type Chain struct {
+	autoGen        bool
+	chainId        *big.Int
+	chainWork      *big.Int
+	currentAddress types.Address
+	currentBlock   *block.Block
+	rootHash       common.Hash
+
+	// mu sync.Mutex
+	info BlockChainStatus
+	data []block.Block
+
+	// tickers
+	maintainTicker *time.Ticker
+	blockTicker    *time.Ticker
+	DataChannel    chan []byte
+}
+
+var bch Chain
+
+func GetBlockChain() Chain {
+	return bch
+}
+func InitBlockChain(cfg *config.Config) Chain {
+
+	genesisBlock := block.Genesis()
+
+	dataBlocks := make([]block.Block, 0)
+	dataBlocks = append(dataBlocks, genesisBlock)
+	stats := BlockChainStatus{
+		Total:     1,
+		ChainWork: genesisBlock.Head.Size,
+	}
+
+	bch = Chain{
+		autoGen:      true,
+		chainId:      cfg.Chain.ChainID,
+		chainWork:    big.NewInt(1),
+		currentBlock: &genesisBlock,
+
+		blockTicker:    time.NewTicker(1700 * time.Millisecond),
+		info:           stats,
+		data:           dataBlocks,
+		currentAddress: cfg.NetCfg.ADDR,
+	}
+	genesisBlock.Head.Node = bch.currentAddress
+	go bch.BlockGenerator()
+	return bch
+}
+
+func (bc *Chain) GetInfo() interface{} {
+	bc.info.Total = len(bc.data)
+	bc.info.Latest = bc.data[len(bc.data)-1].Hash()
+	return bc.info
+}
+
+func (bc Chain) GetLatestBlock() *block.Block {
+	return bc.currentBlock
+}
+
+func (bc Chain) GetBlockHash(number int) common.Hash {
+	for _, b := range bc.data {
+		if b.Head.Number.Cmp(big.NewInt(int64(number))) == 0 {
+			return b.Hash()
+		}
+	}
+	return common.EmptyHash()
+}
+
+func (bc Chain) GetBlock(blockHash string) *block.Block {
+	var bHash = common.HexToHash(blockHash)
+	for _, b := range bc.data {
+		if b.Hash().Compare(bHash) == 0 {
+			var cfrm = b.Head.Confirmations
+			b.Confirmations = cfrm
+			return &b
+		}
+	}
+	return &block.Block{}
+}
+
+func (bc Chain) GetBlockHeader(blockHash string) *block.Header {
+	var bHash = common.HexToHash(blockHash)
+	for _, b := range bc.data {
+		if b.Hash().Compare(bHash) == 0 {
+			return b.Head
+		}
+	}
+	return &block.Header{}
+}
+
+func (bc *Chain) BlockGenerator() {
+	for {
+		select {
+		case <-bc.blockTicker.C:
+			fmt.Printf("Block ticker\r\n")
+			for _, b := range bc.data {
+				b.Head.Confirmations = b.Header().Confirmations + 1
+			}
+
+			var latest = bc.GetLatestBlock()
+			if bc.autoGen {
+				// reward tx
+				tx := types.NewTransaction(
+					uint64(1337),
+					bc.currentAddress,
+					coinbase.RewardAmount(),
+					uint64(500000),
+					big.NewInt(1000), //gas price
+					[]byte("reward transaction"),
+				)
+
+				head := &block.Header{
+					Ctx: latest.Head.Ctx,
+					Difficulty: big.NewInt(0).Add(
+						latest.Head.Difficulty,
+						big.NewInt(int64(latest.Head.Ctx)),
+					),
+					Extra:         []byte{},
+					Height:        latest.Head.Height + 1,
+					Timestamp:     uint64(time.Now().UnixMilli()),
+					Number:        big.NewInt(0).Add(latest.Head.Number, big.NewInt(1)),
+					PrevHash:      latest.Hash(),
+					Confirmations: 1,
+					Node:          bc.currentAddress,
+				}
+				newBlock := block.NewBlockWithHeader(head)
+				newBlock.Transactions = append(newBlock.Transactions, tx)
+
+				var finalSize = unsafe.Sizeof(newBlock)
+				newBlock.Head.Size = int(finalSize)
+				newBlock.Head.GasUsed += tx.Gas()
+				newBlock.Head.GasLimit += tx.Gas()
+
+				bc.data = append(bc.data, *newBlock)
+
+				bc.info.Latest = newBlock.Hash()
+				bc.info.Total = bc.info.Total + 1
+				bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+				bc.currentBlock = newBlock
+			}
+		}
+	}
+}
