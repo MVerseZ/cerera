@@ -1,8 +1,8 @@
 package chain
 
 import (
-	"fmt"
 	"math/big"
+	"math/rand"
 	"time"
 	"unsafe"
 
@@ -10,7 +10,6 @@ import (
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/coinbase"
 )
 
 type BlockChainStatus struct {
@@ -59,7 +58,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainWork:    big.NewInt(1),
 		currentBlock: &genesisBlock,
 
-		blockTicker:    time.NewTicker(1700 * time.Millisecond),
+		blockTicker:    time.NewTicker(time.Duration(rand.Intn(91)+10) * time.Microsecond),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
@@ -114,52 +113,45 @@ func (bc *Chain) BlockGenerator() {
 	for {
 		select {
 		case <-bc.blockTicker.C:
-			fmt.Printf("Block ticker\r\n")
+			// fmt.Printf("Block ticker\r\n")
 			for _, b := range bc.data {
 				b.Head.Confirmations = b.Header().Confirmations + 1
 			}
 
 			var latest = bc.GetLatestBlock()
 			if bc.autoGen {
-				// reward tx
-				tx := types.NewTransaction(
-					uint64(1337),
-					bc.currentAddress,
-					coinbase.RewardAmount(),
-					uint64(500000),
-					big.NewInt(1000), //gas price
-					[]byte("reward transaction"),
-				)
-
-				head := &block.Header{
-					Ctx: latest.Head.Ctx,
-					Difficulty: big.NewInt(0).Add(
-						latest.Head.Difficulty,
-						big.NewInt(int64(latest.Head.Ctx)),
-					),
-					Extra:         []byte{},
-					Height:        latest.Head.Height + 1,
-					Timestamp:     uint64(time.Now().UnixMilli()),
-					Number:        big.NewInt(0).Add(latest.Head.Number, big.NewInt(1)),
-					PrevHash:      latest.Hash(),
-					Confirmations: 1,
-					Node:          bc.currentAddress,
-				}
-				newBlock := block.NewBlockWithHeader(head)
-				newBlock.Transactions = append(newBlock.Transactions, tx)
-
-				var finalSize = unsafe.Sizeof(newBlock)
-				newBlock.Head.Size = int(finalSize)
-				newBlock.Head.GasUsed += tx.Gas()
-				newBlock.Head.GasLimit += tx.Gas()
-
-				bc.data = append(bc.data, *newBlock)
-
-				bc.info.Latest = newBlock.Hash()
-				bc.info.Total = bc.info.Total + 1
-				bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-				bc.currentBlock = newBlock
+				bc.G(latest, nil)
 			}
 		}
 	}
+}
+
+func (bc *Chain) G(latest *block.Block, tx []types.GTransaction) {
+	head := &block.Header{
+		Ctx: latest.Head.Ctx,
+		Difficulty: big.NewInt(0).Add(
+			latest.Head.Difficulty,
+			big.NewInt(int64(latest.Head.Ctx)),
+		),
+		Extra:         []byte("OP_AUTO_GEN_BLOCK_DAT"),
+		Height:        latest.Head.Height + 1,
+		Timestamp:     uint64(time.Now().UnixMilli()),
+		Number:        big.NewInt(0).Add(latest.Head.Number, big.NewInt(1)),
+		PrevHash:      latest.Hash(),
+		Confirmations: 1,
+		Node:          bc.currentAddress,
+	}
+	newBlock := block.NewBlockWithHeader(head)
+	newBlock.Transactions = tx
+
+	var finalSize = unsafe.Sizeof(newBlock)
+	newBlock.Head.Size = int(finalSize)
+	newBlock.Head.GasUsed += uint64(finalSize)
+
+	bc.data = append(bc.data, *newBlock)
+
+	bc.info.Latest = newBlock.Hash()
+	bc.info.Total = bc.info.Total + 1
+	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+	bc.currentBlock = newBlock
 }

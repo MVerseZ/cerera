@@ -3,6 +3,7 @@ package storage
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/json"
@@ -16,20 +17,22 @@ import (
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/coinbase"
 )
 
 type Vault interface {
+	CoinBase() *ecdsa.PrivateKey
 	Create(name string, pass string) (string, string, *types.Address, error)
 	Put(address types.Address, acc types.StateAccount)
 	Get(types.Address) types.StateAccount
 	GetAll() interface{}
 	Size() int
 	//
-
 }
 
 type D5Vault struct {
 	accounts map[types.Address]types.StateAccount
+	coinBase types.StateAccount
 	rootHash common.Hash
 }
 
@@ -72,6 +75,7 @@ func NewD5Vault(netCfg *config.NetworkConfig) Vault {
 	}
 
 	vlt.accounts[netCfg.ADDR] = rootSA
+	vlt.coinBase = coinbase.CoinBaseStateAccount()
 	return &vlt
 }
 
@@ -121,8 +125,8 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 	if err != nil {
 		return "", "", nil, err
 	}
-	pubkey := privateKey.PublicKey
-	address := types.PubkeyToAddress(pubkey)
+	pubkey := &privateKey.PublicKey
+	address := types.PubkeyToAddress(*pubkey)
 	derBytes, _ := x509.MarshalECPrivateKey(privateKey)
 
 	var walletName string
@@ -138,7 +142,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		Address:    address,
 		Name:       walletName,
 		Nonce:      1,
-		Balance:    types.FloatToBigInt(100.0),
+		Balance:    types.FloatToBigInt(0.0),
 		Root:       v.rootHash,
 		CodeHash:   derBytes,
 		Status:     "OP_ACC_NEW",
@@ -151,10 +155,9 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
 	x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
 	pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
-
 	return string(pemEncoded), string(pemEncodedPub), &address, nil
-
 }
+
 func (v *D5Vault) Get(addr types.Address) types.StateAccount {
 	return v.accounts[addr]
 }
@@ -194,6 +197,14 @@ func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) 
 	// ecdsa.Verify(publicKey, tx.Hash().Bytes(), r, s)
 
 	return false
+}
+
+func (v *D5Vault) CoinBase() *ecdsa.PrivateKey {
+	privateKey, err := x509.ParseECPrivateKey(v.coinBase.CodeHash)
+	if err != nil {
+		return nil
+	}
+	return privateKey
 }
 
 func encrypt(data []byte, key []byte) ([]byte, error) {

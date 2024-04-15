@@ -77,7 +77,12 @@ func Execute(method string, params []interface{}) interface{} {
 			pld.Data = "Error"
 			return 0xf
 		}
-		pld.Data = vldtr.Faucet(to, int(count))
+		var txHash, err = vldtr.Faucet(to, int(count))
+		if err != nil {
+			pld.Data = "Error"
+			return 0xf
+		}
+		pld.Data = txHash
 	case "getblockchaininfo":
 		pld.Data = bc.GetInfo()
 	case "getblockcount":
@@ -114,7 +119,12 @@ func Execute(method string, params []interface{}) interface{} {
 				return 0xf
 			}
 			var txHash = common.HexToHash(txHashStr)
-			pld.Data = vldtr.SignRawTransactionWithKey(txHash, kStr)
+			resHash, err := vldtr.SignRawTransactionWithKey(txHash, kStr)
+			if err != nil {
+				pld.Data = "Error while sign tx"
+				return 0xf
+			}
+			pld.Data = resHash
 		} else {
 			pld.Data = "Wrong count of params"
 			return 0xf

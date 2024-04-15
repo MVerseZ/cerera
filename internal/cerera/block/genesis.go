@@ -29,7 +29,7 @@ func Genesis() Block {
 		Nonce: 11,
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
-	genesisBlock.Transactions = []*types.GTransaction{}
+	genesisBlock.Transactions = []types.GTransaction{}
 	//make([]common.Hash, 0)
 	var finalSize = unsafe.Sizeof(genesisBlock)
 	genesisBlock.Head.Size = int(finalSize)

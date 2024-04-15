@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 
@@ -56,8 +57,26 @@ func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 
 	log.SetOutput(f)
 	// create a new libp2p Host that listens on a TCP port
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Local IPv4 addresses:", len(addrs))
+	var localIP string
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			// if ipnet.IP.To4() != nil {
+			localIP = ipnet.IP.String()
+			// fmt.Println(Local IPv4 address found:", localIP) // Print the found local IP address
+			// break
+			// }
+		}
+	}
+	if localIP == "" {
+		panic("No local IP address found")
+	}
 	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/" + fmt.Sprintf("%d", cfg.NetCfg.P2P)),
+		libp2p.ListenAddrStrings("/ip4/" + "127.0.0.1" + "/tcp/" + fmt.Sprintf("%d", cfg.NetCfg.P2P)),
 	)
 	if err != nil {
 		panic(err)
@@ -84,7 +103,10 @@ func ConnectToSwarm(h *Host) {
 	{ //connect to swarm
 		if _, err := os.Stat(swarmCfg); err == nil {
 			h.NetType = 0x2
-			s = InitClient(h)
+			// Before initializing the client, check if the target address is not the host's own address
+			if !isOwnAddress(h.Addr.String()) {
+				s = InitClient(h)
+			}
 		} else {
 			h.NetType = 0x1
 			s = InitServer(h)
@@ -92,6 +114,28 @@ func ConnectToSwarm(h *Host) {
 	}
 	h.Stream = s
 }
+
+// isOwnAddress checks if the given address matches any of the host's addresses.
+// You might need to adjust the logic based on how types.Address is defined and used.
+func isOwnAddress(addr string) bool {
+	host, err := os.Hostname()
+	if err != nil {
+		log.Printf("Unable to get hostname: %v", err)
+		return false
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		log.Printf("Unable to lookup host: %v", err)
+		return false
+	}
+	for _, a := range addrs {
+		if a == addr {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Host) serviceLoop() {
 	var errc chan error
 

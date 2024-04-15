@@ -15,6 +15,7 @@ import (
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/cerera/internal/gigea"
 )
 
 type Process struct {
@@ -63,6 +64,13 @@ func main() {
 		status: [8]byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0},
 	}
 
+	s := gigea.Ring{
+		Pool:       c.p,
+		Chain:      &c.bc,
+		Counter:    0,
+		RoundTimer: time.NewTicker(time.Duration(3 * time.Second)),
+	}
+
 	for {
 		if c.h.NetType == 0x2 {
 			fmt.Printf("Sync accounts...\r\n")
@@ -77,6 +85,8 @@ func main() {
 	}
 
 	c.g.SetUp(cfg.Chain.ChainID)
+
+	go s.Execute()
 
 	<-ctx.Done()
 	_ = c.h.Stop()

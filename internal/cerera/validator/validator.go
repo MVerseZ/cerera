@@ -3,9 +3,13 @@ package validator
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
@@ -22,8 +26,7 @@ func Get() Validator {
 
 type Validator interface {
 	GasPrice() *big.Int
-	Faucet(addrStr string, valFor int) common.Hash
-	//	GetLatestBlock() *block.Block
+	Faucet(addrStr string, valFor int) (common.Hash, error)
 	//	LoadChain() ([]*block.Block, error)
 	//	RewardSignature() *ecdsa.PrivateKey
 	//	Stamp() *ecdsa.PrivateKey
@@ -32,10 +35,10 @@ type Validator interface {
 	//	Status() int
 	//	Stop()
 	Signer() types.Signer
-	SignRawTransactionWithKey(txHash common.Hash, kStr string) common.Hash
+	SignRawTransactionWithKey(txHash common.Hash, kStr string) (common.Hash, error)
 	ValidateRawTransaction(tx *types.GTransaction) bool
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
-	//	ValidateBlock(b block.Block) bool
+	ValidateBlock(b block.Block) bool
 	//	ValidateGenesis(b *block.Block)
 	//	WriteBlock(b block.Block) (common.Hash, error)
 }
@@ -60,17 +63,34 @@ func NewValidator(ctx context.Context, cfg config.Config) Validator {
 func (v *DDDDDValidator) GasPrice() *big.Int {
 	return v.minGasPrice
 }
-func (v *DDDDDValidator) Faucet(addrStr string, valFor int) common.Hash {
+func (v *DDDDDValidator) Faucet(addrStr string, valFor int) (common.Hash, error) {
 	var faucetTx = types.NewTransaction(
 		1,
 		types.HexToAddress(addrStr),
-		big.NewInt(int64(valFor)),
+		types.FloatToBigInt(float64(valFor)),
 		10000,
 		big.NewInt(10000000),
 		[]byte("faucet transaction"),
 	)
 
-	return faucetTx.Hash()
+	// Send the signed transaction to the pool
+	txHash, err := pool.SendTransaction(*faucetTx)
+	if err != nil {
+		return common.EmptyHash(), err
+	}
+
+	// Sign the transaction
+	derBytes, _ := x509.MarshalECPrivateKey(v.signatureKey)
+	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
+	signedTxHash, err := v.SignRawTransactionWithKey(txHash, string(pemEncoded))
+	if err != nil {
+		return common.EmptyHash(), err
+	}
+
+	if signedTxHash.Compare(txHash) != 0 {
+		return common.EmptyHash(), errors.New("different hashes!")
+	}
+	return txHash, nil
 }
 
 func (v *DDDDDValidator) SetUp(chainId *big.Int) {
@@ -94,6 +114,7 @@ func (v *DDDDDValidator) Signer() types.Signer {
 	return v.signer
 }
 
+// Validate and execute transaction
 func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
 	// no edit tx here !!!
 	// check user can send signed tx
@@ -108,7 +129,7 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 		return false
 	} else {
 		fmt.Printf(
-			"AUTO APPROVED\r\n\t Transaction hash=%s\r\n\t gas=%d\r\n value=%d\r\n  current balance=%f\r\n",
+			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n value=%d\r\n  current balance=%d\r\n",
 			tx.Hash(),
 			gas,
 			val,
@@ -124,73 +145,54 @@ func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) 
 	return true
 }
 
-func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey string) common.Hash {
+func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey string) (common.Hash, error) {
 	p := pool.Get()
-	return p.SignRawTransaction(txHash, v.Signer(), signKey)
+	hash, err := p.SignRawTransaction(txHash, v.Signer(), signKey)
+	if err != nil {
+		return common.EmptyHash(), err
+	}
+	return hash, nil
 }
 
-//
-//func (v *DDDDDValidator) LoadChain() ([]*block.Block, error) {
-//	return v.storage.LoadInitialBlocks()
-//}
-//
-//func (v *DDDDDValidator) GetLatestBlock() *block.Block {
-//	return v.storage.GetLatestBlock()
-//}
-//
-//func (v *DDDDDValidator) RewardSignature() *ecdsa.PrivateKey {
-//	return v.signatureKey
-//}
-//
-//func (v *DDDDDValidator) Start() {
-//	v.current_status = 7
-//}
-//
-//func (v *DDDDDValidator) Stop() {
-//	v.current_status = 13
-//}
-//
-//func (v *DDDDDValidator) Status() int {
-//	return v.current_status
-//}
-//
-//func (v *DDDDDValidator) Stamp() *ecdsa.PrivateKey {
-//	// may be autogen if not exist and write???
-//	return v.signatureKey
-//}
-//
-//func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
-//	// no edit tx here again
-//	// TODO
-//	return true
-//}
-//
-//func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
-//	// no edit tx here !!!
-//	// check user can send signed tx
-//	// probably main method of validator compo
-//	var r, s, _ = tx.RawSignatureValues()
-//	fmt.Printf("Sender is: %s\r\n", from)
-//	var gas = tx.Gas()
-//	var val = tx.Value()
-//	var outVal = validator.storage.Balance(from)
-//	var out = types.FloatToBigInt(outVal)
-//	var delta = big.NewInt(0).Sub(out, val)
-//	if delta.Cmp(big.NewInt(0)) < 0 {
-//		return false
-//	} else {
-//		fmt.Printf(
-//			"AUTO APPROVED\r\n\t Transaction hash=%s\r\n\t gas=%d\r\n value=%d\r\n  current balance=%f\r\n",
-//			tx.Hash(),
-//			gas,
-//			val,
-//			outVal,
-//		)
-//		validator.storage.UpdateBalance(&from, tx.To(), val, tx.Hash())
+func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
+	return true
+}
+
+//	func (v *DDDDDValidator) LoadChain() ([]*block.Block, error) {
+//		return v.storage.LoadInitialBlocks()
 //	}
-//	validator.storage.CheckRunnable(r, s, tx)
-//	return true
-//}
+//
+//	func (v *DDDDDValidator) GetLatestBlock() *block.Block {
+//		return v.storage.GetLatestBlock()
+//	}
+//
+//	func (v *DDDDDValidator) RewardSignature() *ecdsa.PrivateKey {
+//		return v.signatureKey
+//	}
+//
+//	func (v *DDDDDValidator) Start() {
+//		v.current_status = 7
+//	}
+//
+//	func (v *DDDDDValidator) Stop() {
+//		v.current_status = 13
+//	}
+//
+//	func (v *DDDDDValidator) Status() int {
+//		return v.current_status
+//	}
+//
+//	func (v *DDDDDValidator) Stamp() *ecdsa.PrivateKey {
+//		// may be autogen if not exist and write???
+//		return v.signatureKey
+//	}
+//
+//	func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
+//		// no edit tx here again
+//		// TODO
+//		return true
+//	}
+
 //func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
 //	return true
 //}

@@ -31,10 +31,10 @@ type Header struct {
 }
 
 type Block struct {
-	Confirmations int                   `json:"confirmations" gencodec:"required"`
-	Nonce         int                   `json:"nonce" gencodec:"required"`
-	Head          *Header               `json:"header" gencodec:"required"`
-	Transactions  []*types.GTransaction `json:"transactions" gencodec:"required"`
+	Confirmations int                  `json:"confirmations" gencodec:"required"`
+	Nonce         int                  `json:"nonce" gencodec:"required"`
+	Head          *Header              `json:"header" gencodec:"required"`
+	Transactions  []types.GTransaction `json:"transactions" gencodec:"required"`
 	// BlockHash     common.Hash           `json:"hash" gencodec:"required"`
 }
 
@@ -117,7 +117,7 @@ func GenerateGenesis(nodeAddress types.Address) *Block {
 		Nonce: 11,
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
-	genesisBlock.Transactions = []*types.GTransaction{}
+	genesisBlock.Transactions = []types.GTransaction{}
 	//make([]common.Hash, 0)
 	var finalSize = unsafe.Sizeof(genesisBlock)
 	genesisBlock.Head.Size = int(finalSize)

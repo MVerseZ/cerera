@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/big"
 	"reflect"
 
@@ -56,6 +57,7 @@ func Sign(msg []byte, privKey *ecdsa.PrivateKey) ([]byte, error) {
 }
 
 func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, error) {
+	fmt.Printf("Sign tx %s with key: %s\r\n", tx.Hash(), prv.D)
 	h := s.Hash(tx)
 	sig, err := Sign(h[:], prv)
 	if err != nil {
@@ -114,6 +116,34 @@ func (fs SimpleSigner) Pen() *ecdsa.PrivateKey {
 	return fs.pen
 }
 
+func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
+	if tx.Type() != LegacyTxType {
+		return Address{}, ErrTxTypeNotSupported
+	}
+	r, s, v := tx.RawSignatureValues()
+	if len(r.Bits()) > 0 && len(s.Bits()) > 0 {
+		return recoverPlain(fs.Hash(tx), r, s, v, false)
+	} else {
+		return Address{}, ErrInvalidSig
+	}
+}
+
+func (fs SimpleSigner) SignatureValues(tx *GTransaction, sig []byte) (R, S, V *big.Int, err error) {
+	// txdata, ok := tx.inner.(*PGTransaction)
+	R, S, V = decodeSignature(sig)
+	return R, S, V, nil
+}
+
+func (fs SimpleSigner) SignTransaction(tx *GTransaction, k *ecdsa.PrivateKey) (common.Hash, error) {
+	// ecdsaPkey := aKey.(ecdsa.PrivateKey)
+	sTx, err2 := SignTx(tx, fs, k)
+	if err2 != nil {
+		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
+		return common.EmptyHash(), errors.New("error while sign tx")
+	}
+	return sTx.Hash(), nil
+}
+
 func crvHash(x interface{}) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
 	// rlp.Encode(hw, x)
@@ -151,24 +181,6 @@ func crvTxHash(t TxData) (h common.Hash) {
 	return h
 }
 
-func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
-	if tx.Type() != LegacyTxType {
-		return Address{}, ErrTxTypeNotSupported
-	}
-	r, s, v := tx.RawSignatureValues()
-	if len(r.Bits()) > 0 && len(s.Bits()) > 0 {
-		return recoverPlain(fs.Hash(tx), r, s, v, false)
-	} else {
-		return Address{}, ErrInvalidSig
-	}
-}
-
-func (fs SimpleSigner) SignatureValues(tx *GTransaction, sig []byte) (R, S, V *big.Int, err error) {
-	// txdata, ok := tx.inner.(*PGTransaction)
-	R, S, V = decodeSignature(sig)
-	return R, S, V, nil
-}
-
 func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error) {
 	return BytesToAddress(INRISeq(append(R.Bytes())[1:])[12:]), nil
 }
@@ -185,11 +197,6 @@ func decodeSignature(sig []byte) (r, s, v *big.Int) {
 
 func VerifyECDSAWithZk(pubkey []byte, message []byte, zkProof interface{}) (bool, error) {
 	return true, nil
-}
-
-func zk_verify(zkProof interface{}) bool {
-	// TODO: implement zk-SNARK verification
-	return true
 }
 
 func NewSimpleSignerWithPen(chainId *big.Int, pekn *ecdsa.PrivateKey) Signer {

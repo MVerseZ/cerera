@@ -74,7 +74,7 @@ func createTestBlock() *Block {
 	b := &Block{
 		Nonce:        12345,
 		Head:         header,
-		Transactions: []*types.GTransaction{tx1, tx2},
+		Transactions: []types.GTransaction{*tx1, *tx2},
 	}
 	return b
 }

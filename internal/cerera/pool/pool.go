@@ -3,6 +3,7 @@ package pool
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -32,18 +33,30 @@ type Pool struct {
 
 	maxSize        int
 	minGas         uint64
-	memPool        []*types.GTransaction
+	memPool        map[common.Hash]types.GTransaction
 	maintainTicker *time.Ticker
 
 	Status   byte
 	Prepared []*types.GTransaction
+	Executed []types.GTransaction
 
 	mu sync.Mutex
 }
 
+func SendTransaction(tx types.GTransaction) (common.Hash, error) {
+	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+		p.memPool[tx.Hash()] = tx
+		// p.memPool = append(p.memPool, tx)
+		// network.BroadcastTx(tx)
+	}
+	fmt.Println(p.memPool)
+	return tx.Hash(), nil
+}
+
 func InitPool(minGas uint64, maxSize int) *Pool {
 
-	mPool := make([]*types.GTransaction, 0)
+	// mPool := make([]types.GTransaction, 0)
+	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
 		memPool:        mPool,
 		maintainTicker: time.NewTicker(time.Second * 5),
@@ -51,6 +64,7 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 		minGas:         minGas,
 
 		Prepared: nil,
+		Executed: make([]types.GTransaction, 0),
 
 		Funnel: make(chan []*types.GTransaction),
 		Status: 0xa,
@@ -62,16 +76,18 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
-	if len(p.memPool) < p.maxSize {
-		p.memPool = append(p.memPool, tx)
+	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+		p.memPool[tx.Hash()] = *tx
+		// p.memPool = append(p.memPool, *tx)
 		// network.BroadcastTx(tx)
 	}
 	fmt.Println(p.memPool)
 }
 
 func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
-	if len(p.memPool) < p.maxSize {
-		p.memPool = append(p.memPool, tx)
+	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+		p.memPool[tx.Hash()] = *tx
+		// p.memPool = append(p.memPool, *tx)
 		// network.BroadcastTx(tx)
 	}
 }
@@ -87,7 +103,7 @@ func (p *Pool) GetInfo() MemPoolInfo {
 		var txBts = unsafe.Sizeof(k)
 		usage += txBts
 		hashes = append(hashes, k.Hash())
-		cp = append(cp, *k)
+		cp = append(cp, k)
 	}
 	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
 	var result = MemPoolInfo{
@@ -115,7 +131,7 @@ func (p *Pool) GetRawMemPool() []interface{} {
 func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	for _, tx := range p.memPool {
 		if tx.Hash() == transactionHash {
-			return tx
+			return &tx
 		}
 	}
 	return nil
@@ -128,21 +144,23 @@ func (p *Pool) PoolServiceLoop() {
 		case <-p.maintainTicker.C:
 			fmt.Printf("Pool maintain loop\r\n")
 			p.mu.Lock()
-			p.Prepared = make([]*types.GTransaction, 0)
+			if p.Prepared == nil {
+				p.Prepared = make([]*types.GTransaction, 0)
+			}
 			for _, tx := range p.memPool {
 				var r, s, v = tx.RawSignatureValues()
-				// fmt.Printf("%s to %s - signed %s%s \r\n", tx.Hash(), tx.To(), r, s)
+				fmt.Printf("%s to %s - signed %s%s \r\n", tx.Hash(), tx.To(), r, s)
 				// if tx signed - add it to block
 				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
-					p.Prepared = append(p.Prepared, tx)
+					p.Prepared = append(p.Prepared, &tx)
+				}
+				for _, preparedTx := range p.Prepared {
+					delete(p.memPool, preparedTx.Hash())
 				}
 			}
-
-			// p.memPool = nil
-			// p.memPool = make([]*types.GTransaction, 0)
-			// p.memPool = append(p.memPool, dirtyPool...)
 			p.mu.Unlock()
 			fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
+			fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
 			fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
 		case txs := <-p.Funnel:
 			fmt.Printf("Funnel data arrive\r\n")
@@ -154,32 +172,31 @@ func (p *Pool) PoolServiceLoop() {
 	errc <- nil
 }
 
-func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) common.Hash {
+func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) (common.Hash, error) {
 	for i, tx := range p.memPool {
 		if txHash == tx.Hash() {
 			pemBlock, _ := pem.Decode([]byte(signKey))
 			aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
 			if err1 != nil {
-				fmt.Printf("Error ParsePKC58: %s\r\n", signKey)
-				return common.EmptyHash()
+				return common.EmptyHash(), errors.New("error ParsePKC58 key")
 			}
 			// ecdsaPkey := aKey.(ecdsa.PrivateKey)
-			signTx, err2 := types.SignTx(tx, signer, aKey)
+			signTx, err2 := types.SignTx(&tx, signer, aKey)
 			if err2 != nil {
 				fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
-				return common.EmptyHash()
+				return common.EmptyHash(), errors.New("error while sign tx")
 			}
-			p.memPool[i] = signTx
+			p.memPool[i] = *signTx
 			// network.PublishData("OP_TX_SIGNED", tx)
-			return signTx.Hash()
+			return signTx.Hash(), nil
 		}
 	}
-	return common.EmptyHash()
+	return common.EmptyHash(), errors.New("transaction not found in pool")
 }
 
 func (p *Pool) Clear() {
 	p.memPool = nil
-	p.memPool = make([]*types.GTransaction, 0)
+	p.memPool = make(map[common.Hash]types.GTransaction)
 }
 
 func (p *Pool) GetMinimalGasValue() uint64 {

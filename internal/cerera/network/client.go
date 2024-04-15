@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -22,12 +21,16 @@ func InitClient(h *Host) network.Stream {
 	if err != nil {
 		panic(err)
 	}
-	b1 := make([]byte, 80)
-	_, err = f.Read(b1)
-	if err != nil {
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	var swarmArr []string
+	for scanner.Scan() {
+		swarmArr = append(swarmArr, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
-	swarmArr := strings.Split(string(b1), "\r\n")
 	fmt.Printf("Swarm is:%s\r\n", swarmArr[0])
 	fmt.Printf("Joining\r\n")
 

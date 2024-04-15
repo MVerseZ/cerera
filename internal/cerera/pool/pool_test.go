@@ -137,12 +137,18 @@ func TestPoolSigningProc(t *testing.T) {
 	x509Encoded, _ := x509.MarshalECPrivateKey(pk)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
 
-	newHash := pool.SignRawTransaction(hashes[0], signer, string(pemEncoded))
+	newHash, err := pool.SignRawTransaction(hashes[0], signer, string(pemEncoded))
+	if err != nil {
+		t.Errorf("Error while sign tx: %s\r\n", err)
+	}
 	if newHash != hashes[0] {
 		t.Errorf("Differnet hashes! Have %s, want %s\r\n", newHash, hashes[0])
 	}
 
-	newHash = pool.SignRawTransaction(hashes[1], signer, string(pemEncoded))
+	newHash, err = pool.SignRawTransaction(hashes[1], signer, string(pemEncoded))
+	if err != nil {
+		t.Errorf("Error while sign tx: %s\r\n", err)
+	}
 	if newHash != hashes[1] {
 		t.Errorf("Differnet hashes! Have %s, want %s\r\n", newHash, hashes[1])
 	}
