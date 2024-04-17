@@ -2,7 +2,6 @@ package chain
 
 import (
 	"math/big"
-	"math/rand"
 	"time"
 	"unsafe"
 
@@ -58,7 +57,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainWork:    big.NewInt(1),
 		currentBlock: &genesisBlock,
 
-		blockTicker:    time.NewTicker(time.Duration(rand.Intn(91)+10) * time.Microsecond),
+		blockTicker:    time.NewTicker(time.Duration(30) * time.Second),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,

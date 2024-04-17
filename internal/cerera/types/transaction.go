@@ -229,6 +229,12 @@ func (tx *GTransaction) From() Address {
 	}
 }
 
+func (tx *GTransaction) UpdateDna(dna []byte) {
+	if len(dna) < 128 {
+		tx.dna = dna
+	}
+}
+
 type PGTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64

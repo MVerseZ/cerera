@@ -19,12 +19,14 @@ type coinbaseData struct {
 var Coinbase coinbaseData
 
 var AddressHex = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a"
+var TotalValue = types.FloatToBigInt(37 * 10 << 37)
 
 // SetCoinbase initializes or updates the global Coinbase data.
-func SetCoinbase(address types.Address, publicKey, privateKey string, balance big.Int) {
+func SetCoinbase(publicKey, privateKey string, balance big.Int) {
+	var addr = types.HexToAddress(AddressHex)
 	ca := types.StateAccount{
-		Address:  types.HexToAddress(AddressHex),
-		Balance:  types.FloatToBigInt(15000),
+		Address:  addr,
+		Balance:  TotalValue,
 		Bloom:    []byte("COINBASE_ACC"),
 		CodeHash: []byte{},
 		Name:     "COINBASE",
@@ -35,7 +37,7 @@ func SetCoinbase(address types.Address, publicKey, privateKey string, balance bi
 	}
 	Coinbase = coinbaseData{
 		coinbaseAccount: ca,
-		address:         address,
+		address:         addr,
 		balance:         balance,
 		publicKey:       publicKey,
 		privateKey:      privateKey,

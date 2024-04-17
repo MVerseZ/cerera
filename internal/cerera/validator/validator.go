@@ -80,8 +80,10 @@ func (v *DDDDDValidator) Faucet(addrStr string, valFor int) (common.Hash, error)
 	}
 
 	// Sign the transaction
+	// derBytes, _ := x509.MarshalECPrivateKey(vlt.CoinBase())
 	derBytes, _ := x509.MarshalECPrivateKey(v.signatureKey)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
+
 	signedTxHash, err := v.SignRawTransactionWithKey(txHash, string(pemEncoded))
 	if err != nil {
 		return common.EmptyHash(), err
@@ -155,6 +157,9 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 }
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
+	// when validator says that block is correct, node get reward for it
+	// it should be automatic as same level with autogen alogrythm of chain
+	// if block.Confirmations > 2 then node gets reward
 	return true
 }
 

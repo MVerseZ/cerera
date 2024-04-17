@@ -15,7 +15,7 @@ import (
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
-	"github.com/cerera/internal/gigea"
+	"github.com/cerera/internal/gigea/gigea"
 )
 
 type Process struct {
@@ -63,6 +63,8 @@ func main() {
 		v:      storage.NewD5Vault(&cfg.NetCfg),
 		status: [8]byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0},
 	}
+
+	// coinbase.SetCoinbase()
 
 	s := gigea.Ring{
 		Pool:       c.p,
