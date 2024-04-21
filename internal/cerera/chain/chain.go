@@ -8,7 +8,9 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/cerera/validator"
 )
 
 type BlockChainStatus struct {
@@ -18,7 +20,8 @@ type BlockChainStatus struct {
 }
 
 type Chain struct {
-	autoGen        bool
+	autoGen bool
+	// buf            []*types.GTransaction
 	chainId        *big.Int
 	chainWork      *big.Int
 	currentAddress types.Address
@@ -52,12 +55,14 @@ func InitBlockChain(cfg *config.Config) Chain {
 	}
 
 	bch = Chain{
-		autoGen:      true,
+		autoGen: true,
+		// buf:          make([]*types.GTransaction, 0),
 		chainId:      cfg.Chain.ChainID,
 		chainWork:    big.NewInt(1),
 		currentBlock: &genesisBlock,
 
-		blockTicker:    time.NewTicker(time.Duration(30) * time.Second),
+		// blockTicker:    time.NewTicker(time.Duration(rand.Intn(91)+10) * time.Microsecond),
+		blockTicker:    time.NewTicker(time.Duration(10 * time.Second)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
@@ -119,13 +124,15 @@ func (bc *Chain) BlockGenerator() {
 
 			var latest = bc.GetLatestBlock()
 			if bc.autoGen {
-				bc.G(latest, nil)
+				bc.G(latest)
 			}
 		}
 	}
 }
 
-func (bc *Chain) G(latest *block.Block, tx []types.GTransaction) {
+func (bc *Chain) G(latest *block.Block) {
+	var vld = validator.Get()
+	var pool = pool.Get()
 	head := &block.Header{
 		Ctx: latest.Head.Ctx,
 		Difficulty: big.NewInt(0).Add(
@@ -141,7 +148,14 @@ func (bc *Chain) G(latest *block.Block, tx []types.GTransaction) {
 		Node:          bc.currentAddress,
 	}
 	newBlock := block.NewBlockWithHeader(head)
-	newBlock.Transactions = tx
+	// TODO refactor
+	if len(pool.Prepared) > 0 {
+		for _, tx := range pool.Prepared {
+			if vld.ValidateTransaction(tx, tx.From()) {
+				newBlock.Transactions = append(newBlock.Transactions, *tx)
+			}
+		}
+	}
 
 	var finalSize = unsafe.Sizeof(newBlock)
 	newBlock.Head.Size = int(finalSize)
@@ -153,4 +167,11 @@ func (bc *Chain) G(latest *block.Block, tx []types.GTransaction) {
 	bc.info.Total = bc.info.Total + 1
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 	bc.currentBlock = newBlock
+
+	// clear array with included txs
+	pool.Prepared = nil
 }
+
+// func (bc *Chain) AddApprovedTx(tx *types.GTransaction) {
+// 	bc.buf = append(bc.buf, tx)
+// }

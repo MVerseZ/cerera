@@ -142,7 +142,7 @@ func (p *Pool) PoolServiceLoop() {
 	for errc == nil {
 		select {
 		case <-p.maintainTicker.C:
-			fmt.Printf("Pool maintain loop\r\n")
+			// fmt.Printf("Pool maintain loop\r\n")
 			p.mu.Lock()
 			if p.Prepared == nil {
 				p.Prepared = make([]*types.GTransaction, 0)
@@ -159,9 +159,9 @@ func (p *Pool) PoolServiceLoop() {
 				}
 			}
 			p.mu.Unlock()
-			fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
-			fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
-			fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
+			// fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
+			// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
+			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
 		case txs := <-p.Funnel:
 			fmt.Printf("Funnel data arrive\r\n")
 			for _, tx := range txs {

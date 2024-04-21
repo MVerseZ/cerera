@@ -37,6 +37,7 @@ type Validator interface {
 	Signer() types.Signer
 	SignRawTransactionWithKey(txHash common.Hash, kStr string) (common.Hash, error)
 	ValidateRawTransaction(tx *types.GTransaction) bool
+	// validate and execute transaction
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
 	ValidateBlock(b block.Block) bool
 	//	ValidateGenesis(b *block.Block)
@@ -120,6 +121,8 @@ func (v *DDDDDValidator) Signer() types.Signer {
 func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
 	// no edit tx here !!!
 	// check user can send signed tx
+	// this function should be rewriting and simplified by refactoring onto n functions
+	// logic now semicorrect, false only arythmetic errors
 	var localVault = storage.GetVault()
 	var r, s, _ = tx.RawSignatureValues()
 	fmt.Printf("Sender is: %s\r\n", from)
