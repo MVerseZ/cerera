@@ -194,7 +194,7 @@ func TestGeneratingAddress(t *testing.T) {
 			Type:  "EC PK",
 			Bytes: pkbts,
 		})
-		if len(bts) < 0 {
+		if len(bts) <= 0 {
 			t.Error("Wrong key size")
 		}
 		// _, err := file.Write(bts)

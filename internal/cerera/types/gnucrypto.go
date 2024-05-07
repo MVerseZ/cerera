@@ -102,6 +102,7 @@ func GenerateKey() (*ecdsa.PrivateKey, error) {
 	return ecdsa.GenerateKey(chainElliptic, rand.Reader)
 }
 
+// unused
 func checkSignature(sig []byte) error {
 	if len(sig) != 65 {
 		return ErrInvalidSignatureLen

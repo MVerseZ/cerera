@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/cerera/internal/cerera/common"
@@ -14,7 +13,6 @@ var hasherPool = sync.Pool{
 }
 
 func grlpHash(x interface{}) (h common.Hash) {
-	fmt.Println(33)
 	return blake2b.Sum256(h[:])
 
 	// sha := hasherPool.Get().(KessakState)
