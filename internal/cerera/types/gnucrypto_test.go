@@ -22,3 +22,16 @@ func TestKxAddress(t *testing.T) {
 	}
 	fmt.Printf("=== EXEC	Generating address: %s\r\n", addr)
 }
+
+func TestKeyToAddress(t *testing.T) {
+	var curve = elliptic.P256()
+	var k1, err = ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Error(err)
+	}
+	var addrPub = PubkeyToAddress(k1.PublicKey)
+	var addrPriv = PrivKeyToAddress(*k1)
+	if addrPub != addrPriv {
+		t.Fatalf("Different addresses: %s %s", addrPub.String(), addrPriv.String())
+	}
+}

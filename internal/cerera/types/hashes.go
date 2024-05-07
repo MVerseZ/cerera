@@ -19,13 +19,4 @@ var (
 	EmptyCodeHash = INRISeqHash(nil)
 
 	EmptyCodeRootHash = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")
-
-	// // EmptyTxsHash is the known hash of the empty transaction set.
-	// EmptyTxsHash = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
-
-	// // EmptyReceiptsHash is the known hash of the empty receipt set.
-	// EmptyReceiptsHash = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
-
-	// // EmptyWithdrawalsHash is the known hash of the empty withdrawal set.
-	// EmptyWithdrawalsHash = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 )

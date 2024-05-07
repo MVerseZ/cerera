@@ -26,20 +26,31 @@ func Prepare() {
 }
 
 func Execute(method string, params []interface{}) interface{} {
-	if &pld == nil {
+	// workaround
+	// https://stackoverflow.com/questions/28447297/how-to-check-for-an-empty-struct
+	if (Pallada{}) == pld {
 		Prepare()
 	}
 
+	// get inner components
+	// there is singletons and when call Get* returns struct of component
 	var vlt = storage.GetVault()
 	var bc = chain.GetBlockChain()
 	var vldtr = validator.Get()
 	var p = pool.Get()
 	fmt.Println(p.Status)
 
+	// rpc methods
+	// these methods should not only using at rpc
 	switch method {
 	case "accounts":
+		// get all accounts of system
 		pld.Data = vlt.GetAll()
 	case "create_account":
+		// get all accounts of system
+		//
+		// name - just a name
+		// passphrase - like a pass but optional now
 		walletName, ok1 := params[0].(string)
 		passphraseStr, ok2 := params[1].(string)
 		if !ok1 || !ok2 {
@@ -61,8 +72,10 @@ func Execute(method string, params []interface{}) interface{} {
 			Pub:     pb,
 		}
 	case "get_minimum_gas_value":
+		// get min gas value
 		pld.Data = p.GetMinimalGasValue()
 	case "get_balance":
+		// get balance of address of account
 		addressStr, ok := params[0].(string)
 		if !ok {
 			pld.Data = "Error"
@@ -71,6 +84,7 @@ func Execute(method string, params []interface{}) interface{} {
 		var addr = types.HexToAddress(addressStr)
 		pld.Data = types.BigIntToFloat(vlt.Get(addr).Balance)
 	case "faucet":
+		// faucet
 		to, ok1 := params[0].(string)
 		count, ok2 := params[1].(float64)
 		if !ok1 || !ok2 {
@@ -84,8 +98,10 @@ func Execute(method string, params []interface{}) interface{} {
 		}
 		pld.Data = txHash
 	case "getblockchaininfo":
+		// get info of (block)chain
 		pld.Data = bc.GetInfo()
 	case "getblockcount":
+		// get latest block of chain
 		pld.Data = bc.GetLatestBlock().Header().Number
 	case "getblockhash":
 		number, ok := params[0].(float64)
@@ -95,6 +111,7 @@ func Execute(method string, params []interface{}) interface{} {
 		}
 		pld.Data = bc.GetBlockHash(int(number))
 	case "getblock":
+		// get block by hash
 		blockHashStr, ok := params[0].(string)
 		if !ok {
 			pld.Data = "Error"
@@ -102,6 +119,7 @@ func Execute(method string, params []interface{}) interface{} {
 		}
 		pld.Data = bc.GetBlock(blockHashStr)
 	case "getblockheader":
+		// get header by block hash
 		blockHashStr, ok := params[0].(string)
 		if !ok {
 			pld.Data = "Error"
@@ -109,8 +127,10 @@ func Execute(method string, params []interface{}) interface{} {
 		}
 		pld.Data = bc.GetBlockHeader(blockHashStr)
 	case "getmempoolinfo":
+		// get pool info
 		pld.Data = p.GetInfo()
 	case "signrawtransactionwithkey":
+		// sign transaction with key (signer will pay fees and value for transfer)
 		if len(params) > 1 {
 			txHashStr, ok1 := params[0].(string)
 			kStr, ok2 := params[1].(string)
@@ -130,6 +150,12 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 	case "send_tx":
+		// send transaction to address
+
+		// address
+		// value
+		// gas
+		// message
 		if len(params) < 2 {
 			pld.Data = "Wrong count of params"
 		} else {
