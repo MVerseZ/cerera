@@ -23,9 +23,9 @@ type NetworkConfig struct {
 	PID  protocol.ID
 	P2P  int
 	RPC  int
-	ADDR types.Address
-	PRIV string
-	PUB  *ecdsa.PublicKey
+	ADDR types.Address    // address of running node
+	PRIV string           // private key of current running node
+	PUB  *ecdsa.PublicKey // public key of current running node
 }
 type PoolConfig struct {
 	MinGas  uint64
@@ -38,11 +38,12 @@ type Sec struct {
 	HTTP HttpSecConfig
 }
 type Config struct {
-	Chain   ChainConfig
+	Chain   ChainConfig // chain config
 	TlsFlag bool
 	NetCfg  NetworkConfig // network config (p2p, inner address, keys)
 	POOL    PoolConfig    // pool config
 	SEC     Sec
+	AUTOGEN bool // auto generating blocks
 }
 
 func GenerageConfig() *Config {
@@ -113,4 +114,10 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 
 	cfg.Chain.ChainID = ChainId
 	cfg.Chain.Path = "dat.db"
+}
+func (cfg *Config) SetAutoGen(f bool) {
+	if !cfg.AUTOGEN {
+		cfg.AUTOGEN = false
+	}
+	cfg.AUTOGEN = f
 }

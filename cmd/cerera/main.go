@@ -46,6 +46,7 @@ func main() {
 	cfg := config.GenerageConfig()
 	cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
 	cfg.SetNodeKey(*keyPathFlag)
+	cfg.SetAutoGen(true)
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
 

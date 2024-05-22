@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"fmt"
 	"math/big"
 	"time"
 	"unsafe"
@@ -55,13 +56,10 @@ func InitBlockChain(cfg *config.Config) Chain {
 	}
 
 	bch = Chain{
-		autoGen: true,
-		// buf:          make([]*types.GTransaction, 0),
-		chainId:      cfg.Chain.ChainID,
-		chainWork:    big.NewInt(1),
-		currentBlock: &genesisBlock,
-
-		// blockTicker:    time.NewTicker(time.Duration(rand.Intn(91)+10) * time.Microsecond),
+		autoGen:        cfg.AUTOGEN,
+		chainId:        cfg.Chain.ChainID,
+		chainWork:      big.NewInt(1),
+		currentBlock:   &genesisBlock,
 		blockTicker:    time.NewTicker(time.Duration(10 * time.Second)),
 		info:           stats,
 		data:           dataBlocks,
@@ -117,7 +115,7 @@ func (bc *Chain) BlockGenerator() {
 	for {
 		select {
 		case <-bc.blockTicker.C:
-			// fmt.Printf("Block ticker\r\n")
+			fmt.Printf("Block ticker\r\n")
 			for _, b := range bc.data {
 				b.Head.Confirmations = b.Header().Confirmations + 1
 			}
