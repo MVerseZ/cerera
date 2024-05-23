@@ -192,6 +192,12 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	v.accounts[to] = saDest
 	// done
 }
+
+// faucet method without creating transaction
+func (v *D5Vault) FaucetBalance(to types.Address, val *big.Int) {
+	var destAddr = v.Get(to)
+	destAddr.Balance.Add(destAddr.Balance, val)
+}
 func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) bool {
 
 	// ecdsa.Verify(publicKey, tx.Hash().Bytes(), r, s)

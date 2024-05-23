@@ -23,7 +23,7 @@ type MemPoolInfo struct {
 	Usage            uintptr // Total mem for mempool
 	MaxMempool       int     // Maximum mem for mempool
 	Mempoolminfee    int     // min fee for tx
-	UnbroadCastCount int
+	UnbroadCastCount int     // local pool transactions
 	Hashes           []common.Hash
 	Txs              []types.GTransaction
 }
@@ -55,7 +55,6 @@ func SendTransaction(tx types.GTransaction) (common.Hash, error) {
 
 func InitPool(minGas uint64, maxSize int) *Pool {
 
-	// mPool := make([]types.GTransaction, 0)
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
 		memPool:        mPool,

@@ -3,8 +3,6 @@ package validator
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
@@ -26,7 +24,7 @@ func Get() Validator {
 
 type Validator interface {
 	GasPrice() *big.Int
-	Faucet(addrStr string, valFor int) (common.Hash, error)
+	Faucet(addrStr string, valFor int) error
 	//	LoadChain() ([]*block.Block, error)
 	//	RewardSignature() *ecdsa.PrivateKey
 	//	Stamp() *ecdsa.PrivateKey
@@ -64,36 +62,14 @@ func NewValidator(ctx context.Context, cfg config.Config) Validator {
 func (v *DDDDDValidator) GasPrice() *big.Int {
 	return v.minGasPrice
 }
-func (v *DDDDDValidator) Faucet(addrStr string, valFor int) (common.Hash, error) {
-	var faucetTx = types.NewTransaction(
-		1,
-		types.HexToAddress(addrStr),
-		types.FloatToBigInt(float64(valFor)),
-		10000,
-		big.NewInt(10000000),
-		[]byte("faucet transaction"),
-	)
 
-	// Send the signed transaction to the pool
-	txHash, err := pool.SendTransaction(*faucetTx)
-	if err != nil {
-		return common.EmptyHash(), err
+func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
+	if valFor > 0 {
+		var vault = storage.GetVault()
+		vault.FaucetBalance(types.HexToAddress(addrStr), types.FloatToBigInt(float64(valFor)))
+		return nil
 	}
-
-	// Sign the transaction
-	// derBytes, _ := x509.MarshalECPrivateKey(vlt.CoinBase())
-	derBytes, _ := x509.MarshalECPrivateKey(v.signatureKey)
-	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
-
-	signedTxHash, err := v.SignRawTransactionWithKey(txHash, string(pemEncoded))
-	if err != nil {
-		return common.EmptyHash(), err
-	}
-
-	if signedTxHash.Compare(txHash) != 0 {
-		return common.EmptyHash(), errors.New("different hashes!")
-	}
-	return txHash, nil
+	return errors.New("value < 0")
 }
 
 func (v *DDDDDValidator) SetUp(chainId *big.Int) {

@@ -91,12 +91,13 @@ func Execute(method string, params []interface{}) interface{} {
 			pld.Data = "Error"
 			return 0xf
 		}
-		var txHash, err = vldtr.Faucet(to, int(count))
+		// var txHash, err = vldtr.Faucet(to, int(count))
+		var err = vldtr.Faucet(to, int(count))
 		if err != nil {
-			pld.Data = "Error"
+			pld.Data = err
 			return 0xf
 		}
-		pld.Data = txHash
+		pld.Data = "SUCCESS"
 	case "getblockchaininfo":
 		// get info of (block)chain
 		pld.Data = bc.GetInfo()
