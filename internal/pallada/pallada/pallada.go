@@ -130,6 +130,9 @@ func Execute(method string, params []interface{}) interface{} {
 	case "getmempoolinfo":
 		// get pool info
 		pld.Data = p.GetInfo()
+	case "getversion":
+		// replace 4 get version from component struct
+		pld.Data = "ALPHA-1-VERSION"
 	case "signrawtransactionwithkey":
 		// sign transaction with key (signer will pay fees and value for transfer)
 		if len(params) > 1 {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"os"
 
@@ -27,6 +28,10 @@ type NetworkConfig struct {
 	PRIV string           // private key of current running node
 	PUB  *ecdsa.PublicKey // public key of current running node
 }
+type VaultConfig struct {
+	MEM  bool
+	PATH string
+}
 type PoolConfig struct {
 	MinGas  uint64
 	MaxSize int
@@ -37,13 +42,18 @@ type HttpSecConfig struct {
 type Sec struct {
 	HTTP HttpSecConfig
 }
+
+// main configuration struct
 type Config struct {
+	Vault   VaultConfig
 	Chain   ChainConfig // chain config
 	TlsFlag bool
 	NetCfg  NetworkConfig // network config (p2p, inner address, keys)
 	POOL    PoolConfig    // pool config
 	SEC     Sec
-	AUTOGEN bool // auto generating blocks
+	AUTOGEN bool   // auto generating blocks
+	VERSION string // version field
+	VER     int    // other version field
 }
 
 func GenerageConfig() *Config {
@@ -53,6 +63,10 @@ func GenerageConfig() *Config {
 			MinGas:  3,
 			MaxSize: 1000,
 		},
+		Vault: VaultConfig{
+			MEM:  true,
+			PATH: "",
+		},
 		SEC: Sec{
 			HTTP: HttpSecConfig{
 				TLS: false,
@@ -61,6 +75,8 @@ func GenerageConfig() *Config {
 		NetCfg: NetworkConfig{
 			PID: "/vavilov/1.0.0",
 		},
+		VERSION: "ALPHA",
+		VER:     1,
 	}
 }
 func (cfg *Config) SetPorts(rpc int, p2p int) {
@@ -120,4 +136,10 @@ func (cfg *Config) SetAutoGen(f bool) {
 		cfg.AUTOGEN = false
 	}
 	cfg.AUTOGEN = f
+}
+func (cfg *Config) CheckVersion(version string, ver int) bool {
+	return (cfg.VER == ver) && (cfg.VERSION == version)
+}
+func (cfg *Config) GetVersion() string {
+	return fmt.Sprintf("%s-%d_VERSION", cfg.VERSION, cfg.VER)
 }

@@ -138,36 +138,36 @@ func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 
 func (p *Pool) PoolServiceLoop() {
 	var errc chan error
-	// for errc == nil {
-	select {
-	case <-p.maintainTicker.C:
-		// fmt.Printf("Pool maintain loop\r\n")
-		p.mu.Lock()
-		if p.Prepared == nil {
-			p.Prepared = make([]*types.GTransaction, 0)
-		}
-		for _, tx := range p.memPool {
-			var r, s, v = tx.RawSignatureValues()
-			fmt.Printf("%s to %s - signed %s%s \r\n", tx.Hash(), tx.To(), r, s)
-			// if tx signed - add it to block
-			if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
-				p.Prepared = append(p.Prepared, &tx)
+	for errc == nil {
+		select {
+		case <-p.maintainTicker.C:
+			// fmt.Printf("Pool maintain loop\r\n")
+			p.mu.Lock()
+			if p.Prepared == nil {
+				p.Prepared = make([]*types.GTransaction, 0)
 			}
-			for _, preparedTx := range p.Prepared {
-				delete(p.memPool, preparedTx.Hash())
+			for _, tx := range p.memPool {
+				var r, s, v = tx.RawSignatureValues()
+				fmt.Printf("%s to %s - signed %s%s \r\n", tx.Hash(), tx.To(), r, s)
+				// if tx signed - add it to block
+				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
+					p.Prepared = append(p.Prepared, &tx)
+				}
+				for _, preparedTx := range p.Prepared {
+					delete(p.memPool, preparedTx.Hash())
+				}
 			}
-		}
-		p.mu.Unlock()
-		// fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
-		// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
-		// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
-	case txs := <-p.Funnel:
-		fmt.Printf("Funnel data arrive\r\n")
-		for _, tx := range txs {
-			p.AddRawTransaction(tx)
+			p.mu.Unlock()
+			// fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
+			// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
+			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
+		case txs := <-p.Funnel:
+			fmt.Printf("Funnel data arrive\r\n")
+			for _, tx := range txs {
+				p.AddRawTransaction(tx)
+			}
 		}
 	}
-	// }
 	errc <- nil
 }
 

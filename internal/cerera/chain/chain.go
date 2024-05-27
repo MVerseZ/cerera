@@ -20,8 +20,7 @@ type BlockChainStatus struct {
 }
 
 type Chain struct {
-	autoGen bool
-	// buf            []*types.GTransaction
+	autoGen        bool
 	chainId        *big.Int
 	chainWork      *big.Int
 	currentAddress types.Address
@@ -59,7 +58,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &genesisBlock,
-		blockTicker:    time.NewTicker(time.Duration(300 * time.Millisecond)),
+		blockTicker:    time.NewTicker(time.Duration(1 * time.Millisecond)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
@@ -138,6 +137,7 @@ func (bc *Chain) G(latest *block.Block) {
 		),
 		Extra:         []byte("OP_AUTO_GEN_BLOCK_DAT"),
 		Height:        latest.Head.Height + 1,
+		Index:         latest.Head.Index + 1,
 		Timestamp:     uint64(time.Now().UnixMilli()),
 		Number:        big.NewInt(0).Add(latest.Head.Number, big.NewInt(1)),
 		PrevHash:      latest.Hash(),
@@ -169,35 +169,12 @@ func (bc *Chain) G(latest *block.Block) {
 	pool.Prepared = nil
 }
 
+// change block generation time
+// val multiply by milliseconds (ms)
+func (bc *Chain) ChangeBlockInterval(val int) {
+	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
+}
+
 // func (bc *Chain) AddApprovedTx(tx *types.GTransaction) {
 // 	bc.buf = append(bc.buf, tx)
 // }
-
-// ordered constraints
-type Signed interface {
-	~int | ~int8 | ~int16 | ~int32 | ~int64
-}
-
-// Unsigned is a generic type constraint for all unsigned integers.
-type Unsigned interface {
-	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
-}
-
-// Integer is a generic type constraint for all integers (signed and unsigned.)
-type Integer interface {
-	Signed | Unsigned
-}
-
-// Float is a generic type constraint for all floating point types.
-type Float interface {
-	~float32 | ~float64
-}
-
-// Number is a generic type constraint for all numeric types in Go except Complex types.
-type Number interface {
-	Integer | Float
-}
-
-type Ordered interface {
-	Integer | ~string | Float
-}

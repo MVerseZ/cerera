@@ -61,7 +61,7 @@ func main() {
 		g:      validator.NewValidator(ctx, *cfg),
 		h:      host,
 		p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
-		v:      storage.NewD5Vault(&cfg.NetCfg),
+		v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0},
 	}
 

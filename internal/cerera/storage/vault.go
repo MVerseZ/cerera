@@ -31,7 +31,7 @@ type Vault interface {
 }
 
 type D5Vault struct {
-	accounts map[types.Address]types.StateAccount
+	accounts *AccountsTrie
 	coinBase types.StateAccount
 	rootHash common.Hash
 }
@@ -43,7 +43,7 @@ func S() int {
 }
 func Sync() []byte {
 	res := make([]byte, 0)
-	for _, sa := range vlt.accounts {
+	for _, sa := range vlt.accounts.accounts {
 		res = append(res, sa.Bytes()...)
 	}
 	return res
@@ -53,28 +53,28 @@ func GetVault() *D5Vault {
 }
 
 // NewD5Vault initializes and returns a new D5Vault instance.
-func NewD5Vault(netCfg *config.NetworkConfig) Vault {
-	var rootHashAddress = netCfg.ADDR
+func NewD5Vault(cfg *config.Config) Vault {
+	var rootHashAddress = cfg.NetCfg.ADDR
 
 	vlt = D5Vault{
-		accounts: make(map[types.Address]types.StateAccount),
+		accounts: GetAccountsTrie(),
 		rootHash: common.BytesToHash(rootHashAddress.Bytes()),
 	}
 
 	var inps = make([]common.Hash, 0)
 	rootSA := types.StateAccount{
-		Address:  netCfg.ADDR,
-		Name:     netCfg.ADDR.String(),
+		Address:  rootHashAddress,
+		Name:     rootHashAddress.String(),
 		Nonce:    1,
 		Balance:  types.FloatToBigInt(100.0),
 		Root:     vlt.rootHash,
-		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(netCfg.PRIV)),
+		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
 		Status:   "OP_ACC_NEW",
 		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
 		Inputs:   inps,
 	}
 
-	vlt.accounts[netCfg.ADDR] = rootSA
+	vlt.accounts.Append(rootHashAddress, rootSA)
 	vlt.coinBase = coinbase.CoinBaseStateAccount()
 	return &vlt
 }
@@ -150,7 +150,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		Inputs:     inps,
 		Passphrase: common.BytesToHash([]byte(pass)),
 	}
-	v.accounts[address] = newAccount
+	v.accounts.Append(address, newAccount)
 
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
 	x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
@@ -159,20 +159,23 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 }
 
 func (v *D5Vault) Get(addr types.Address) types.StateAccount {
-	return v.accounts[addr]
+	return v.accounts.GetAccount(addr)
 }
 func (v *D5Vault) GetAll() interface{} {
+	// refactor
+	// this function returns all active (register) addressses with balance
+	// [addr1:balance1, addr2:balance2, ..., addrN:balanceN]
 	res := make(map[types.Address]float64)
-	for addr, v := range v.accounts {
+	for addr, v := range v.accounts.accounts {
 		res[addr] = types.BigIntToFloat(v.Balance)
 	}
 	return res
 }
 func (v *D5Vault) Put(address types.Address, acc types.StateAccount) {
-	v.accounts[address] = acc
+	v.accounts.Append(address, acc)
 }
 func (v *D5Vault) Size() int {
-	return len(v.accounts)
+	return v.accounts.Size()
 }
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
 
@@ -182,14 +185,14 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	fmt.Println("Update balance")
 	var sa = v.Get(from)
 	sa.Balance = big.NewInt(0).Sub(sa.Balance, cnt)
-	v.accounts[from] = sa
+	sa = v.accounts.GetAccount(from)
 
 	// increment second
 	var saDest = v.Get(to)
 	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
 	// when increment, add input to account - tx hash
 	saDest.Inputs = append(saDest.Inputs, txHash)
-	v.accounts[to] = saDest
+	saDest = v.accounts.GetAccount(to)
 	// done
 }
 
