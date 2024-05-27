@@ -212,7 +212,7 @@ func WriteSwarmData(chainAddress types.Address, mAddress string) {
 	}
 	swarm := make(map[types.Address]ma.Multiaddr)
 	swarm[chainAddress] = maddr
-	err := os.WriteFile(swarmCfg, []byte(mAddress), 0644)
+	err := os.WriteFile(swarmCfg, []byte(fmt.Sprintf("%s:%s", chainAddress, mAddress)), 0644)
 	if err != nil {
 		panic(err)
 	}

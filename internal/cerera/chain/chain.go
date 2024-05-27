@@ -71,6 +71,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 func (bc *Chain) GetInfo() interface{} {
 	bc.info.Total = len(bc.data)
 	bc.info.Latest = bc.data[len(bc.data)-1].Hash()
+
 	return bc.info
 }
 

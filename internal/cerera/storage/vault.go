@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +17,8 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
+	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
 )
 
 type Vault interface {
@@ -121,6 +122,16 @@ func (v *D5Vault) SaveToFile(filename string, key []byte) error {
 
 // Create - create an account to store and return it
 func (v *D5Vault) Create(name string, pass string) (string, string, *types.Address, error) {
+
+	entropy, _ := bip39.NewEntropy(256)
+	mnemonic, _ := bip39.NewMnemonic(entropy)
+
+	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
+	seed := bip39.NewSeed(mnemonic, pass)
+
+	masterKey, _ := bip32.NewMasterKey(seed)
+	publicKey := masterKey.PublicKey()
+
 	privateKey, err := types.GenerateAccount()
 	if err != nil {
 		return "", "", nil, err
@@ -149,13 +160,17 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		Bloom:      []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
 		Inputs:     inps,
 		Passphrase: common.BytesToHash([]byte(pass)),
+		Mnemonic:   mnemonic,
+		MPub:       publicKey,
+		MPriv:      masterKey,
 	}
 	v.accounts.Append(address, newAccount)
 
-	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
-	x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
-	pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
-	return string(pemEncoded), string(pemEncodedPub), &address, nil
+	// pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
+	// x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
+	// pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
+
+	return publicKey.B58Serialize(), mnemonic, &address, nil
 }
 
 func (v *D5Vault) Get(addr types.Address) types.StateAccount {

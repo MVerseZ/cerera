@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/cerera/internal/cerera/common"
+	"github.com/tyler-smith/go-bip32"
 )
 
 type StateAccount struct {
@@ -20,6 +21,10 @@ type StateAccount struct {
 	// Treasury []*coinbase.CoinBase
 	Inputs     []common.Hash
 	Passphrase common.Hash
+	// bip32 data
+	MPub     *bip32.Key
+	MPriv    *bip32.Key
+	Mnemonic string
 }
 
 func (sa *StateAccount) BloomUp() {

@@ -14,14 +14,8 @@ import (
 )
 
 var (
-	ErrUnknownEntry = errors.New("unknown entry type")
-	errNoPubkey     = errors.New("missing public key")
-	errBadPubkey    = errors.New("invalid public key")
-	errInvalidENR   = errors.New("invalid node record")
-	errInvalidChild = errors.New("invalid child hash")
-	ErrInvalidSig   = errors.New("invalid base64 signature")
-	errSyntax       = errors.New("invalid syntax")
-	ErrBadKey       = errors.New("Bad key")
+	ErrInvalidSig = errors.New("invalid base64 signature")
+	errBadKey     = errors.New("bad key")
 )
 
 type sigCache struct {
@@ -61,7 +55,7 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, e
 	h := s.Hash(tx)
 	sig, err := Sign(h[:], prv)
 	if err != nil {
-		return nil, ErrBadKey
+		return nil, errBadKey
 	}
 	if sc := tx.from.Load(); sc != nil {
 		sigCache := sc.(sigCache)
