@@ -100,7 +100,7 @@ func EmptyAddress() Address {
 }
 
 func (a *Address) FromString(data string) Address {
-	fmt.Println(data)
+	// TODO
 	return Address{}
 }
 
@@ -306,8 +306,8 @@ func BigIntToFloat(bi *big.Int) float64 {
 
 	bigval.Quo(bigval, coin)
 
-	result, acc := bigval.Float64()
-	fmt.Printf("Accuracy converter:%d\r\n", acc)
+	// second result - accuracy value
+	result, _ := bigval.Float64()
 
 	return result
 }
