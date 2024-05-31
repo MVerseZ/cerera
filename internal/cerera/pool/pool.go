@@ -1,9 +1,6 @@
 package pool
 
 import (
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -171,27 +168,27 @@ func (p *Pool) PoolServiceLoop() {
 	errc <- nil
 }
 
-func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) (common.Hash, error) {
-	for i, tx := range p.memPool {
-		if txHash == tx.Hash() {
-			pemBlock, _ := pem.Decode([]byte(signKey))
-			aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
-			if err1 != nil {
-				return common.EmptyHash(), errors.New("error ParsePKC58 key")
-			}
-			// ecdsaPkey := aKey.(ecdsa.PrivateKey)
-			signTx, err2 := types.SignTx(&tx, signer, aKey)
-			if err2 != nil {
-				fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
-				return common.EmptyHash(), errors.New("error while sign tx")
-			}
-			p.memPool[i] = *signTx
-			// network.PublishData("OP_TX_SIGNED", tx)
-			return signTx.Hash(), nil
-		}
-	}
-	return common.EmptyHash(), errors.New("transaction not found in pool")
-}
+// func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) (common.Hash, error) {
+// 	for i, tx := range p.memPool {
+// 		if txHash == tx.Hash() {
+// 			pemBlock, _ := pem.Decode([]byte(signKey))
+// 			aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
+// 			if err1 != nil {
+// 				return common.EmptyHash(), errors.New("error ParsePKC58 key")
+// 			}
+// 			// ecdsaPkey := aKey.(ecdsa.PrivateKey)
+// 			signTx, err2 := types.SignTx(&tx, signer, aKey)
+// 			if err2 != nil {
+// 				fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
+// 				return common.EmptyHash(), errors.New("error while sign tx")
+// 			}
+// 			p.memPool[i] = *signTx
+// 			// network.PublishData("OP_TX_SIGNED", tx)
+// 			return signTx.Hash(), nil
+// 		}
+// 	}
+// 	return common.EmptyHash(), errors.New("transaction not found in pool")
+// }
 
 func (p *Pool) Clear() {
 	p.memPool = nil

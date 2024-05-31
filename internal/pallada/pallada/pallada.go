@@ -56,20 +56,20 @@ func Execute(method string, params []interface{}) interface{} {
 		if !ok1 || !ok2 {
 			return 0xf
 		}
-		pk, pb, addr, err := vlt.Create(walletName, passphraseStr)
+		pk, m, addr, err := vlt.Create(walletName, passphraseStr)
 		if err != nil {
 			pld.Data = "Error"
 			return 0xf
 		}
 		type res struct {
-			Address *types.Address `json:"address,omitempty"`
-			Priv    string         `json:"priv,omitempty"`
-			Pub     string         `json:"pub,omitempty"`
+			Address  *types.Address `json:"address,omitempty"`
+			Pub      string         `json:"pub,omitempty"`
+			Mnemonic string         `json:"mnemonic,omitempty"`
 		}
 		pld.Data = &res{
-			Address: addr,
-			Priv:    pk,
-			Pub:     pb,
+			Address:  addr,
+			Pub:      pk,
+			Mnemonic: m,
 		}
 	case "get_minimum_gas_value":
 		// get min gas value

@@ -3,6 +3,8 @@ package validator
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
@@ -48,6 +50,7 @@ type DDDDDValidator struct {
 	storage       string
 	signatureKey  *ecdsa.PrivateKey
 	signer        types.Signer
+	balance       *big.Int
 }
 
 func NewValidator(ctx context.Context, cfg config.Config) Validator {
@@ -55,6 +58,7 @@ func NewValidator(ctx context.Context, cfg config.Config) Validator {
 	v = &DDDDDValidator{
 		signatureKey: p,
 		signer:       types.NewSimpleSignerWithPen(cfg.Chain.ChainID, p),
+		balance:      big.NewInt(0), // Initialize balance
 	}
 	return v
 }
@@ -128,10 +132,31 @@ func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) 
 
 func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey string) (common.Hash, error) {
 	p := pool.Get()
-	hash, err := p.SignRawTransaction(txHash, v.Signer(), signKey)
-	if err != nil {
-		return common.EmptyHash(), err
+	var tx = p.GetTransaction(txHash)
+
+	// get for tx
+	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
+
+	// sign tx
+	pemBlock, _ := pem.Decode([]byte(signKey))
+	aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
+	if err1 != nil {
+		return common.EmptyHash(), errors.New("error ParsePKC58 key")
 	}
+	// ecdsaPkey := aKey.(ecdsa.PrivateKey)
+	signTx, err2 := types.SignTx(tx, v.signer, aKey)
+	if err2 != nil {
+		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
+		return common.EmptyHash(), errors.New("error while sign tx")
+	}
+	// p.memPool[i] = *signTx
+	// network.PublishData("OP_TX_SIGNED", tx)
+	return signTx.Hash(), nil
+
+	// hash, err := p.SignRawTransaction(txHash, v.Signer(), signKey)
+	// if err != nil {
+	// 	return common.EmptyHash(), err
+	// }
 	return hash, nil
 }
 

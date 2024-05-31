@@ -25,3 +25,5 @@ logfile
 main
 *.pem
 cerera
+
+.vscode

@@ -103,10 +103,8 @@ func ConnectToSwarm(h *Host) {
 	{ //connect to swarm
 		if _, err := os.Stat(swarmCfg); err == nil {
 			h.NetType = 0x2
-			// Before initializing the client, check if the target address is not the host's own address
-			if !isOwnAddress(h.Addr.String()) {
-				s = InitClient(h)
-			}
+			// check address inside this funaction call
+			s = InitClient(h, h.Addr.String())
 		} else {
 			h.NetType = 0x1
 			s = InitServer(h)
@@ -184,7 +182,7 @@ func (h *Host) SetUpHttp(ctx context.Context, cfg config.Config) {
 
 	fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
 	go http.HandleFunc("/", HandleRequest(ctx))
-	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
+	go http.HandleFunc("/wss", HandleWebSockerRequest(ctx))
 
 }
 func (h *Host) Stop() error {
