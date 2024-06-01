@@ -27,6 +27,7 @@ type Vault interface {
 	Put(address types.Address, acc types.StateAccount)
 	Get(types.Address) types.StateAccount
 	GetAll() interface{}
+	GetKey(signKey string) []byte
 	Size() int
 	//
 }
@@ -51,6 +52,10 @@ func Sync() []byte {
 }
 func GetVault() *D5Vault {
 	return &vlt
+}
+func GetKey(signKey string) []byte {
+
+	return vlt.GetKey(signKey)
 }
 
 // NewD5Vault initializes and returns a new D5Vault instance.
