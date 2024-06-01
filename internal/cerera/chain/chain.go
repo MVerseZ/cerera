@@ -58,7 +58,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &genesisBlock,
-		blockTicker:    time.NewTicker(time.Duration(1 * time.Minute)),
+		blockTicker:    time.NewTicker(time.Duration(1 * time.Second)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,

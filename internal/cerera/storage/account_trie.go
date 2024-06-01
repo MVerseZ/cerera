@@ -1,6 +1,11 @@
 package storage
 
-import "github.com/cerera/internal/cerera/types"
+import (
+	"bytes"
+
+	"github.com/cerera/internal/cerera/types"
+	"github.com/tyler-smith/go-bip32"
+)
 
 // structure stores account and other accounting stuff
 // in smth like merkle-b-tree (cool data structure)
@@ -22,6 +27,17 @@ func (at *AccountsTrie) Append(addr types.Address, sa types.StateAccount) {
 
 func (at *AccountsTrie) GetAccount(addr types.Address) types.StateAccount {
 	return at.accounts[addr]
+}
+
+func (at *AccountsTrie) GetKBytes(pubKey *bip32.Key) []byte {
+	for _, account := range at.accounts {
+		var fp = pubKey.FingerPrint
+		var cfp = account.MPub.FingerPrint
+		if bytes.Equal(fp, cfp) {
+			return account.CodeHash
+		}
+	}
+	return nil
 }
 
 func (at *AccountsTrie) Size() int {

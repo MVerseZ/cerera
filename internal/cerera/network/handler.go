@@ -114,7 +114,6 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 				break
 			}
 
-			fmt.Println(string(message))
 			if string(message) == "ping" {
 				conn.WriteJSON("pong")
 			}
@@ -126,7 +125,6 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 			response.JSONRPC = "2.0"
 			response.ID = request.ID
 			err = json.Unmarshal(message, &request)
-			fmt.Println(message)
 		}
 	}
 }

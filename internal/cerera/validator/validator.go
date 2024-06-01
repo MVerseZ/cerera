@@ -3,6 +3,8 @@ package validator
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,7 +14,6 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
-	"github.com/tyler-smith/go-bip32"
 
 	"github.com/cerera/internal/cerera/types"
 )
@@ -137,19 +138,14 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
 
 	// sign tx
+	var vlt = storage.GetVault()
+	var signBytes = vlt.GetKey(signKey)
 
-	pk, err := bip32.B58Deserialize(signKey)
-	if err != nil {
-		return common.EmptyHash(), errors.New("error parse public key")
+	pemBlock, _ := pem.Decode([]byte(signBytes))
+	aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
+	if err1 != nil {
+		return common.EmptyHash(), errors.New("error ParsePKC58 key")
 	}
-	var v = storage.GetVault()
-	v.storage.GetKey(signKey)
-
-	// pemBlock, _ := pem.Decode([]byte(signKey))
-	// aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
-	// if err1 != nil {
-	// 	return common.EmptyHash(), errors.New("error ParsePKC58 key")
-	// }
 	// ecdsaPkey := aKey.(ecdsa.PrivateKey)
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
 	if err2 != nil {
@@ -164,7 +160,7 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 	// if err != nil {
 	// 	return common.EmptyHash(), err
 	// }
-	return hash, nil
+	// return hash, nil
 }
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {

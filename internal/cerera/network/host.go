@@ -182,7 +182,7 @@ func (h *Host) SetUpHttp(ctx context.Context, cfg config.Config) {
 
 	fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
 	go http.HandleFunc("/", HandleRequest(ctx))
-	go http.HandleFunc("/wss", HandleWebSockerRequest(ctx))
+	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
 
 }
 func (h *Host) Stop() error {

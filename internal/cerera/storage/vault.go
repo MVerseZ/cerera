@@ -53,10 +53,6 @@ func Sync() []byte {
 func GetVault() *D5Vault {
 	return &vlt
 }
-func GetKey(signKey string) []byte {
-
-	return vlt.GetKey(signKey)
-}
 
 // NewD5Vault initializes and returns a new D5Vault instance.
 func NewD5Vault(cfg *config.Config) Vault {
@@ -180,6 +176,16 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 
 func (v *D5Vault) Get(addr types.Address) types.StateAccount {
 	return v.accounts.GetAccount(addr)
+}
+func (v *D5Vault) GetKey(signKey string) []byte {
+	pubKey, _ := bip32.B58Deserialize(signKey)
+
+	var fp = v.accounts.GetKBytes(pubKey)
+	if fp != nil {
+		return fp
+	} else {
+		return []byte{0x0, 0x0, 0xf, 0xf}
+	}
 }
 func (v *D5Vault) GetAll() interface{} {
 	// refactor
