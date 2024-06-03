@@ -114,7 +114,6 @@ func (bc *Chain) BlockGenerator() {
 	for {
 		select {
 		case <-bc.blockTicker.C:
-			// fmt.Printf("Block ticker\r\n")
 			for _, b := range bc.data {
 				b.Head.Confirmations = b.Header().Confirmations + 1
 			}
@@ -175,7 +174,3 @@ func (bc *Chain) G(latest *block.Block) {
 func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
 }
-
-// func (bc *Chain) AddApprovedTx(tx *types.GTransaction) {
-// 	bc.buf = append(bc.buf, tx)
-// }

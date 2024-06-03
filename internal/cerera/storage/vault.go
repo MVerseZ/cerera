@@ -1,17 +1,10 @@
 package storage
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdsa"
-	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"math/big"
-	"os"
 
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
@@ -79,46 +72,6 @@ func NewD5Vault(cfg *config.Config) Vault {
 	vlt.accounts.Append(rootHashAddress, rootSA)
 	vlt.coinBase = coinbase.CoinBaseStateAccount()
 	return &vlt
-}
-
-// LoadFromFile loads encrypted data from a JSON file into the vault.
-func (v *D5Vault) LoadFromFile(filename string, key []byte) error {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-
-	decryptedData, err := decrypt(data, key)
-	if err != nil {
-		return err
-	}
-
-	err = json.Unmarshal(decryptedData, &v.accounts)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// SaveToFile encrypts and saves data from the vault to a JSON file.
-func (v *D5Vault) SaveToFile(filename string, key []byte) error {
-	data, err := json.Marshal(v.accounts)
-	if err != nil {
-		return err
-	}
-
-	encryptedData, err := encrypt(data, key)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(filename, encryptedData, 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // Create - create an account to store and return it
@@ -240,40 +193,4 @@ func (v *D5Vault) CoinBase() *ecdsa.PrivateKey {
 		return nil
 	}
 	return privateKey
-}
-
-func encrypt(data []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	ciphertext := make([]byte, aes.BlockSize+len(data))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return nil, err
-	}
-
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], data)
-
-	return ciphertext, nil
-}
-
-func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(ciphertext) < aes.BlockSize {
-		return nil, errors.New("ciphertext too short")
-	}
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
-
-	stream := cipher.NewCFBDecrypter(block, iv)
-	stream.XORKeyStream(ciphertext, ciphertext)
-
-	return ciphertext, nil
 }
