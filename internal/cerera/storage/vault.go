@@ -71,6 +71,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 
 	vlt.accounts.Append(rootHashAddress, rootSA)
 	vlt.coinBase = coinbase.CoinBaseStateAccount()
+	SavePair(rootSA.Address, rootSA.Bytes())
 	return &vlt
 }
 
@@ -92,7 +93,8 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 	}
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
-	derBytes, _ := x509.MarshalECPrivateKey(privateKey)
+	derBytes := types.EncodePrivateKeyToByte(privateKey)
+	// derBytes, _ := x509.MarshalECPrivateKey(privateKey)
 
 	var walletName string
 	if name != "" {
@@ -124,6 +126,8 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 	// x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
 	// pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
 
+	SavePair(address, newAccount.Bytes())
+
 	return publicKey.B58Serialize(), mnemonic, &address, nil
 }
 
@@ -134,6 +138,7 @@ func (v *D5Vault) GetKey(signKey string) []byte {
 	pubKey, _ := bip32.B58Deserialize(signKey)
 
 	var fp = v.accounts.GetKBytes(pubKey)
+
 	if fp != nil {
 		return fp
 	} else {
