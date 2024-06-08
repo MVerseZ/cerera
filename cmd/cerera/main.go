@@ -44,6 +44,7 @@ func main() {
 	flag.Parse()
 
 	cfg := config.GenerageConfig()
+	fmt.Println(cfg)
 	cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
 	cfg.SetNodeKey(*keyPathFlag)
 	cfg.SetAutoGen(true)
@@ -77,7 +78,7 @@ func main() {
 	for {
 		if c.h.NetType == 0x2 {
 			fmt.Printf("Sync accounts...\r\n")
-			c.h.HandShake()
+			// c.h.HandShake()
 			// c.status[0] = 0xb
 		}
 		if c.status[0] == 0xb || c.h.NetType == 0x1 {

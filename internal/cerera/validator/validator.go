@@ -132,6 +132,8 @@ func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) 
 
 func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey string) (common.Hash, error) {
 	p := pool.Get()
+	fmt.Println(txHash)
+	fmt.Println(signKey)
 	var tx = p.GetTransaction(txHash)
 
 	// get for tx

@@ -1,12 +1,14 @@
 package storage
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -92,7 +94,7 @@ func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-func SavePair(address types.Address, data []byte) {
+func InitSecureVault(address types.Address, data []byte) {
 	// if file not exist we will create it
 	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -107,4 +109,48 @@ func SavePair(address types.Address, data []byte) {
 	buf.Write(address[:])
 	buf.Write(data)
 	f.Write(buf.Bytes())
+}
+
+// load from file
+func SyncVault(path string) {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Errorf("Failed to open the vault file: %s", err)
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		// Assuming each line in the file is a serialized StateAccount
+		var account types.StateAccount
+		if err := json.Unmarshal(line, &account); err != nil {
+			log.Printf("Failed to unmarshal account data: %s", err)
+			continue
+		}
+		// Append the account to the vault
+		GetVault().accounts.Append(account.Address, account)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Errorf("Failed to read from the vault file: %s", err)
+	}
+
+}
+
+func SaveToVault(address types.Address, account []byte) {
+	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Errorf("Failed to open the vault file for writing: %s", err)
+	}
+
+	// Decode account from bytes using BytesToStateAccount
+	var accountData = types.BytesToStateAccount(account)
+	accountData.Status = "SYNC"
+	accountDataToWrite := accountData.Bytes()
+	var buf = bytes.Buffer{}
+	buf.Write(address[:])
+	buf.Write(accountDataToWrite)
+	if _, err := f.Write(buf.Bytes()); err != nil {
+		fmt.Errorf("Failed to write to the vault file: %s", err)
+	}
 }

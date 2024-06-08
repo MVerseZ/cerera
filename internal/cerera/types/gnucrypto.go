@@ -175,6 +175,12 @@ func EncodePrivateKeyToByte(pk *ecdsa.PrivateKey) []byte {
 	return pemEncoded
 }
 
+func EncodePublicKeyToByte(pub *ecdsa.PublicKey) []byte {
+	x509Encoded, _ := x509.MarshalPKIXPublicKey(pub)
+	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509Encoded})
+	return pemEncoded
+}
+
 func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {
 	block, _ := pem.Decode([]byte(pemEncoded))
 	x509Encoded := block.Bytes

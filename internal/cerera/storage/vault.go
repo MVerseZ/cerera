@@ -71,7 +71,14 @@ func NewD5Vault(cfg *config.Config) Vault {
 
 	vlt.accounts.Append(rootHashAddress, rootSA)
 	vlt.coinBase = coinbase.CoinBaseStateAccount()
-	SavePair(rootSA.Address, rootSA.Bytes())
+
+	fmt.Println(cfg.Vault.PATH)
+	if cfg.Vault.PATH == "EMPTY" {
+		InitSecureVault(rootSA.Address, rootSA.Bytes())
+		cfg.UpdateVaultPath("./vault.dat")
+	} else {
+		SyncVault(cfg.Vault.PATH)
+	}
 	return &vlt
 }
 
@@ -126,7 +133,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 	// x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
 	// pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
 
-	SavePair(address, newAccount.Bytes())
+	SaveToVault(address, newAccount.Bytes())
 
 	return publicKey.B58Serialize(), mnemonic, &address, nil
 }

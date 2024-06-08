@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -24,9 +25,9 @@ type NetworkConfig struct {
 	PID  protocol.ID
 	P2P  int
 	RPC  int
-	ADDR types.Address    // address of running node
-	PRIV string           // private key of current running node
-	PUB  *ecdsa.PublicKey // public key of current running node
+	ADDR types.Address // address of running node
+	PRIV string        // private key of current running node
+	PUB  []byte        // public key of current running node
 }
 type VaultConfig struct {
 	MEM  bool
@@ -57,29 +58,42 @@ type Config struct {
 }
 
 func GenerageConfig() *Config {
-	return &Config{
-		TlsFlag: false,
-		POOL: PoolConfig{
-			MinGas:  3,
-			MaxSize: 1000,
-		},
-		Vault: VaultConfig{
-			MEM:  true,
-			PATH: "",
-		},
-		SEC: Sec{
-			HTTP: HttpSecConfig{
-				TLS: false,
+	configFilePath := "config.json"
+	cfg := &Config{}
+	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+		cfg = &Config{
+			TlsFlag: false,
+			POOL: PoolConfig{
+				MinGas:  3,
+				MaxSize: 1000,
 			},
-		},
-		NetCfg: NetworkConfig{
-			PID: "/vavilov/1.0.0",
-		},
-		VERSION: "ALPHA",
-		VER:     1,
+			Vault: VaultConfig{
+				MEM:  true,
+				PATH: "EMPTY",
+			},
+			SEC: Sec{
+				HTTP: HttpSecConfig{
+					TLS: false,
+				},
+			},
+			NetCfg: NetworkConfig{
+				PID: "/vavilov/1.0.0",
+			},
+			VERSION: "ALPHA",
+			VER:     1,
+		}
+		cfg.WriteConfigToFile()
+	} else {
+		cfg, err = ReadConfig(configFilePath)
+		if err != nil {
+			panic(err)
+		}
 	}
+	return cfg
 }
 func (cfg *Config) SetPorts(rpc int, p2p int) {
+	fmt.Println(cfg.NetCfg.P2P)
+	fmt.Println(cfg.NetCfg.RPC)
 	if rpc == -1 || rpc == 0 {
 		cfg.NetCfg.RPC = DefaultRpcPort
 	} else {
@@ -90,6 +104,7 @@ func (cfg *Config) SetPorts(rpc int, p2p int) {
 	} else {
 		cfg.NetCfg.P2P = p2p
 	}
+	cfg.WriteConfigToFile()
 }
 func (cfg *Config) SetNodeKey(pemFilePath string) {
 	if pemFilePath == "" {
@@ -126,20 +141,50 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 	}
 	cfg.NetCfg.ADDR = currentNodeAddress
 	cfg.NetCfg.PRIV = ppk
-	cfg.NetCfg.PUB = &nodeK.PublicKey
+
+	cfg.NetCfg.PUB = types.EncodePublicKeyToByte(&nodeK.PublicKey)
 
 	cfg.Chain.ChainID = ChainId
 	cfg.Chain.Path = "dat.db"
+	cfg.WriteConfigToFile()
 }
 func (cfg *Config) SetAutoGen(f bool) {
 	if !cfg.AUTOGEN {
 		cfg.AUTOGEN = false
 	}
 	cfg.AUTOGEN = f
+	cfg.WriteConfigToFile()
 }
 func (cfg *Config) CheckVersion(version string, ver int) bool {
 	return (cfg.VER == ver) && (cfg.VERSION == version)
 }
 func (cfg *Config) GetVersion() string {
 	return fmt.Sprintf("%s-%d_VERSION", cfg.VERSION, cfg.VER)
+}
+func (cfg *Config) UpdateVaultPath(newPath string) {
+	cfg.Vault.PATH = newPath
+	cfg.WriteConfigToFile()
+}
+func (cfg *Config) WriteConfigToFile() error {
+	fileData, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	err = os.WriteFile("config.json", fileData, 0644)
+	if err != nil {
+		panic(err)
+	}
+	return nil
+}
+func ReadConfig(filePath string) (*Config, error) {
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config from file: %v", err)
+	}
+	var cfg Config
+	err = json.Unmarshal(fileData, &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
+	}
+	return &cfg, nil
 }
