@@ -1,12 +1,10 @@
 package types
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/json"
 	"math/big"
 
 	"github.com/cerera/internal/cerera/common"
-	"github.com/tyler-smith/go-bip32"
 )
 
 type StateAccount struct {
@@ -22,8 +20,8 @@ type StateAccount struct {
 	Inputs     []common.Hash
 	Passphrase common.Hash
 	// bip32 data
-	MPub     *bip32.Key
-	MPriv    *bip32.Key
+	// MPub     *bip32.Key
+	// MPriv    *bip32.Key
 	Mnemonic string
 }
 
@@ -46,22 +44,18 @@ func (sa *StateAccount) BloomDown() {
 }
 
 func (sa *StateAccount) Bytes() []byte {
-	buf := bytes.Buffer{}
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(sa)
+	buf, err := json.Marshal(sa)
 	if err != nil {
 		panic(err)
 	}
-	var saBytes = append(buf.Bytes(), sa.Bloom...)
-	return saBytes
+	return buf
 }
 
 func BytesToStateAccount(data []byte) StateAccount {
-	p := StateAccount{}
-	dec := gob.NewDecoder(bytes.NewReader(data))
-	err := dec.Decode(&p)
+	sa := &StateAccount{}
+	err := json.Unmarshal(data, sa)
 	if err != nil {
 		panic(err)
 	}
-	return p
+	return *sa
 }

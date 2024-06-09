@@ -3,6 +3,7 @@ package storage
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
+	"encoding/gob"
 	"fmt"
 	"math/big"
 
@@ -49,6 +50,7 @@ func GetVault() *D5Vault {
 
 // NewD5Vault initializes and returns a new D5Vault instance.
 func NewD5Vault(cfg *config.Config) Vault {
+	gob.Register(types.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
 	vlt = D5Vault{
@@ -56,7 +58,6 @@ func NewD5Vault(cfg *config.Config) Vault {
 		rootHash: common.BytesToHash(rootHashAddress.Bytes()),
 	}
 
-	var inps = make([]common.Hash, 0)
 	rootSA := types.StateAccount{
 		Address:  rootHashAddress,
 		Name:     rootHashAddress.String(),
@@ -66,7 +67,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
 		Status:   "OP_ACC_NEW",
 		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
-		Inputs:   inps,
+		Inputs:   nil,
 	}
 
 	vlt.accounts.Append(rootHashAddress, rootSA)
@@ -74,7 +75,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 
 	fmt.Println(cfg.Vault.PATH)
 	if cfg.Vault.PATH == "EMPTY" {
-		InitSecureVault(rootSA.Address, rootSA.Bytes())
+		InitSecureVault(rootSA)
 		cfg.UpdateVaultPath("./vault.dat")
 	} else {
 		SyncVault(cfg.Vault.PATH)
@@ -110,8 +111,6 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		walletName = address.String()
 	}
 
-	var inps = make([]common.Hash, 0)
-
 	newAccount := types.StateAccount{
 		Address:    address,
 		Name:       walletName,
@@ -121,11 +120,11 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		CodeHash:   derBytes,
 		Status:     "OP_ACC_NEW",
 		Bloom:      []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
-		Inputs:     inps,
+		Inputs:     nil,
 		Passphrase: common.BytesToHash([]byte(pass)),
 		Mnemonic:   mnemonic,
-		MPub:       publicKey,
-		MPriv:      masterKey,
+		// MPub:       publicKey,
+		// MPriv:      masterKey,
 	}
 	v.accounts.Append(address, newAccount)
 
@@ -133,7 +132,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 	// x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
 	// pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
 
-	SaveToVault(address, newAccount.Bytes())
+	SaveToVault(newAccount.Bytes())
 
 	return publicKey.B58Serialize(), mnemonic, &address, nil
 }
@@ -185,12 +184,15 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	saDest.Inputs = append(saDest.Inputs, txHash)
 	saDest = v.accounts.GetAccount(to)
 	// done
+	UpdateVault(saDest.Bytes())
+	UpdateVault(sa.Bytes())
 }
 
 // faucet method without creating transaction
 func (v *D5Vault) FaucetBalance(to types.Address, val *big.Int) {
-	var destAddr = v.Get(to)
-	destAddr.Balance.Add(destAddr.Balance, val)
+	var destSA = v.Get(to)
+	destSA.Balance.Add(destSA.Balance, val)
+	UpdateVault(destSA.Bytes())
 }
 func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) bool {
 

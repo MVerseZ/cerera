@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"bytes"
-
 	"github.com/cerera/internal/cerera/types"
 	"github.com/tyler-smith/go-bip32"
 )
@@ -30,13 +28,13 @@ func (at *AccountsTrie) GetAccount(addr types.Address) types.StateAccount {
 }
 
 func (at *AccountsTrie) GetKBytes(pubKey *bip32.Key) []byte {
-	for _, account := range at.accounts {
-		var fp = pubKey.FingerPrint
-		var cfp = account.MPub.FingerPrint
-		if bytes.Equal(fp, cfp) {
-			return account.CodeHash
-		}
-	}
+	// for _, account := range at.accounts {
+	// 	var fp = pubKey.FingerPrint
+	// 	var cfp = account.MPub.FingerPrint
+	// 	if bytes.Equal(fp, cfp) {
+	// 		return account.CodeHash
+	// 	}
+	// }
 	return nil
 }
 
