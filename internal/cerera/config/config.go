@@ -79,6 +79,11 @@ func GenerageConfig() *Config {
 			NetCfg: NetworkConfig{
 				PID: "/vavilov/1.0.0",
 			},
+			Chain: ChainConfig{
+				ChainID: big.NewInt(11),
+				Path:    "EMPTY",
+				Type:    "VAVILOV",
+			},
 			VERSION: "ALPHA",
 			VER:     1,
 		}
@@ -144,8 +149,6 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 
 	cfg.NetCfg.PUB = types.EncodePublicKeyToByte(&nodeK.PublicKey)
 
-	cfg.Chain.ChainID = ChainId
-	cfg.Chain.Path = "dat.db"
 	cfg.WriteConfigToFile()
 }
 func (cfg *Config) SetAutoGen(f bool) {
@@ -163,6 +166,10 @@ func (cfg *Config) GetVersion() string {
 }
 func (cfg *Config) UpdateVaultPath(newPath string) {
 	cfg.Vault.PATH = newPath
+	cfg.WriteConfigToFile()
+}
+func (cfg *Config) UpdateChainPath(newPath string) {
+	cfg.Chain.Path = newPath
 	cfg.WriteConfigToFile()
 }
 func (cfg *Config) WriteConfigToFile() error {

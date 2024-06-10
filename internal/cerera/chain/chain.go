@@ -1,6 +1,8 @@
 package chain
 
 import (
+	"errors"
+	"fmt"
 	"math/big"
 	"time"
 	"unsafe"
@@ -45,25 +47,40 @@ func GetBlockChain() Chain {
 func InitBlockChain(cfg *config.Config) Chain {
 
 	genesisBlock := block.Genesis()
-
 	dataBlocks := make([]block.Block, 0)
-	dataBlocks = append(dataBlocks, genesisBlock)
+
+	if cfg.Chain.Path == "EMPTY" {
+		// init with genesis empty cfg
+		InitChainVault(genesisBlock)
+		dataBlocks = append(dataBlocks, genesisBlock)
+		cfg.UpdateChainPath("./chain.dat")
+	} else {
+		var readBlock, err = SyncVault()
+		if err != nil {
+			panic(err)
+		}
+		dataBlocks = append(dataBlocks, readBlock...)
+		// validate added blocks
+		lastCorrect, _ := ValidateBlocks(dataBlocks)
+		dataBlocks = dataBlocks[:lastCorrect]
+	}
+
 	stats := BlockChainStatus{
-		Total:     1,
-		ChainWork: genesisBlock.Head.Size,
+		Total:     0,
+		ChainWork: 0,
 	}
 
 	bch = Chain{
 		autoGen:        cfg.AUTOGEN,
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
-		currentBlock:   &genesisBlock,
-		blockTicker:    time.NewTicker(time.Duration(1 * time.Second)),
+		currentBlock:   &dataBlocks[len(dataBlocks)-1],
+		blockTicker:    time.NewTicker(time.Duration(5 * time.Second)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
 	}
-	genesisBlock.Head.Node = bch.currentAddress
+	// genesisBlock.Head.Node = bch.currentAddress
 	go bch.BlockGenerator()
 	return bch
 }
@@ -165,6 +182,8 @@ func (bc *Chain) G(latest *block.Block) {
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 	bc.currentBlock = newBlock
 
+	SaveToVault(*newBlock)
+
 	// clear array with included txs
 	pool.Prepared = nil
 }
@@ -173,4 +192,21 @@ func (bc *Chain) G(latest *block.Block) {
 // val multiply by milliseconds (ms)
 func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
+}
+
+func ValidateBlocks(blocks []block.Block) (int, error) {
+	if len(blocks) == 0 {
+		return -1, errors.New("no blocks to validate")
+	}
+
+	for i, blk := range blocks {
+		// Проверка целостности цепочки блоков
+		if i > 0 {
+			prevBlock := blocks[i-1]
+			if blk.Head.PrevHash != prevBlock.Hash() {
+				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
+			}
+		}
+	}
+	return len(blocks) - 1, nil
 }

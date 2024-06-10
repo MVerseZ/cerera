@@ -73,7 +73,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 	vlt.accounts.Append(rootHashAddress, rootSA)
 	vlt.coinBase = coinbase.CoinBaseStateAccount()
 
-	fmt.Println(cfg.Vault.PATH)
+	// sync with fs
 	if cfg.Vault.PATH == "EMPTY" {
 		InitSecureVault(rootSA)
 		cfg.UpdateVaultPath("./vault.dat")
