@@ -61,7 +61,10 @@ func InitBlockChain(cfg *config.Config) Chain {
 		}
 		dataBlocks = append(dataBlocks, readBlock...)
 		// validate added blocks
-		lastCorrect, _ := ValidateBlocks(dataBlocks)
+		lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
+		if errorBlock != nil {
+			fmt.Printf("ERROR BLOCK! %s\r\n", errorBlock)
+		}
 		dataBlocks = dataBlocks[:lastCorrect]
 	}
 
@@ -160,9 +163,11 @@ func (bc *Chain) G(latest *block.Block) {
 		PrevHash:      latest.Hash(),
 		Confirmations: 1,
 		Node:          bc.currentAddress,
+		Root:          latest.Head.Root,
 	}
 	newBlock := block.NewBlockWithHeader(head)
 	// TODO refactor
+	newBlock.Transactions = []types.GTransaction{}
 	if len(pool.Prepared) > 0 {
 		for _, tx := range pool.Prepared {
 			if vld.ValidateTransaction(tx, tx.From()) {
@@ -170,6 +175,8 @@ func (bc *Chain) G(latest *block.Block) {
 			}
 		}
 	}
+
+	newBlock.Nonce = latest.Nonce
 
 	var finalSize = unsafe.Sizeof(newBlock)
 	newBlock.Head.Size = int(finalSize)
@@ -194,6 +201,7 @@ func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
 }
 
+// return lenght of array
 func ValidateBlocks(blocks []block.Block) (int, error) {
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
@@ -208,5 +216,5 @@ func ValidateBlocks(blocks []block.Block) (int, error) {
 			}
 		}
 	}
-	return len(blocks) - 1, nil
+	return len(blocks), nil
 }
