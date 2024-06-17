@@ -35,7 +35,7 @@ type Block struct {
 	Nonce         int                  `json:"nonce" gencodec:"required"`
 	Head          *Header              `json:"header" gencodec:"required"`
 	Transactions  []types.GTransaction `json:"transactions" gencodec:"required"`
-	// BlockHash     common.Hash           `json:"hash" gencodec:"required"`
+	hash          common.Hash          `json:"hash" gencodec:"required"`
 }
 
 type BlockReader interface {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"time"
-	"unsafe"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
@@ -101,7 +100,7 @@ func (bc Chain) GetLatestBlock() *block.Block {
 
 func (bc Chain) GetBlockHash(number int) common.Hash {
 	for _, b := range bc.data {
-		if b.Head.Number.Cmp(big.NewInt(int64(number))) == 0 {
+		if b.Header().Number.Cmp(big.NewInt(int64(number))) == 0 {
 			return b.Hash()
 		}
 	}
@@ -112,8 +111,6 @@ func (bc Chain) GetBlock(blockHash string) *block.Block {
 	var bHash = common.HexToHash(blockHash)
 	for _, b := range bc.data {
 		if b.Hash().Compare(bHash) == 0 {
-			var cfrm = b.Head.Confirmations
-			b.Confirmations = cfrm
 			return &b
 		}
 	}
@@ -124,7 +121,7 @@ func (bc Chain) GetBlockHeader(blockHash string) *block.Header {
 	var bHash = common.HexToHash(blockHash)
 	for _, b := range bc.data {
 		if b.Hash().Compare(bHash) == 0 {
-			return b.Head
+			return b.Header()
 		}
 	}
 	return &block.Header{}
@@ -134,10 +131,6 @@ func (bc *Chain) BlockGenerator() {
 	for {
 		select {
 		case <-bc.blockTicker.C:
-			for _, b := range bc.data {
-				b.Head.Confirmations = b.Header().Confirmations + 1
-			}
-
 			var latest = bc.GetLatestBlock()
 			if bc.autoGen {
 				bc.G(latest)
@@ -150,37 +143,37 @@ func (bc *Chain) G(latest *block.Block) {
 	var vld = validator.Get()
 	var pool = pool.Get()
 	head := &block.Header{
-		Ctx: latest.Head.Ctx,
+		Ctx: latest.Header().Ctx,
 		Difficulty: big.NewInt(0).Add(
-			latest.Head.Difficulty,
-			big.NewInt(int64(latest.Head.Ctx)),
+			latest.Header().Difficulty,
+			big.NewInt(int64(latest.Header().Ctx)),
 		),
 		Extra:         []byte("OP_AUTO_GEN_BLOCK_DAT"),
-		Height:        latest.Head.Height + 1,
-		Index:         latest.Head.Index + 1,
+		Height:        latest.Header().Height + 1,
+		Index:         latest.Header().Index + 1,
 		Timestamp:     uint64(time.Now().UnixMilli()),
-		Number:        big.NewInt(0).Add(latest.Head.Number, big.NewInt(1)),
+		Number:        big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
 		PrevHash:      latest.Hash(),
 		Confirmations: 1,
 		Node:          bc.currentAddress,
-		Root:          latest.Head.Root,
+		Root:          latest.Header().Root,
 	}
 	newBlock := block.NewBlockWithHeader(head)
 	// TODO refactor
-	newBlock.Transactions = []types.GTransaction{}
 	if len(pool.Prepared) > 0 {
 		for _, tx := range pool.Prepared {
 			if vld.ValidateTransaction(tx, tx.From()) {
 				newBlock.Transactions = append(newBlock.Transactions, *tx)
+				// newBlock.SetTransaction(tx)
 			}
 		}
 	}
 
-	newBlock.Nonce = latest.Nonce
+	// newBlock.Nonce = latest.Nonce
 
-	var finalSize = unsafe.Sizeof(newBlock)
-	newBlock.Head.Size = int(finalSize)
-	newBlock.Head.GasUsed += uint64(finalSize)
+	// var finalSize = unsafe.Sizeof(newBlock)
+	// newBlock.Head.Size = int(finalSize)
+	// newBlock.Head.GasUsed += uint64(finalSize)
 
 	bc.data = append(bc.data, *newBlock)
 
@@ -211,7 +204,7 @@ func ValidateBlocks(blocks []block.Block) (int, error) {
 		// Проверка целостности цепочки блоков
 		if i > 0 {
 			prevBlock := blocks[i-1]
-			if blk.Head.PrevHash != prevBlock.Hash() {
+			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
 				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
 			}
 		}

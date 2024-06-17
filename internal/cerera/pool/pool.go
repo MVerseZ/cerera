@@ -72,12 +72,13 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
+	fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
 	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
 		p.memPool[tx.Hash()] = *tx
 		// p.memPool = append(p.memPool, *tx)
 		// network.BroadcastTx(tx)
 	}
-	fmt.Println(p.memPool)
+	fmt.Println(len(p.memPool))
 }
 
 func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
@@ -133,6 +134,15 @@ func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	return nil
 }
 
+func (p *Pool) UpdateTx(newTx types.GTransaction) {
+	for _, tx := range p.memPool {
+		if tx.Hash().String() == newTx.Hash().String() {
+			fmt.Printf("Replace sign tx in pool: %s signed:%t\r\n", newTx.Hash(), newTx.IsSigned())
+			p.AddRawTransaction(&newTx)
+		}
+	}
+}
+
 func (p *Pool) PoolServiceLoop() {
 	var errc chan error
 	for errc == nil {
@@ -145,7 +155,7 @@ func (p *Pool) PoolServiceLoop() {
 			}
 			for _, tx := range p.memPool {
 				var r, s, v = tx.RawSignatureValues()
-				fmt.Printf("%s to %s - signed %s%s \r\n", tx.Hash(), tx.To(), r, s)
+				fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
 				// if tx signed - add it to block
 				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
 					p.Prepared = append(p.Prepared, &tx)

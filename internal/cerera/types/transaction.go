@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -232,6 +233,14 @@ func (tx *GTransaction) UpdateDna(dna []byte) {
 	if len(dna) < 128 {
 		tx.dna = dna
 	}
+}
+
+func (tx *GTransaction) IsSigned() bool {
+	var r, s, v = tx.RawSignatureValues()
+	fmt.Printf("sig values: %d %d %d\r\n", r, s, v)
+	r, s, v = tx.inner.rawSignatureValues()
+	fmt.Printf("inner sig values: %d %d %d\r\n", r, s, v)
+	return big.NewInt(0).Cmp(r) == -1 && big.NewInt(0).Cmp(s) == -1 && big.NewInt(0).Cmp(v) == -1
 }
 
 type GTransactions []*GTransaction

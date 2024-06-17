@@ -73,6 +73,7 @@ func SyncVault(path string) error {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	GetVault().Clear()
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		account := types.BytesToStateAccount(line)

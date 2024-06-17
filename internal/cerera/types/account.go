@@ -20,7 +20,7 @@ type StateAccount struct {
 	Inputs     []common.Hash
 	Passphrase common.Hash
 	// bip32 data
-	// MPub     *bip32.Key
+	MPub string
 	// MPriv    *bip32.Key
 	Mnemonic string
 }

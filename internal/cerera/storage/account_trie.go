@@ -23,18 +23,21 @@ func (at *AccountsTrie) Append(addr types.Address, sa types.StateAccount) {
 	at.accounts[addr] = sa
 }
 
+func (at *AccountsTrie) Clear() error {
+	at.accounts = make(map[types.Address]types.StateAccount)
+	return nil
+}
+
 func (at *AccountsTrie) GetAccount(addr types.Address) types.StateAccount {
 	return at.accounts[addr]
 }
 
 func (at *AccountsTrie) GetKBytes(pubKey *bip32.Key) []byte {
-	// for _, account := range at.accounts {
-	// 	var fp = pubKey.FingerPrint
-	// 	var cfp = account.MPub.FingerPrint
-	// 	if bytes.Equal(fp, cfp) {
-	// 		return account.CodeHash
-	// 	}
-	// }
+	for _, account := range at.accounts {
+		if pubKey.B58Serialize() == account.MPub {
+			return account.CodeHash
+		}
+	}
 	return nil
 }
 

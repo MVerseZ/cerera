@@ -35,6 +35,9 @@ func TestSigningTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !tx.IsSigned() {
+		t.Fatal("tx should be signed!")
+	}
 
 	from, err := Sender(signer, tx)
 	if tx.Type() != txs.txType() {

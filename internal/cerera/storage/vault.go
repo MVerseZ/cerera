@@ -18,6 +18,7 @@ import (
 type Vault interface {
 	CoinBase() *ecdsa.PrivateKey
 	Create(name string, pass string) (string, string, *types.Address, error)
+	Clear() error
 	Put(address types.Address, acc types.StateAccount)
 	Get(types.Address) types.StateAccount
 	GetAll() interface{}
@@ -29,6 +30,7 @@ type Vault interface {
 type D5Vault struct {
 	accounts *AccountsTrie
 	coinBase types.StateAccount
+	path     string
 	rootHash common.Hash
 }
 
@@ -58,6 +60,13 @@ func NewD5Vault(cfg *config.Config) Vault {
 		rootHash: common.BytesToHash(rootHashAddress.Bytes()),
 	}
 
+	entropy, _ := bip39.NewEntropy(256)
+	mnemonic, _ := bip39.NewMnemonic(entropy)
+	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
+	seed := bip39.NewSeed(mnemonic, "GENESISNODE")
+	masterKey, _ := bip32.NewMasterKey(seed)
+	publicKey := masterKey.PublicKey()
+
 	rootSA := types.StateAccount{
 		Address:  rootHashAddress,
 		Name:     rootHashAddress.String(),
@@ -68,6 +77,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 		Status:   "OP_ACC_NEW",
 		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
 		Inputs:   nil,
+		MPub:     publicKey.B58Serialize(),
 	}
 
 	vlt.accounts.Append(rootHashAddress, rootSA)
@@ -80,7 +90,12 @@ func NewD5Vault(cfg *config.Config) Vault {
 	} else {
 		SyncVault(cfg.Vault.PATH)
 	}
+	vlt.path = cfg.Vault.PATH
 	return &vlt
+}
+
+func (v *D5Vault) Clear() error {
+	return v.accounts.Clear()
 }
 
 // Create - create an account to store and return it
@@ -123,7 +138,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		Inputs:     nil,
 		Passphrase: common.BytesToHash([]byte(pass)),
 		Mnemonic:   mnemonic,
-		// MPub:       publicKey,
+		MPub:       publicKey.B58Serialize(),
 		// MPriv:      masterKey,
 	}
 	v.accounts.Append(address, newAccount)
@@ -155,6 +170,7 @@ func (v *D5Vault) GetAll() interface{} {
 	// refactor
 	// this function returns all active (register) addressses with balance
 	// [addr1:balance1, addr2:balance2, ..., addrN:balanceN]
+	SyncVault(v.path)
 	res := make(map[types.Address]float64)
 	for addr, v := range v.accounts.accounts {
 		res[addr] = types.BigIntToFloat(v.Balance)
@@ -174,15 +190,17 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 
 	fmt.Println("Update balance")
 	var sa = v.Get(from)
-	sa.Balance = big.NewInt(0).Sub(sa.Balance, cnt)
-	sa = v.accounts.GetAccount(from)
+	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
+	// sa = v.accounts.GetAccount(from)
 
 	// increment second
 	var saDest = v.Get(to)
 	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+
 	// when increment, add input to account - tx hash
-	saDest.Inputs = append(saDest.Inputs, txHash)
-	saDest = v.accounts.GetAccount(to)
+	// saDest.Inputs = append(saDest.Inputs, txHash)
+	// saDest = v.accounts.GetAccount(to)
+
 	// done
 	UpdateVault(saDest.Bytes())
 	UpdateVault(sa.Bytes())

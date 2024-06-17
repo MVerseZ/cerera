@@ -69,7 +69,13 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, e
 		sgCache.signer = s
 		tx.from.Store(sgCache)
 	}
-	return tx.WithSignature(s, sig)
+	var signTx, errSign = tx.WithSignature(s, sig)
+	if err != nil {
+		fmt.Errorf("%s", errSign)
+		fmt.Printf("Error while sign tx %s from: %s\r\n", tx.Hash(), tx.From())
+	}
+	fmt.Printf("Success sign tx %s from: %s\r\n", tx.Hash(), tx.From())
+	return signTx, nil
 }
 
 func Sender(signer Signer, tx *GTransaction) (Address, error) {

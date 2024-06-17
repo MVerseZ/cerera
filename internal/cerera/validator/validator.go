@@ -82,6 +82,7 @@ func (v *DDDDDValidator) SetUp(chainId *big.Int) {
 }
 
 func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction {
+	// here we create transaction by input values
 	var tx = types.NewTransaction(
 		1,
 		to,
@@ -114,7 +115,7 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 		return false
 	} else {
 		fmt.Printf(
-			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n value=%d\r\n  current balance=%d\r\n",
+			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%d\r\n\t  current balance=%d\r\n",
 			tx.Hash(),
 			gas,
 			val,
@@ -135,6 +136,7 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 	fmt.Println(txHash)
 	fmt.Println(signKey)
 	var tx = p.GetTransaction(txHash)
+	fmt.Println(tx.IsSigned())
 
 	// get for tx
 	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
@@ -154,8 +156,14 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
 		return common.EmptyHash(), errors.New("error while sign tx")
 	}
+	var r, vv, s = signTx.RawSignatureValues()
+	fmt.Printf("Raw values:%d %d %d\r\n", r, s, vv)
+	// update tx in mempool
+	p.UpdateTx(*signTx)
+
 	// p.memPool[i] = *signTx
 	// network.PublishData("OP_TX_SIGNED", tx)
+	fmt.Printf("Now tx %s is %t\r\n", signTx.Hash(), signTx.IsSigned())
 	return signTx.Hash(), nil
 
 	// hash, err := p.SignRawTransaction(txHash, v.Signer(), signKey)
@@ -171,60 +179,3 @@ func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
 	// if block.Confirmations > 2 then node gets reward
 	return true
 }
-
-//	func (v *DDDDDValidator) LoadChain() ([]*block.Block, error) {
-//		return v.storage.LoadInitialBlocks()
-//	}
-//
-//	func (v *DDDDDValidator) GetLatestBlock() *block.Block {
-//		return v.storage.GetLatestBlock()
-//	}
-//
-//	func (v *DDDDDValidator) RewardSignature() *ecdsa.PrivateKey {
-//		return v.signatureKey
-//	}
-//
-//	func (v *DDDDDValidator) Start() {
-//		v.current_status = 7
-//	}
-//
-//	func (v *DDDDDValidator) Stop() {
-//		v.current_status = 13
-//	}
-//
-//	func (v *DDDDDValidator) Status() int {
-//		return v.current_status
-//	}
-//
-//	func (v *DDDDDValidator) Stamp() *ecdsa.PrivateKey {
-//		// may be autogen if not exist and write???
-//		return v.signatureKey
-//	}
-//
-//	func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
-//		// no edit tx here again
-//		// TODO
-//		return true
-//	}
-
-//func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
-//	return true
-//}
-//func (v *DDDDDValidator) ValidateGenesis(b *block.Block) {
-//	var tmpBuf, err = v.storage.Get([]byte("GENESIS"))
-//	if err != nil {
-//		v.storage.Write([]byte("GENESIS"), b)
-//		v.storage.Write([]byte("LATEST"), b)
-//	} else {
-//		latestB := &block.Block{}
-//		err = json.Unmarshal(tmpBuf, latestB)
-//		if err != nil {
-//			panic(err)
-//		}
-//		b = latestB
-//	}
-//
-//}
-//func (v *DDDDDValidator) WriteBlock(b block.Block) (common.Hash, error) {
-//	return v.storage.WriteBlock(b)
-//}

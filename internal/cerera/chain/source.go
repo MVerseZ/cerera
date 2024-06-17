@@ -41,6 +41,7 @@ func SyncVault() ([]block.Block, error) {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		bl := &block.Block{}
+		// parse error fix
 		err := json.Unmarshal(line, bl)
 		if err != nil {
 			panic(err)
