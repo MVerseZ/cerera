@@ -5,7 +5,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/types"
 )
 
@@ -22,7 +21,6 @@ func Genesis() Block {
 		Confirmations: 1,
 		Node:          types.EmptyAddress(),
 		Size:          0,
-		Root:          common.BytesToHash([]byte("GENESIS BLOCK")),
 	}
 
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)

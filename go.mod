@@ -1,6 +1,6 @@
 module github.com/cerera
 
-go 1.21.5
+go 1.22.4
 
 require (
 	github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d

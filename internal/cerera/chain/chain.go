@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"time"
+	"unsafe"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
@@ -70,6 +71,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 	stats := BlockChainStatus{
 		Total:     0,
 		ChainWork: 0,
+		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
 	}
 
 	bch = Chain{
@@ -77,7 +79,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(5 * time.Second)),
+		blockTicker:    time.NewTicker(time.Duration(1984 * time.Millisecond)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
@@ -143,17 +145,14 @@ func (bc *Chain) G(latest *block.Block) {
 	var vld = validator.Get()
 	var pool = pool.Get()
 	head := &block.Header{
-		Ctx: latest.Header().Ctx,
-		Difficulty: big.NewInt(0).Add(
-			latest.Header().Difficulty,
-			big.NewInt(int64(latest.Header().Ctx)),
-		),
+		Ctx:           latest.Header().Ctx,
+		Difficulty:    latest.Header().Difficulty,
 		Extra:         []byte("OP_AUTO_GEN_BLOCK_DAT"),
 		Height:        latest.Header().Height + 1,
 		Index:         latest.Header().Index + 1,
 		Timestamp:     uint64(time.Now().UnixMilli()),
 		Number:        big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
-		PrevHash:      latest.Hash(),
+		PrevHash:      bc.info.Latest,
 		Confirmations: 1,
 		Node:          bc.currentAddress,
 		Root:          latest.Header().Root,
@@ -164,16 +163,17 @@ func (bc *Chain) G(latest *block.Block) {
 		for _, tx := range pool.Prepared {
 			if vld.ValidateTransaction(tx, tx.From()) {
 				newBlock.Transactions = append(newBlock.Transactions, *tx)
+				newBlock.Head.GasUsed += tx.Gas()
 				// newBlock.SetTransaction(tx)
 			}
 		}
 	}
 
-	// newBlock.Nonce = latest.Nonce
+	newBlock.Nonce = latest.Nonce
 
-	// var finalSize = unsafe.Sizeof(newBlock)
-	// newBlock.Head.Size = int(finalSize)
-	// newBlock.Head.GasUsed += uint64(finalSize)
+	var finalSize = unsafe.Sizeof(newBlock)
+	newBlock.Head.Size = int(finalSize)
+	newBlock.Head.GasUsed += uint64(finalSize)
 
 	bc.data = append(bc.data, *newBlock)
 
@@ -204,6 +204,7 @@ func ValidateBlocks(blocks []block.Block) (int, error) {
 		// Проверка целостности цепочки блоков
 		if i > 0 {
 			prevBlock := blocks[i-1]
+			fmt.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
 			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
 				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
 			}

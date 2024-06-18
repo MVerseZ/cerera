@@ -35,19 +35,24 @@ type Block struct {
 	Nonce         int                  `json:"nonce" gencodec:"required"`
 	Head          *Header              `json:"header" gencodec:"required"`
 	Transactions  []types.GTransaction `json:"transactions" gencodec:"required"`
-	hash          common.Hash          `json:"hash" gencodec:"required"`
 }
 
 type BlockReader interface {
 }
 
 func NewBlock(header *Header) *Block {
-	b := &Block{Head: CopyHeader(header)}
+	b := &Block{
+		Head:         CopyHeader(header),
+		Transactions: make([]types.GTransaction, 0),
+	}
 	return b
 }
 
 func NewBlockWithHeader(header *Header) *Block {
-	return &Block{Head: CopyHeader(header)}
+	return &Block{
+		Head:         CopyHeader(header),
+		Transactions: make([]types.GTransaction, 0),
+	}
 }
 
 func (b *Block) Header() *Header { return CopyHeader(b.Head) }
