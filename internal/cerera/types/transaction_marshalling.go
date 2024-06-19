@@ -36,6 +36,10 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 		enc.Type = 4
 		enc.Hash = tx.Hash()
 		enc.Payload = (*common.Bytes)(&itx.Payload)
+		var r, s, v = tx.RawSignatureValues()
+		enc.R = (*Big)(r)
+		enc.S = (*Big)(s)
+		enc.V = (*Big)(v)
 	case *GSTransaction:
 		enc.Nonce = (*common.Uint64)(&itx.Nonce)
 		enc.Gas = (*common.Uint64)(&itx.Gas)
@@ -48,6 +52,10 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 		enc.Type = 4
 		enc.Hash = tx.Hash()
 		enc.Payload = (*common.Bytes)(&itx.Payload)
+		var r, s, v = tx.RawSignatureValues()
+		enc.R = (*Big)(r)
+		enc.S = (*Big)(s)
+		enc.V = (*Big)(v)
 		panic("NOT IMPLEMENTED YET")
 	default:
 		fmt.Printf("%T\r\n", itx)
@@ -65,9 +73,9 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 
 	// handle fields by tx type
 	var inner TxData
-	fmt.Printf("TX TYPE: %d\r\n", dec.Type)
-	fmt.Printf("TX TYPE: %s\r\n", dec.Type)
-	fmt.Printf("TX TO: %s\r\n", dec.To)
+	// fmt.Printf("TX TYPE: %d\r\n", dec.Type)
+	// fmt.Printf("TX TYPE: %s\r\n", dec.Type)
+	// fmt.Printf("TX TO: %s\r\n", dec.To)
 	switch dec.Type {
 	case LegacyTxType:
 		var itx PGTransaction
@@ -105,6 +113,22 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		if dec.Dna == nil {
 			return errors.New("missing required field 'dna' in transaction")
 		}
+
+		if dec.R == nil {
+			return errors.New("missing required field 'R' in transaction")
+		}
+		itx.R = (*big.Int)(dec.R)
+
+		if dec.S == nil {
+			return errors.New("missing required field 'S' in transaction")
+		}
+		itx.S = (*big.Int)(dec.S)
+
+		if dec.V == nil {
+			return errors.New("missing required field 'V' in transaction")
+		}
+		itx.V = (*big.Int)(dec.V)
+
 		itx.Dna = *dec.Dna
 
 		itx.Time = dec.Time

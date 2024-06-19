@@ -1,6 +1,7 @@
 package block
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
@@ -13,6 +14,28 @@ import (
 var nodeAddress = types.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
 var addr1 = types.HexToAddress("0x14F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
 var addr2 = types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
+
+func prepareSignedTx() *types.GTransaction {
+	var acc, _ = types.GenerateAccount()
+
+	dna := make([]byte, 0, 16)
+	dna = append(dna, 0xf, 0xa, 0x42)
+
+	var to = types.HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea24807B491717081c42F2575F09B6bc60206")
+	txs := &types.PGTransaction{
+		To:       &to,
+		Value:    big.NewInt(10),
+		GasPrice: big.NewInt(15),
+		Gas:      1000000,
+		Nonce:    0x1,
+		Dna:      dna,
+		Time:     time.Now(),
+	}
+	itx := types.NewTx(txs)
+	signer := types.NewSimpleSignerWithPen(big.NewInt(25331), acc)
+	tx, _ := types.SignTx(itx, signer, acc)
+	return tx
+}
 
 func createTestHeader() *Header {
 	header := &Header{
@@ -142,38 +165,47 @@ func TestCopyHeader(t *testing.T) {
 	// Измените исходный заголовок и проверьте, что копия осталась прежней
 }
 
-// func TestGenerateGenesis(t *testing.T) {
-// 	genesisBlock := GenerateGenesis( /* адрес ноды */ )
-// 	// проверка полей genesisBlock
-// }
+func TestEmptyBlockSerialize(t *testing.T) {
+	header := createTestHeader()
+	block := NewBlockWithHeader(header)
+	blockBytes := block.ToBytes()
+	parsedBlock, err := FromBytes(blockBytes)
+	if err != nil {
+		t.Errorf("Error while parse empty block")
+	}
+	if parsedBlock.Hash() != block.Hash() {
+		t.Errorf("Different hashes! \r\nHave: %s, \r\nexpected: %s\r\n", parsedBlock.Hash(), block.Hash())
+	}
+}
 
-// func TestSerialization(t *testing.T) {
-// 	block := createTestBlock()
-// 	data := block.ToBytes()
-// 	decodedBlock, err := FromBytes(data)
-// 	if err != nil {
-// 		t.Errorf("Error in decoding: %s", err)
-// 	}
-// 	// if !cmp.Equal(block, decodedBlock) {
-// 	if !reflect.DeepEqual(block, &decodedBlock) {
-// 		fmt.Printf("1 hash:%s\r\n", block.Hash())
-// 		fmt.Printf("2 hash:%s\r\n", decodedBlock.Hash())
-// 		fmt.Printf("1 node:%s\r\n", block.Head.Node)
-// 		fmt.Printf("2 node:%s\r\n", decodedBlock.Head.Node)
-// 		fmt.Printf("1 header hash:%s\r\n", block.Head.Hash())
-// 		fmt.Printf("2 header hash:%s\r\n", decodedBlock.Head.Hash())
-// 		fmt.Printf("1 tx:%d\r\n", len(block.Transactions))
-// 		fmt.Printf("2 tx:%d\r\n", len(decodedBlock.Transactions))
-// 		// fmt.Printf("1 tx 1:%s\r\n", block.Transactions[0].Hash())
-// 		// fmt.Printf("2 tx 1:%s\r\n", decodedBlock.Transactions[0].Hash())
-// 		t.Errorf("Decoded block does not match the original %s\r\n", err)
-// 	}
-// }
+func TestFilledBlockSerialize(t *testing.T) {
+	header := createTestHeader()
+	block := NewBlockWithHeader(header)
+	block.Transactions = append(block.Transactions, *prepareSignedTx())
+	blockBytes := block.ToBytes()
+	parsedBlock, err := FromBytes(blockBytes)
+	if err != nil {
+		t.Errorf("Error while parse empty block")
+	}
+	fmt.Printf("%+v\r\n", block)
+	fmt.Printf("%+v\r\n", parsedBlock)
+	if parsedBlock.Hash() != block.Hash() {
+		t.Errorf("Different hashes! \r\nHave: %s, \r\nexpected: %s\r\n", parsedBlock.Hash(), block.Hash())
+	}
+}
 
 func TestHashFunctions(t *testing.T) {
 	block := createTestBlock()
 	expectedHash := hashForTestBlock(block)
 	if block.Hash() != expectedHash {
+		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", expectedHash, block.Hash())
+	}
+
+	header := createTestHeader()
+	blockWithTx := NewBlockWithHeader(header)
+	blockWithTx.Transactions = append(blockWithTx.Transactions, *prepareSignedTx())
+	expectedHash = hashForTestBlock(blockWithTx)
+	if blockWithTx.Hash() != expectedHash {
 		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", expectedHash, block.Hash())
 	}
 }

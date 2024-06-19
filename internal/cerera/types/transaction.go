@@ -66,9 +66,9 @@ type txJSON struct {
 	Gas      *common.Uint64 `json:"gas,omitempty"`
 	Nonce    *common.Uint64 `json:"nonce,omitempty"`
 	Value    *common.Big    `json:"value,omitempty"`
-	// V     *Big           `json:"v"`
-	// R     *Big           `json:"r"`
-	// S     *Big           `json:"s"`
+	V        *Big           `json:"v"`
+	R        *Big           `json:"r"`
+	S        *Big           `json:"s"`
 	// Only used for encoding:
 	Hash common.Hash `json:"hash"`
 }
