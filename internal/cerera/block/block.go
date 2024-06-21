@@ -1,13 +1,16 @@
 package block
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 	"unsafe"
 
 	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"golang.org/x/crypto/blake2b"
 )
@@ -35,6 +38,22 @@ type Block struct {
 	Nonce         int                  `json:"nonce" gencodec:"required"`
 	Head          *Header              `json:"header" gencodec:"required"`
 	Transactions  []types.GTransaction `json:"transactions" gencodec:"required"`
+}
+
+func (b Block) CalculateHash() ([]byte, error) {
+	h := sha256.New()
+	if _, err := h.Write(b.ToBytes()); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+func (b Block) Equals(other trie.Content) (bool, error) {
+	otherTC, ok := other.(Block)
+	if !ok {
+		return false, errors.New("value is not of type Block")
+	}
+	return b.Head.Number.Cmp(otherTC.Head.Number) == 0, nil
 }
 
 type BlockReader interface {

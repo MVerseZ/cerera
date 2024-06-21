@@ -11,6 +11,7 @@ import (
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
+	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
 )
@@ -32,6 +33,7 @@ type Chain struct {
 	// mu sync.Mutex
 	info BlockChainStatus
 	data []block.Block
+	t    *trie.MerkleTree
 
 	// tickers
 	maintainTicker *time.Ticker
@@ -49,7 +51,11 @@ func InitBlockChain(cfg *config.Config) Chain {
 	genesisBlock := block.Genesis()
 	dataBlocks := make([]block.Block, 0)
 
+	var t *trie.MerkleTree
 	if cfg.Chain.Path == "EMPTY" {
+		var list []trie.Content
+		list = append(list, genesisBlock)
+		t, _ = trie.NewTree(list)
 		// init with genesis empty cfg
 		InitChainVault(genesisBlock)
 		dataBlocks = append(dataBlocks, genesisBlock)
@@ -66,6 +72,14 @@ func InitBlockChain(cfg *config.Config) Chain {
 			fmt.Printf("ERROR BLOCK! %s\r\n", errorBlock)
 		}
 		dataBlocks = dataBlocks[:lastCorrect]
+
+		var list []trie.Content
+		for _, v := range dataBlocks {
+			list = append(list, v)
+		}
+
+		t, _ = trie.NewTree(list)
+		t.VerifyTree()
 	}
 
 	stats := BlockChainStatus{
@@ -83,6 +97,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
+		t:              t,
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	go bch.BlockGenerator()
@@ -177,12 +192,17 @@ func (bc *Chain) G(latest *block.Block) {
 
 	bc.data = append(bc.data, *newBlock)
 
-	bc.info.Latest = newBlock.Hash()
-	bc.info.Total = bc.info.Total + 1
-	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-	bc.currentBlock = newBlock
-
-	SaveToVault(*newBlock)
+	bc.t.Add(newBlock)
+	var t, err = bc.t.VerifyTree()
+	if err != nil || !t {
+		fmt.Printf("Verifying trie: %s\r\n", err)
+	} else {
+		bc.info.Latest = newBlock.Hash()
+		bc.info.Total = bc.info.Total + 1
+		bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+		bc.currentBlock = newBlock
+		SaveToVault(*newBlock)
+	}
 
 	// clear array with included txs
 	pool.Prepared = nil
@@ -204,7 +224,7 @@ func ValidateBlocks(blocks []block.Block) (int, error) {
 		// Проверка целостности цепочки блоков
 		if i > 0 {
 			prevBlock := blocks[i-1]
-			fmt.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
+			// fmt.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
 			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
 				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
 			}
