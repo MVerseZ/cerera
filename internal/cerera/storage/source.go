@@ -49,19 +49,20 @@ func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-func InitSecureVault(rootSa types.StateAccount) {
+func InitSecureVault(rootSa types.StateAccount) error {
 	// Open file for writing, create if it doesn't exist
 	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Errorf("failed to open the file for writing: %w", err)
+		return fmt.Errorf("failed to open the file for writing: %w", err)
 	}
 	defer f.Close()
 
 	accountData := rootSa.Bytes()
 	accountData = append(accountData, '\n') // Добавляем разделитель новой строки
 	if _, err := f.Write(accountData); err != nil {
-		fmt.Errorf("failed to write account data to file: %w", err)
+		return fmt.Errorf("failed to write account data to file: %w", err)
 	}
+	return nil
 }
 
 // load from file
@@ -87,10 +88,10 @@ func SyncVault(path string) error {
 	return nil
 }
 
-func SaveToVault(account []byte) {
+func SaveToVault(account []byte) error {
 	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Errorf("failed to open the vault file for writing: %w", err)
+		return err
 	}
 	defer f.Close()
 
@@ -101,8 +102,10 @@ func SaveToVault(account []byte) {
 	accountDataToWrite = append(accountDataToWrite, '\n') // Добавляем разделитель новой строки
 
 	if _, err := f.Write(accountDataToWrite); err != nil {
-		fmt.Errorf("failed to write to the vault file: %w", err)
+		return err
 	}
+
+	return nil
 
 }
 
@@ -156,4 +159,18 @@ func UpdateVault(account []byte) error {
 	writer.Flush()
 
 	return nil
+}
+
+func VaultSourceSize() (int64, error) {
+	filePath := "./vault.dat"
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	fi, err2 := f.Stat()
+	if err2 != nil {
+		return 0, err2
+	}
+
+	return fi.Size(), nil
 }

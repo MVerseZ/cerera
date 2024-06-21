@@ -97,8 +97,6 @@ func GenerageConfig() *Config {
 	return cfg
 }
 func (cfg *Config) SetPorts(rpc int, p2p int) {
-	fmt.Println(cfg.NetCfg.P2P)
-	fmt.Println(cfg.NetCfg.RPC)
 	if rpc == -1 || rpc == 0 {
 		cfg.NetCfg.RPC = DefaultRpcPort
 	} else {

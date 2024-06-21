@@ -61,7 +61,7 @@ func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Local IPv4 addresses:", len(addrs))
+	fmt.Println("Found local IPv4 addresses:", len(addrs))
 	var localIP string
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {

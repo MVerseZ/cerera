@@ -19,11 +19,12 @@ type Vault interface {
 	CoinBase() *ecdsa.PrivateKey
 	Create(name string, pass string) (string, string, *types.Address, error)
 	Clear() error
+	Prepare()
 	Put(address types.Address, acc types.StateAccount)
 	Get(types.Address) types.StateAccount
 	GetAll() interface{}
 	GetKey(signKey string) []byte
-	Size() int
+	Size() int64
 	//
 }
 
@@ -36,9 +37,6 @@ type D5Vault struct {
 
 var vlt D5Vault
 
-func S() int {
-	return vlt.Size()
-}
 func Sync() []byte {
 	res := make([]byte, 0)
 	for _, sa := range vlt.accounts.accounts {
@@ -85,13 +83,21 @@ func NewD5Vault(cfg *config.Config) Vault {
 
 	// sync with fs
 	if cfg.Vault.PATH == "EMPTY" {
-		InitSecureVault(rootSA)
+		if err := InitSecureVault(rootSA); err != nil {
+			panic(err)
+		}
 		cfg.UpdateVaultPath("./vault.dat")
 	} else {
-		SyncVault(cfg.Vault.PATH)
+		if err := SyncVault(cfg.Vault.PATH); err != nil {
+			panic(err)
+		}
 	}
 	vlt.path = cfg.Vault.PATH
 	return &vlt
+}
+
+func (v *D5Vault) Prepare() {
+
 }
 
 func (v *D5Vault) Clear() error {
@@ -180,8 +186,13 @@ func (v *D5Vault) GetAll() interface{} {
 func (v *D5Vault) Put(address types.Address, acc types.StateAccount) {
 	v.accounts.Append(address, acc)
 }
-func (v *D5Vault) Size() int {
-	return v.accounts.Size()
+func (v *D5Vault) Size() int64 {
+	var s, err = VaultSourceSize()
+	if err != nil {
+		return -1
+	} else {
+		return s
+	}
 }
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
 

@@ -14,12 +14,15 @@ import (
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/k0kubun/go-ansi"
+	"github.com/schollz/progressbar/v3"
 )
 
 type BlockChainStatus struct {
 	Total     int         `json:"total,omitempty"`
 	ChainWork int         `json:"chainWork,omitempty"`
 	Latest    common.Hash `json:"latest,omitempty"`
+	Size      int64       `json:"size,omitempty"`
 }
 
 type Chain struct {
@@ -28,7 +31,7 @@ type Chain struct {
 	chainWork      *big.Int
 	currentAddress types.Address
 	currentBlock   *block.Block
-	rootHash       common.Hash
+	// rootHash       common.Hash
 
 	// mu sync.Mutex
 	info BlockChainStatus
@@ -86,6 +89,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		Total:     0,
 		ChainWork: 0,
 		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
+		Size:      0,
 	}
 
 	bch = Chain{
@@ -93,7 +97,8 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(1984 * time.Millisecond)),
+		blockTicker:    time.NewTicker(time.Duration(1984 * time.Microsecond)),
+		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
@@ -105,6 +110,12 @@ func InitBlockChain(cfg *config.Config) Chain {
 }
 
 func (bc *Chain) GetInfo() interface{} {
+	var bcs, err = GetChainSourceSize()
+	if err != nil {
+		bc.info.Size = -1
+	} else {
+		bc.info.Size = bcs
+	}
 	bc.info.Total = len(bc.data)
 	bc.info.Latest = bc.data[len(bc.data)-1].Hash()
 
@@ -152,6 +163,8 @@ func (bc *Chain) BlockGenerator() {
 			if bc.autoGen {
 				bc.G(latest)
 			}
+		case <-bc.maintainTicker.C:
+			continue
 		}
 	}
 }
@@ -220,15 +233,50 @@ func ValidateBlocks(blocks []block.Block) (int, error) {
 		return -1, errors.New("no blocks to validate")
 	}
 
+	// progress
+	doneCh := make(chan struct{})
+
+	bar := progressbar.NewOptions(len(blocks),
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowBytes(false),
+		progressbar.OptionSetWidth(25),
+		progressbar.OptionSetDescription("[cyan][0/1][reset] Validate blocks..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+		progressbar.OptionOnCompletion(func() {
+			doneCh <- struct{}{}
+		}),
+	)
+	// go func() {
+	// 	for i := 0; i < 1000; i++ {
+	// 		bar.Add(1)
+	// 		time.Sleep(1 * time.Millisecond)
+	// 	}
+	// }()
+
 	for i, blk := range blocks {
+		bar.Add(1)
 		// Проверка целостности цепочки блоков
 		if i > 0 {
 			prevBlock := blocks[i-1]
 			// fmt.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
 			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
+				bar.Describe("[red][1/1][break] Validating blocks break!")
+				<-doneCh
 				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
 			}
 		}
 	}
+
+	bar.Describe("[cyan][1/1][done] Validate blocks done!")
+	// got notified that progress bar is complete.
+	<-doneCh
+	fmt.Println()
 	return len(blocks), nil
 }

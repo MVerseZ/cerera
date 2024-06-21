@@ -14,17 +14,17 @@ func InitChainVault(initBLock block.Block) {
 	// Open file for writing, create if it doesn't exist
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Errorf("failed to open the file for writing: %w", err)
+		panic(err)
 	}
 	defer f.Close()
 
-	buf, err := json.Marshal(initBLock)
-	if err != nil {
-		panic(err)
+	buf, errjson := json.Marshal(initBLock)
+	if errjson != nil {
+		panic(errjson)
 	}
 	buf = append(buf, '\n') // Добавляем разделитель новой строки
-	if _, err := f.Write(buf); err != nil {
-		fmt.Errorf("failed to write account data to file: %w", err)
+	if _, errWrite := f.Write(buf); errWrite != nil {
+		panic(errWrite)
 	}
 }
 
@@ -59,7 +59,7 @@ func SyncVault() ([]block.Block, error) {
 func SaveToVault(newBlock block.Block) {
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Errorf("failed to open the vault file for writing: %w", err)
+		panic(err)
 	}
 	defer f.Close()
 
@@ -69,7 +69,7 @@ func SaveToVault(newBlock block.Block) {
 	}
 	buf = append(buf, '\n') // Добавляем разделитель новой строки
 	if _, err := f.Write(buf); err != nil {
-		fmt.Errorf("failed to write account data to file: %w", err)
+		panic(err)
 	}
 }
 
@@ -123,4 +123,17 @@ func UpdateVault(account []byte) error {
 	writer.Flush()
 
 	return nil
+}
+
+func GetChainSourceSize() (int64, error) {
+	filePath := "./chain.dat"
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	fi, err2 := f.Stat()
+	if err2 != nil {
+		return 0, err2
+	}
+	return fi.Size(), nil
 }

@@ -1,8 +1,6 @@
 package pallada
 
 import (
-	"fmt"
-
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/pool"
@@ -38,7 +36,6 @@ func Execute(method string, params []interface{}) interface{} {
 	var bc = chain.GetBlockChain()
 	var vldtr = validator.Get()
 	var p = pool.Get()
-	fmt.Println(p.Status)
 
 	// rpc methods
 	// these methods should not only using at rpc

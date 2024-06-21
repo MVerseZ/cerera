@@ -44,7 +44,6 @@ func main() {
 	flag.Parse()
 
 	cfg := config.GenerageConfig()
-	fmt.Println(cfg)
 	cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
 	cfg.SetNodeKey(*keyPathFlag)
 	cfg.SetAutoGen(true)
@@ -66,6 +65,8 @@ func main() {
 		status: [8]byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0},
 	}
 
+	c.v.Prepare()
+
 	// coinbase.SetCoinbase()
 
 	s := gigea.Ring{
@@ -75,18 +76,18 @@ func main() {
 		RoundTimer: time.NewTicker(time.Duration(3 * time.Second)),
 	}
 
-	for {
-		if c.h.NetType == 0x2 {
-			fmt.Printf("Sync accounts...\r\n")
-			// c.h.HandShake()
-			// c.status[0] = 0xb
-		}
-		if c.status[0] == 0xb || c.h.NetType == 0x1 {
-			c.status[0] = 0xb
-			break
-		}
-		time.Sleep(3 * time.Second)
-	}
+	// for {
+	// if c.h.NetType == 0x2 {
+	// fmt.Printf("Try to sync accounts by network...\r\n")
+	// c.h.HandShake()
+	// c.status[0] = 0xb
+	// }
+	// if c.status[0] == 0xb || c.h.NetType == 0x1 {
+	// 	c.status[0] = 0xb
+	// 	break
+	// }
+	// time.Sleep(3 * time.Second)
+	// }
 
 	c.g.SetUp(cfg.Chain.ChainID)
 
