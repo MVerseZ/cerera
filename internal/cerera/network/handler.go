@@ -73,12 +73,12 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			log.Println("Failed to write response:", err)
 		}
 
-		select {
-		case <-ctx.Done():
-			fmt.Println("Context is done.")
-		default:
-			fmt.Println("Context is still valid.")
-		}
+		// select {
+		// case <-ctx.Done():
+		// 	fmt.Println("Context is done.")
+		// default:
+		// 	fmt.Println("Context is still valid.")
+		// }
 	}
 }
 

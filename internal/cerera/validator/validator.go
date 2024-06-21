@@ -27,21 +27,14 @@ func Get() Validator {
 type Validator interface {
 	GasPrice() *big.Int
 	Faucet(addrStr string, valFor int) error
-	//	LoadChain() ([]*block.Block, error)
-	//	RewardSignature() *ecdsa.PrivateKey
-	//	Stamp() *ecdsa.PrivateKey
 	PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction
 	SetUp(chainId *big.Int)
-	//	Status() int
-	//	Stop()
 	Signer() types.Signer
 	SignRawTransactionWithKey(txHash common.Hash, kStr string) (common.Hash, error)
 	ValidateRawTransaction(tx *types.GTransaction) bool
 	// validate and execute transaction
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
 	ValidateBlock(b block.Block) bool
-	//	ValidateGenesis(b *block.Block)
-	//	WriteBlock(b block.Block) (common.Hash, error)
 }
 
 type DDDDDValidator struct {
@@ -150,7 +143,7 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 	if err1 != nil {
 		return common.EmptyHash(), errors.New("error ParsePKC58 key")
 	}
-	// ecdsaPkey := aKey.(ecdsa.PrivateKey)
+
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
 	if err2 != nil {
 		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
@@ -165,12 +158,6 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 	// network.PublishData("OP_TX_SIGNED", tx)
 	fmt.Printf("Now tx %s is %t\r\n", signTx.Hash(), signTx.IsSigned())
 	return signTx.Hash(), nil
-
-	// hash, err := p.SignRawTransaction(txHash, v.Signer(), signKey)
-	// if err != nil {
-	// 	return common.EmptyHash(), err
-	// }
-	// return hash, nil
 }
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
