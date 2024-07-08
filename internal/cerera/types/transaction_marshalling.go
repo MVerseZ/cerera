@@ -110,6 +110,11 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		}
 		itx.Data = *dec.Data
 
+		if dec.Payload == nil {
+			return errors.New("missing required field 'payload' in transaction")
+		}
+		itx.Payload = *dec.Payload
+
 		if dec.Dna == nil {
 			return errors.New("missing required field 'dna' in transaction")
 		}
