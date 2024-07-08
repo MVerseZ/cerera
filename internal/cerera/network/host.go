@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/Arceliar/phony"
 	"github.com/cerera/internal/cerera/config"
@@ -15,7 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -38,83 +39,81 @@ type Host struct {
 	NetType byte
 }
 
+// Node interface defines the structure of a Node in the network
 type Node interface {
 	Context() context.Context
 	Host() Host
 }
 
+// InitP2PHost initializes a new P2P host
 func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
+	// Open log file
 	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
-	defer func(f *os.File) {
-		err := f.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(f)
-
+	defer f.Close()
 	log.SetOutput(f)
-	// create a new libp2p Host that listens on a TCP port
+
+	// Find local IP addresses
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Found local IPv4 addresses:", len(addrs))
+	log.Println("Found local IPv4 addresses:", len(addrs))
 	var localIP string
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			// if ipnet.IP.To4() != nil {
 			localIP = ipnet.IP.String()
-			// fmt.Println(Local IPv4 address found:", localIP) // Print the found local IP address
-			// break
-			// }
 		}
 	}
 	if localIP == "" {
 		panic("No local IP address found")
 	}
+
+	// Create a new libp2p Host
 	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/" + "127.0.0.1" + "/tcp/" + fmt.Sprintf("%d", cfg.NetCfg.P2P)),
+		libp2p.ListenAddrStrings("/ip4/" + localIP + "/tcp/" + strconv.Itoa(cfg.NetCfg.P2P)),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
-	var b = types.EncodePrivateKeyToByte(p)
+	// Initialize the Host struct
+	p := types.DecodePrivKey(cfg.NetCfg.PRIV)
+	b := types.EncodePrivateKeyToByte(p)
 	dHost := &Host{
 		Addr:    cfg.NetCfg.ADDR,
 		NetHost: h,
 		K:       b,
 		c:       ctx,
-		// Overlay: Flush(currentNodeAddress),
 	}
-	ConnectToSwarm(dHost)
+	log.Println("Create host with cerera addr:", dHost.Addr)
+	log.Println("Create host with net addrs:", dHost.NetHost.Addrs())
+
+	// Connect to Swarm
+	// ConnectToSwarm(dHost)
 	go dHost.serviceLoop()
 
 	return dHost
 }
 
+// ConnectToSwarm connects the host to a swarm
 func ConnectToSwarm(h *Host) {
-	var swarmCfg = "swarm.ddd"
+	const swarmCfg = "swarm.ddd"
 	var s network.Stream
-	{ //connect to swarm
-		if _, err := os.Stat(swarmCfg); err == nil {
-			h.NetType = 0x2
-			// check address inside this funaction call
-			s = InitClient(h, h.Addr.String())
-		} else {
-			h.NetType = 0x1
-			s = InitServer(h)
-		}
+
+	if _, err := os.Stat(swarmCfg); err == nil {
+		h.NetType = 0x2
+		s = InitClient(h, h.Addr.String())
+	} else {
+		h.NetType = 0x1
+		s = InitServer(h)
 	}
 	h.Stream = s
 }
 
-// isOwnAddress checks if the given address matches any of the host's addresses.
-// You might need to adjust the logic based on how types.Address is defined and used.
+// isOwnAddress checks if the given address matches any of the host's addresses
 func isOwnAddress(addr string) bool {
 	host, err := os.Hostname()
 	if err != nil {
@@ -134,6 +133,7 @@ func isOwnAddress(addr string) bool {
 	return false
 }
 
+// serviceLoop handles the service loop for the host
 func (h *Host) serviceLoop() {
 	var errc chan error
 
@@ -141,14 +141,16 @@ func (h *Host) serviceLoop() {
 		select {}
 	}
 }
+
+// HandShake performs a handshake over the network stream
 func (h *Host) HandShake() {
-	var p = &Packet{
+	p := &Packet{
 		T:    0xa,
 		Data: []byte("OP_I"),
 		EF:   0xa,
 	}
-	var data, _ = json.Marshal(p)
-	var n, _ = h.Stream.Write(data)
+	data, _ := json.Marshal(p)
+	n, _ := h.Stream.Write(data)
 	fmt.Printf("Writed data: %d\r\n", data)
 	fmt.Printf("Writed len: %d\r\n", n)
 	_, err := h.Stream.Write([]byte("\r"))
@@ -156,8 +158,14 @@ func (h *Host) HandShake() {
 		panic(err)
 	}
 }
+
+func (h *Host) SetUpProtocol() {
+
+}
+
+// SetUpHttp sets up the HTTP server
 func (h *Host) SetUpHttp(ctx context.Context, cfg config.Config) {
-	var rpcRequestMetric = prometheus.NewCounter(
+	rpcRequestMetric := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "rpc_requests_hits",
 			Help: "Count http rpc requests",
@@ -166,7 +174,6 @@ func (h *Host) SetUpHttp(ctx context.Context, cfg config.Config) {
 	prometheus.MustRegister(rpcRequestMetric)
 
 	go func() {
-		// prometheus metrics
 		http.Handle("/metrics", promhttp.Handler())
 		if cfg.SEC.HTTP.TLS {
 			err := http.ListenAndServeTLS(fmt.Sprintf(":%d", cfg.NetCfg.RPC), "./server.crt", "./server.key", nil)
@@ -183,8 +190,9 @@ func (h *Host) SetUpHttp(ctx context.Context, cfg config.Config) {
 	fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
 	go http.HandleFunc("/", HandleRequest(ctx))
 	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
-
 }
+
+// Stop stops the host
 func (h *Host) Stop() error {
 	var err error
 	phony.Block(h, func() {
@@ -192,6 +200,8 @@ func (h *Host) Stop() error {
 	})
 	return err
 }
+
+// _stop is the internal stop function for the host
 func (h *Host) _stop() error {
 	h.Status = 0xf
 	if h.NetHost != nil {
@@ -202,36 +212,18 @@ func (h *Host) _stop() error {
 	}
 	return nil
 }
+
+// WriteSwarmData writes the swarm data to a file
 func WriteSwarmData(chainAddress types.Address, mAddress string) {
-	var swarmCfg = "swarm.ddd"
-	maddr, errAddr := ma.NewMultiaddr(mAddress)
+	const swarmCfg = "swarm.ddd"
+	maddr, errAddr := multiaddr.NewMultiaddr(mAddress)
 	if errAddr != nil {
 		panic(errAddr)
 	}
-	swarm := make(map[types.Address]ma.Multiaddr)
+	swarm := make(map[types.Address]multiaddr.Multiaddr)
 	swarm[chainAddress] = maddr
 	err := os.WriteFile(swarmCfg, []byte(fmt.Sprintf("%s:%s", chainAddress, mAddress)), 0644)
 	if err != nil {
 		panic(err)
 	}
 }
-
-// func (h *Host) StreamHandler(stream network.Stream) {
-// 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-// 	for {
-// 		time.Sleep(time.Second * 2)
-// 		str, _ := rw.ReadString('\n')
-// 		if str == "" {
-// 			return
-// 		}
-// 		if str != "\n" {
-// 			fmt.Printf("RECEIVED (h): %s\r", str)
-// 			if strings.Contains(str, "OP_SYNC") {
-// 				// send to swarm
-// 				fmt.Printf("SENDED (h): %s\r\n", "OP_SYNC_CLI")
-// 				rw.WriteString("OP_SYNC_CLI\n")
-// 				rw.Flush()
-// 			}
-// 		}
-// 	}
-// }
