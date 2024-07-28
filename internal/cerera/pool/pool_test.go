@@ -38,8 +38,8 @@ func TestTransactionConsuming(t *testing.T) {
 	tPool := InitPool(uint64(minGas), maxCap)
 	tPool.AddTransaction(testTx1.From(), testTx1)
 	info := tPool.GetInfo()
-	if info.Size != 1 {
-		t.Errorf("Different pool size, have %d, want %d", info.Size, 1)
+	if len(info.Txs) != 1 {
+		t.Errorf("Different pool size, have %d, want %d", len(info.Txs), 1)
 	}
 	tPool.Clear()
 	info = tPool.GetInfo()
@@ -54,8 +54,8 @@ func TestGetTx(t *testing.T) {
 	tPool.AddRawTransaction(testTx2)
 	tPool.AddRawTransaction(testTx3)
 	info := tPool.GetInfo()
-	if info.Size != 2 {
-		t.Errorf("Different pool size, have %d, want %d", info.Size, 3)
+	if len(info.Txs) != 2 {
+		t.Errorf("Different pool size, have %d, want %d", len(info.Txs), 3)
 	}
 }
 

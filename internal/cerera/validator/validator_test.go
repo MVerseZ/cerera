@@ -27,8 +27,8 @@ func TestPoolSigningProc(t *testing.T) {
 		hashes = append(hashes, transaction.Hash())
 	}
 	info := pool.GetInfo()
-	if info.Size != 3 {
-		t.Errorf("Error pool size! Have %d, want %d\r\n", info.Size, 1000)
+	if len(info.Txs) != 3 {
+		t.Errorf("Error pool size! Have %d, want %d\r\n", len(info.Txs), 3)
 	}
 
 	// pk, _ := types.GenerateAccount()
