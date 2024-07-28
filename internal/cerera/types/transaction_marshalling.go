@@ -71,6 +71,8 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		return err
 	}
 
+	var totalSize = len(input)
+
 	// handle fields by tx type
 	var inner TxData
 	// fmt.Printf("TX TYPE: %d\r\n", dec.Type)
@@ -142,7 +144,7 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 	}
 
 	// set inner tx
-	tx.setDecoded(inner, 0)
+	tx.setDecoded(inner, uint64(totalSize))
 
 	// TODO: check hash here?
 	return nil

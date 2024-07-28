@@ -182,6 +182,7 @@ func (bc *Chain) G(latest *block.Block) {
 		Confirmations: 1,
 		Node:          bc.currentAddress,
 		Root:          latest.Header().Root,
+		// GasLimit:  bc.,
 	}
 	newBlock := block.NewBlockWithHeader(head)
 	// TODO refactor

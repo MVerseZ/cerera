@@ -106,6 +106,10 @@ func hashForTestBlock(b *Block) common.Hash {
 	return CrvBlockHash(*b)
 }
 
+func hashForTestHeader(b *Header) common.Hash {
+	return CrvHeaderHash(*b)
+}
+
 func TestBlockFields(t *testing.T) {
 	block := createTestBlock()
 	var expectedAddr = types.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
@@ -199,6 +203,11 @@ func TestHashFunctions(t *testing.T) {
 	expectedHash := hashForTestBlock(block)
 	if block.Hash() != expectedHash {
 		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", expectedHash, block.Hash())
+	}
+
+	expectedHeaderHash := hashForTestHeader(block.Head)
+	if block.Head.Hash() != expectedHeaderHash {
+		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", expectedHeaderHash, block.Head.Hash())
 	}
 
 	header := createTestHeader()

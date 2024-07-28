@@ -189,7 +189,9 @@ func (tx *GTransaction) Size() uint64 {
 	// c := writeCounter(0)
 	// rlp.Encode(&c, &tx.inner)
 
-	size := uint64(1)
+	txEncData, _ := tx.MarshalJSON()
+	size := uint64(len(txEncData))
+
 	if tx.Type() != LegacyTxType {
 		size += 1 // type byte
 	}
@@ -204,11 +206,13 @@ func (tx *GTransaction) To() *Address {
 func (tx *GTransaction) setDecoded(inner TxData, size uint64) {
 	// partially realized. Need copy other fileds.
 	tx.dna = inner.dna()
-	tx.time = time.Now()
+	tx.time = inner.time()
 	tx.inner = inner
 	tx.hash.Store(tx.Hash())
 	if size > 0 {
 		tx.size.Store(size)
+	} else {
+		tx.size.Store(tx.Size())
 	}
 }
 
