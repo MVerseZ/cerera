@@ -45,6 +45,24 @@ type Node interface {
 	Host() Host
 }
 
+func CheckIPAddressType(ip string) int {
+	if net.ParseIP(ip) == nil {
+		fmt.Printf("Invalid IP Address: %s\n", ip)
+		return 1
+	}
+	for i := 0; i < len(ip); i++ {
+		switch ip[i] {
+		case '.':
+			fmt.Printf("Given IP Address %s is IPV4 type\n", ip)
+			return 2
+		case ':':
+			fmt.Printf("Given IP Address %s is IPV6 type\n", ip)
+			return 3
+		}
+	}
+	return 4
+}
+
 // InitP2PHost initializes a new P2P host
 func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 	// Open log file
@@ -63,7 +81,7 @@ func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 	log.Println("Found local IPv4 addresses:", len(addrs))
 	var localIP string
 	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && CheckIPAddressType(ipnet.IP.String()) == 2 {
 			localIP = ipnet.IP.String()
 		}
 	}
