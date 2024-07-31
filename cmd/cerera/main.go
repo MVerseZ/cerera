@@ -37,6 +37,7 @@ type cerera struct {
 	status [8]byte
 }
 
+// todo run as daemin service
 func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
@@ -66,8 +67,6 @@ func main() {
 	host := network.InitP2PHost(ctx, *cfg)
 	// init rpc requests handling in
 	host.SetUpHttp(ctx, *cfg)
-
-	host.SetUpProtocol()
 
 	c := cerera{
 		g:      validator.NewValidator(ctx, *cfg),

@@ -16,7 +16,7 @@ func Genesis() Block {
 		Height:        0,
 		Timestamp:     uint64(time.Now().UnixMilli()),
 		GasLimit:      250000,
-		GasUsed:       1337000,
+		GasUsed:       249999,
 		Number:        big.NewInt(0),
 		Confirmations: 1,
 		Node:          types.EmptyAddress(),

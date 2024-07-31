@@ -170,10 +170,6 @@ func (h *Host) HandShake() {
 	}
 }
 
-func (h *Host) SetUpProtocol() {
-
-}
-
 // SetUpHttp sets up the HTTP server
 func (h *Host) SetUpHttp(ctx context.Context, cfg config.Config) {
 	rpcRequestMetric := prometheus.NewCounter(

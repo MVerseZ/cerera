@@ -183,7 +183,7 @@ func (bc *Chain) G(latest *block.Block) {
 		Confirmations: 1,
 		Node:          bc.currentAddress,
 		Root:          latest.Header().Root,
-		// GasLimit:  bc.,
+		GasLimit:      latest.Head.GasLimit, // todo get gas limit dynamically
 	}
 	// cpy version, should store elsewhere
 	head.V = latest.Head.V
@@ -210,7 +210,7 @@ func (bc *Chain) G(latest *block.Block) {
 	bc.t.Add(newBlock)
 	var t, err = bc.t.VerifyTree()
 	if err != nil || !t {
-		log.Printf("Verifying trie: %s\r\n", err)
+		log.Printf("Verifying trie error: %s\r\n", err)
 	} else {
 		bc.info.Latest = newBlock.Hash()
 		bc.info.Total = bc.info.Total + 1
@@ -240,12 +240,15 @@ func ValidateBlocks(blocks []block.Block) (int, error) {
 	for i, blk := range blocks {
 		// check version chain
 		if vld.GetVersion() != blocks[i].Head.V {
-			return i, errors.New("Wrong chain version!")
+			return i, errors.New("wrong chain version")
+		}
+		if blocks[i].Head.GasUsed > blocks[i].Head.GasLimit {
+			return i, errors.New("wrong gas data in block")
 		}
 		// Проверка целостности цепочки блоков
 		if i > 0 {
 			prevBlock := blocks[i-1]
-			log.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
+			//log.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
 			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
 				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
 			}
