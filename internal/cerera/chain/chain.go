@@ -3,6 +3,7 @@ package chain
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"time"
 	"unsafe"
@@ -70,7 +71,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		// validate added blocks
 		lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
 		if errorBlock != nil {
-			fmt.Printf("ERROR BLOCK! %s\r\n", errorBlock)
+			log.Printf("ERROR BLOCK! %s\r\n", errorBlock)
 		}
 		dataBlocks = dataBlocks[:lastCorrect]
 
@@ -184,6 +185,8 @@ func (bc *Chain) G(latest *block.Block) {
 		Root:          latest.Header().Root,
 		// GasLimit:  bc.,
 	}
+	// cpy version, should store elsewhere
+	head.V = latest.Head.V
 	newBlock := block.NewBlockWithHeader(head)
 	// TODO refactor
 	if len(pool.Prepared) > 0 {
@@ -207,7 +210,7 @@ func (bc *Chain) G(latest *block.Block) {
 	bc.t.Add(newBlock)
 	var t, err = bc.t.VerifyTree()
 	if err != nil || !t {
-		fmt.Printf("Verifying trie: %s\r\n", err)
+		log.Printf("Verifying trie: %s\r\n", err)
 	} else {
 		bc.info.Latest = newBlock.Hash()
 		bc.info.Total = bc.info.Total + 1
@@ -228,15 +231,21 @@ func (bc *Chain) ChangeBlockInterval(val int) {
 
 // return lenght of array
 func ValidateBlocks(blocks []block.Block) (int, error) {
+	var vld = validator.Get()
+
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
 	}
 
 	for i, blk := range blocks {
+		// check version chain
+		if vld.GetVersion() != blocks[i].Head.V {
+			return i, errors.New("Wrong chain version!")
+		}
 		// Проверка целостности цепочки блоков
 		if i > 0 {
 			prevBlock := blocks[i-1]
-			fmt.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
+			log.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
 			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
 				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
 			}

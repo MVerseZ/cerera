@@ -26,6 +26,7 @@ func Get() Validator {
 
 type Validator interface {
 	GasPrice() *big.Int
+	GetVersion() string
 	Faucet(addrStr string, valFor int) error
 	PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction
 	SetUp(chainId *big.Int)
@@ -38,22 +39,28 @@ type Validator interface {
 }
 
 type DDDDDValidator struct {
-	currentStatus int
-	minGasPrice   *big.Int
-	storage       string
-	signatureKey  *ecdsa.PrivateKey
-	signer        types.Signer
-	balance       *big.Int
+	currentStatus  int
+	minGasPrice    *big.Int
+	storage        string
+	signatureKey   *ecdsa.PrivateKey
+	signer         types.Signer
+	balance        *big.Int
+	currentVersion string
 }
 
 func NewValidator(ctx context.Context, cfg config.Config) Validator {
 	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
 	v = &DDDDDValidator{
-		signatureKey: p,
-		signer:       types.NewSimpleSignerWithPen(cfg.Chain.ChainID, p),
-		balance:      big.NewInt(0), // Initialize balance
+		signatureKey:   p,
+		signer:         types.NewSimpleSignerWithPen(cfg.Chain.ChainID, p),
+		balance:        big.NewInt(0), // Initialize balance
+		currentVersion: "ALPHA-0.0.1",
 	}
 	return v
+}
+
+func (v *DDDDDValidator) GetVersion() string {
+	return v.currentVersion
 }
 
 func (v *DDDDDValidator) GasPrice() *big.Int {

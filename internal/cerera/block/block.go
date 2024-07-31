@@ -31,6 +31,7 @@ type Header struct {
 	Root          common.Hash   `json:"stateRoot"        gencodec:"required"`
 	Size          int           `json:"size" gencodec:"required"`
 	Timestamp     uint64        `json:"timestamp"        gencodec:"required"`
+	V             string        `json:"version"        gencodec:"required"`
 }
 
 type Block struct {
@@ -89,7 +90,8 @@ func (b *Block) EqHead(other *Header) bool {
 		b.Head.Root == other.Root &&
 		b.Head.PrevHash == other.PrevHash &&
 		b.Head.Timestamp == other.Timestamp &&
-		b.Head.Size == other.Size
+		b.Head.Size == other.Size &&
+		b.Head.V == other.V
 }
 
 func CopyHeader(h *Header) *Header {
@@ -117,6 +119,7 @@ func CopyHeader(h *Header) *Header {
 	cpy.Node = h.Node
 	cpy.PrevHash = h.PrevHash
 	cpy.Index = h.Index
+	cpy.V = h.V
 	return &cpy
 }
 
@@ -133,6 +136,7 @@ func GenerateGenesis(nodeAddress types.Address) *Block {
 		Confirmations: 1,
 		Node:          nodeAddress,
 		Size:          0,
+		V:             "ALPHA-0.0.1",
 	}
 
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
@@ -167,6 +171,7 @@ func FromBytes(b []byte) (*Block, error) {
 	return blockData, nil
 }
 
+// ???
 func (Block) Read(p []byte) (n int, err error) {
 	return 1, nil
 }

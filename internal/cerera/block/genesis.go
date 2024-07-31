@@ -16,11 +16,12 @@ func Genesis() Block {
 		Height:        0,
 		Timestamp:     uint64(time.Now().UnixMilli()),
 		GasLimit:      250000,
-		GasUsed:       11,
+		GasUsed:       1337000,
 		Number:        big.NewInt(0),
 		Confirmations: 1,
 		Node:          types.EmptyAddress(),
 		Size:          0,
+		V:             "ALPHA-0.0.1",
 	}
 
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)

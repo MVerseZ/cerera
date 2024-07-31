@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -43,6 +44,15 @@ func main() {
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
 	flag.Parse()
 
+	// init log
+	// Open log file
+	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+
 	cfg := config.GenerageConfig()
 	cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
 	cfg.SetNodeKey(*keyPathFlag)
@@ -60,8 +70,8 @@ func main() {
 	host.SetUpProtocol()
 
 	c := cerera{
-		bc:     chain.InitBlockChain(cfg),
 		g:      validator.NewValidator(ctx, *cfg),
+		bc:     chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
 		h:      host,
 		p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		v:      storage.NewD5Vault(cfg),

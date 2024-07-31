@@ -180,6 +180,8 @@ func Execute(method string, params []interface{}) interface{} {
 				}
 			}
 		}
+	case "info":
+		pld.Data = vldtr.GetVersion()
 	default:
 		pld.Data = "Method not supperted"
 	}
