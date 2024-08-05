@@ -40,10 +40,10 @@ func Execute(method string, params []interface{}) interface{} {
 	// rpc methods
 	// these methods should not only using at rpc
 	switch method {
-	case "accounts":
+	case "accounts", "account.getall":
 		// get all accounts of system
 		pld.Data = vlt.GetAll()
-	case "create_account":
+	case "create_account", "account.create":
 		// get all accounts of system
 		//
 		// name - just a name
@@ -68,10 +68,10 @@ func Execute(method string, params []interface{}) interface{} {
 			Pub:      pk,
 			Mnemonic: m,
 		}
-	case "get_minimum_gas_value":
+	case "get_minimum_gas_value", "chain.getMinimumGasValue":
 		// get min gas value
 		pld.Data = p.GetMinimalGasValue()
-	case "get_balance":
+	case "get_balance", "account.getBalance":
 		// get balance of address of account
 		addressStr, ok := params[0].(string)
 		if !ok {
@@ -95,20 +95,20 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 		pld.Data = "SUCCESS"
-	case "getblockchaininfo":
+	case "getblockchaininfo", "cerera.getInfo":
 		// get info of (block)chain
 		pld.Data = bc.GetInfo()
-	case "getblockcount":
+	case "getblockcount", "cerera.getBlockCount":
 		// get latest block of chain
 		pld.Data = bc.GetLatestBlock().Header().Number
-	case "getblockhash":
+	case "getblockhash", "cerera.getBlockHash":
 		number, ok := params[0].(float64)
 		if !ok {
 			pld.Data = "Error"
 			return 0xf
 		}
 		pld.Data = bc.GetBlockHash(int(number))
-	case "getblock":
+	case "getblock", "cerera.getBlock":
 		// get block by hash
 		blockHashStr, ok := params[0].(string)
 		if !ok {
@@ -116,7 +116,7 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 		pld.Data = bc.GetBlock(blockHashStr)
-	case "getblockheader":
+	case "getblockheader", "cerera.getBlockHeader":
 		// get header by block hash
 		blockHashStr, ok := params[0].(string)
 		if !ok {
@@ -124,13 +124,10 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 		pld.Data = bc.GetBlockHeader(blockHashStr)
-	case "getmempoolinfo":
+	case "getmempoolinfo", "cerera.getMemPool":
 		// get pool info
 		pld.Data = p.GetInfo()
-	case "getversion":
-		// replace 4 get version from component struct
-		pld.Data = "ALPHA-1-VERSION"
-	case "signrawtransactionwithkey":
+	case "signrawtransactionwithkey", "cerera.signTransaction":
 		// sign transaction with key (signer will pay fees and value for transfer)
 		if len(params) > 1 {
 			txHashStr, ok1 := params[0].(string)
@@ -150,7 +147,7 @@ func Execute(method string, params []interface{}) interface{} {
 			pld.Data = "Wrong count of params"
 			return 0xf
 		}
-	case "send_tx":
+	case "send_tx", "cerera.sendTransaction":
 		// send transaction to address
 
 		// address
@@ -180,10 +177,10 @@ func Execute(method string, params []interface{}) interface{} {
 				}
 			}
 		}
-	case "info":
+	case "info", "cerera.getVersion":
 		pld.Data = vldtr.GetVersion()
 	default:
-		pld.Data = "Method not supperted"
+		pld.Data = "Method not supported"
 	}
 	return pld.Data
 }
