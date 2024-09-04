@@ -1,6 +1,7 @@
 package gigea
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cerera/internal/cerera/chain"
@@ -36,4 +37,14 @@ func (t Ring) Execute() {
 			// t.Pool.Prepared = nil
 		}
 	}
+}
+
+func ExecuteCtl(code int) int {
+	// get status of cerera
+	// if not running - do nothing
+	// else check some shit and execute with smth conditions
+	//
+	// may be check service as system service
+	fmt.Printf("Execute command: %d\r\n", code)
+	return 0
 }
