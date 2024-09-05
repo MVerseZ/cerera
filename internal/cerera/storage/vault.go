@@ -81,6 +81,12 @@ func NewD5Vault(cfg *config.Config) Vault {
 	vlt.accounts.Append(rootHashAddress, rootSA)
 	vlt.coinBase = coinbase.CoinBaseStateAccount()
 
+	fmt.Println(vlt.coinBase.Balance)
+	fmt.Println(vlt.coinBase.Address)
+
+	// ???
+	vlt.accounts.Append(vlt.coinBase.Address, vlt.coinBase)
+
 	// sync with fs
 	if cfg.Vault.PATH == "EMPTY" {
 		if err := InitSecureVault(rootSA); err != nil {

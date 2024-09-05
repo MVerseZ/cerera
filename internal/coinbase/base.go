@@ -10,19 +10,17 @@ import (
 type coinbaseData struct {
 	address         types.Address
 	coinbaseAccount types.StateAccount
-	balance         big.Int
-	publicKey       string
-	privateKey      string
+	balance         *big.Int
 }
 
 // Create a global instance of coinbaseData
 var Coinbase coinbaseData
 
-var AddressHex = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a"
-var TotalValue = types.FloatToBigInt(37 * 10 << 37)
+var AddressHex = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000A"
+var TotalValue = types.FloatToBigInt(37 * 10 << 24)
 
-// SetCoinbase initializes or updates the global Coinbase data.
-func SetCoinbase(publicKey, privateKey string, balance big.Int) {
+// SetCoinbase initializes the global Coinbase data.
+func SetCoinbase() {
 	var addr = types.HexToAddress(AddressHex)
 	ca := types.StateAccount{
 		Address:  addr,
@@ -38,9 +36,7 @@ func SetCoinbase(publicKey, privateKey string, balance big.Int) {
 	Coinbase = coinbaseData{
 		coinbaseAccount: ca,
 		address:         addr,
-		balance:         balance,
-		publicKey:       publicKey,
-		privateKey:      privateKey,
+		balance:         ca.Balance,
 	}
 }
 
@@ -51,17 +47,7 @@ func GetCoinbaseAddress() types.Address {
 
 // GetCoinbaseBalance returns the global Coinbase balance.
 func GetCoinbaseBalance() *big.Int {
-	return &Coinbase.balance
-}
-
-// GetCoinbasePublicKey returns the global Coinbase public key.
-func GetCoinbasePublicKey() string {
-	return Coinbase.publicKey
-}
-
-// GetCoinbasePrivateKey returns the global Coinbase private key.
-func GetCoinbasePrivateKey() string {
-	return Coinbase.privateKey
+	return Coinbase.balance
 }
 
 func CoinBaseStateAccount() types.StateAccount {

@@ -216,7 +216,11 @@ func (bc *Chain) G(latest *block.Block) {
 		bc.info.Total = bc.info.Total + 1
 		bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 		bc.currentBlock = newBlock
-		SaveToVault(*newBlock)
+		err := SaveToVault(*newBlock)
+		if err == nil {
+			var rewardAddress = newBlock.Head.Node
+			fmt.Printf("Reward to: %s\r\n", rewardAddress)
+		}
 	}
 
 	// clear array with included txs

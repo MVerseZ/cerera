@@ -56,21 +56,22 @@ func SyncVault() ([]block.Block, error) {
 	return readBlocks, nil
 }
 
-func SaveToVault(newBlock block.Block) {
+func SaveToVault(newBlock block.Block) error {
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer f.Close()
 
 	buf, err := json.Marshal(newBlock)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	buf = append(buf, '\n') // Добавляем разделитель новой строки
 	if _, err := f.Write(buf); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 // UpdateVault updates an account in the vault file.

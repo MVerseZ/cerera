@@ -24,7 +24,6 @@ go.work
 logfile
 main
 *.pem
-cerera
 
 .vscode
 
