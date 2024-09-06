@@ -20,6 +20,7 @@ var T Ring
 func Get() Ring {
 	return T
 }
+
 func (t Ring) Execute() {
 	// var v = validator.Get()
 	for {

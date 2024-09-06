@@ -40,7 +40,7 @@ func Execute(method string, params []interface{}) interface{} {
 	// rpc methods
 	// these methods should not only using at rpc
 	switch method {
-	case "accounts", "account.getall":
+	case "accounts", "account.getAll":
 		// get all accounts of system
 		pld.Data = vlt.GetAll()
 	case "create_account", "account.create":
@@ -179,6 +179,12 @@ func Execute(method string, params []interface{}) interface{} {
 		}
 	case "info", "cerera.getVersion":
 		pld.Data = vldtr.GetVersion()
+
+		// complexity of components very huge
+	case "cerera.control.config":
+		pld.Data = "Cerera configuration: "
+	case "cerera.control.ipconfig":
+		pld.Data = "Cerera network configuration: "
 	default:
 		pld.Data = "Method not supported"
 	}

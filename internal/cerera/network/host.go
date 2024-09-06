@@ -13,7 +13,6 @@ import (
 	"github.com/Arceliar/phony"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/multiformats/go-multiaddr"
@@ -82,31 +81,56 @@ func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 		panic("No local IP address found")
 	}
 
-	// Create a new libp2p Host
-	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/" + localIP + "/tcp/" + strconv.Itoa(cfg.NetCfg.P2P)),
-	)
+	// !!! solution without libp2p
+	var networkType = "tcp" // tcp4 tcp6
+	listener, err := net.Listen(networkType, localIP+":"+strconv.Itoa(cfg.NetCfg.P2P))
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Start network host at: %s", listener.Addr())
+	for {
+		var incomingConnection, err = listener.Accept()
+		if err != nil {
+			log.Println(err)
+			incomingConnection.Close()
+			continue
+		}
+		log.Println("Connected to ", incomingConnection.RemoteAddr())
+		// go handleConnection(conn)
 
-	// Initialize the Host struct
-	p := types.DecodePrivKey(cfg.NetCfg.PRIV)
-	b := types.EncodePrivateKeyToByte(p)
-	dHost := &Host{
-		Addr:    cfg.NetCfg.ADDR,
-		NetHost: h,
-		K:       b,
-		c:       ctx,
 	}
-	log.Println("Create host with cerera addr:", dHost.Addr)
-	log.Println("Create host with net addrs:", dHost.NetHost.Addrs())
+	return &Host{
+		Addr: cfg.NetCfg.ADDR,
+	}
+	// !!!
 
-	// Connect to Swarm
-	// ConnectToSwarm(dHost)
-	go dHost.serviceLoop()
+	// // Create a new libp2p Host
+	// h, err := libp2p.New(
+	// 	libp2p.ListenAddrStrings("/ip4/" + localIP + "/tcp/" + strconv.Itoa(cfg.NetCfg.P2P)),
+	// )
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	return dHost
+	// // Initialize the Host struct
+	// p := types.DecodePrivKey(cfg.NetCfg.PRIV)
+	// b := types.EncodePrivateKeyToByte(p)
+	// dHost := &Host{
+	// 	Addr:    cfg.NetCfg.ADDR,
+	// 	NetHost: h,
+	// 	K:       b,
+	// 	c:       ctx,
+	// }
+	// fmt.Println("Create host with cerera addr:", dHost.Addr)
+	// log.Println("Create host with cerera addr:", dHost.Addr)
+	// fmt.Println("Create host with net addrs:", dHost.NetHost.Addrs())
+	// log.Println("Create host with net addrs:", dHost.NetHost.Addrs())
+
+	// // Connect to Swarm
+	// // ConnectToSwarm(dHost)
+	// go dHost.serviceLoop()
+
+	// return dHost
 }
 
 // ConnectToSwarm connects the host to a swarm
@@ -147,6 +171,8 @@ func isOwnAddress(addr string) bool {
 // serviceLoop handles the service loop for the host
 func (h *Host) serviceLoop() {
 	var errc chan error
+
+	// h.NetHost.
 
 	if errc == nil {
 		select {}
@@ -232,5 +258,37 @@ func WriteSwarmData(chainAddress types.Address, mAddress string) {
 	err := os.WriteFile(swarmCfg, []byte(fmt.Sprintf("%s:%s", chainAddress, mAddress)), 0644)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func customHandleConnection(conn net.Conn) {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Println("error closing connection:", err)
+		}
+	}()
+
+	// create json encoder/decoder using the io.Conn as
+	// io.Writer and io.Reader for streaming IO
+	dec := json.NewDecoder(conn)
+	enc := json.NewEncoder(conn)
+
+	// command-loop
+	for {
+		// Next decode the incoming data into Go value
+		var req Request
+		if err := dec.Decode(&req); err != nil {
+			log.Println("failed to unmarshal request:", err)
+			return
+		}
+
+		// result
+		result := req.Method
+
+		// encode result to JSON array
+		if err := enc.Encode(&result); err != nil {
+			log.Println("failed to encode data:", err)
+			return
+		}
 	}
 }

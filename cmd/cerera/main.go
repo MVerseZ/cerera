@@ -16,7 +16,6 @@ import (
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
-	"github.com/cerera/internal/gigea/gigea"
 )
 
 type Process struct {
@@ -69,24 +68,24 @@ func main() {
 	host.SetUpHttp(ctx, *cfg)
 
 	c := cerera{
-		g:      validator.NewValidator(ctx, *cfg),
-		bc:     chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
-		h:      host,
-		p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
-		v:      storage.NewD5Vault(cfg),
+		// g:      validator.NewValidator(ctx, *cfg),
+		// bc:     chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
+		h: host,
+		// p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
+		// v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0},
 	}
 
-	c.v.Prepare()
+	// c.v.Prepare()
 
 	// coinbase.SetCoinbase()
 
-	s := gigea.Ring{
-		Pool:       c.p,
-		Chain:      &c.bc,
-		Counter:    0,
-		RoundTimer: time.NewTicker(time.Duration(3 * time.Second)),
-	}
+	// s := gigea.Ring{
+	// Pool:       c.p,
+	// Chain:      &c.bc,
+	// Counter:    0,
+	// RoundTimer: time.NewTicker(time.Duration(3 * time.Second)),
+	// }
 
 	for {
 		if c.h.NetType == 0x2 {
@@ -103,9 +102,15 @@ func main() {
 
 	c.g.SetUp(cfg.Chain.ChainID)
 
-	go s.Execute()
+	// go s.Execute()
 
 	<-ctx.Done()
 	_ = c.h.Stop()
 	c.proc.Stop()
 }
+
+// stages:
+// start app
+// check network connection and status of network
+// ...
+// PROFIT
