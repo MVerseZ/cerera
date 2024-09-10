@@ -36,7 +36,12 @@ type Host struct {
 	Status  byte
 	Stream  network.Stream
 	NetType byte
+
+	// Network graph data
+	peers []net.Addr
 }
+
+var h *Host
 
 // Node interface defines the structure of a Node in the network
 type Node interface {
@@ -63,7 +68,17 @@ func CheckIPAddressType(ip string) int {
 }
 
 // InitP2PHost initializes a new P2P host
-func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
+func InitP2PHost(ctx context.Context, cfg config.Config) {
+
+	h = &Host{
+		Status:  0x1,
+		NetType: 0x1,
+		peers:   make([]net.Addr, 0),
+	}
+
+	// init rpc requests handling in
+	h.SetUpHttp(ctx, cfg)
+	h.Status = h.Status << 1
 
 	// Find local IP addresses
 	addrs, err := net.InterfaceAddrs()
@@ -87,7 +102,11 @@ func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Start network host at: %s", listener.Addr())
+	h.Status = h.Status << 1
+	fmt.Printf("Start network host at: %s\r\n", listener.Addr())
+	fmt.Printf("Status: %x\r\n", h.Status)
+	fmt.Printf("Wait for peers...\r\n")
+
 	for {
 		var incomingConnection, err = listener.Accept()
 		if err != nil {
@@ -95,13 +114,12 @@ func InitP2PHost(ctx context.Context, cfg config.Config) *Host {
 			incomingConnection.Close()
 			continue
 		}
-		log.Println("Connected to ", incomingConnection.RemoteAddr())
+		var remoteAddr = incomingConnection.RemoteAddr()
+		log.Println("Connected to ", remoteAddr)
+		h.peers = append(h.peers, remoteAddr)
 		// go handleConnection(conn)
+	}
 
-	}
-	return &Host{
-		Addr: cfg.NetCfg.ADDR,
-	}
 	// !!!
 
 	// // Create a new libp2p Host

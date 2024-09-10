@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
@@ -63,18 +62,20 @@ func main() {
 	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// minwinsvc.SetOnExit(cancel)
 
-	host := network.InitP2PHost(ctx, *cfg)
-	// init rpc requests handling in
-	host.SetUpHttp(ctx, *cfg)
+	go network.InitP2PHost(ctx, *cfg)
+
+	// chain.InitChain()
+	// miner.InitMiner()
 
 	c := cerera{
 		// g:      validator.NewValidator(ctx, *cfg),
-		// bc:     chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
-		h: host,
+		// bc: chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
+		// h: host,
 		// p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		// v:      storage.NewD5Vault(cfg),
-		status: [8]byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0},
+		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
 	}
+	fmt.Println(c.status)
 
 	// c.v.Prepare()
 
@@ -87,20 +88,7 @@ func main() {
 	// RoundTimer: time.NewTicker(time.Duration(3 * time.Second)),
 	// }
 
-	for {
-		if c.h.NetType == 0x2 {
-			fmt.Printf("Try to sync accounts by network...\r\n")
-			c.h.HandShake()
-			c.status[0] = 0xb
-		}
-		if c.status[0] == 0xb || c.h.NetType == 0x1 {
-			c.status[0] = 0xb
-			break
-		}
-		time.Sleep(3 * time.Second)
-	}
-
-	c.g.SetUp(cfg.Chain.ChainID)
+	// c.g.SetUp(cfg.Chain.ChainID)
 
 	// go s.Execute()
 
