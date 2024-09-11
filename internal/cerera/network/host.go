@@ -67,8 +67,8 @@ func CheckIPAddressType(ip string) int {
 	return 4
 }
 
-// InitP2PHost initializes a new P2P host
-func InitP2PHost(ctx context.Context, cfg config.Config) {
+// InitNetworkHost initializes a new host struct
+func InitNetworkHost(ctx context.Context, cfg config.Config) {
 
 	h = &Host{
 		Status:  0x1,

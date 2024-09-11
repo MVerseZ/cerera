@@ -11,6 +11,7 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/miner"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
@@ -62,7 +63,14 @@ func main() {
 	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// minwinsvc.SetOnExit(cancel)
 
-	go network.InitP2PHost(ctx, *cfg)
+	go network.InitNetworkHost(ctx, *cfg)
+
+	storage.NewD5Vault(cfg)
+
+	miner.Start()
+
+	// validator.NewValidator(ctx, *cfg)
+	// chain.InitBlockChain(cfg)
 
 	// chain.InitChain()
 	// miner.InitMiner()
@@ -75,7 +83,6 @@ func main() {
 		// v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
 	}
-	fmt.Println(c.status)
 
 	// c.v.Prepare()
 
