@@ -70,7 +70,7 @@ func (v *DDDDDValidator) GasPrice() *big.Int {
 func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
 	if valFor > 0 {
 		var vault = storage.GetVault()
-		vault.FaucetBalance(types.HexToAddress(addrStr), types.FloatToBigInt(float64(valFor)))
+		vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
 		return nil
 	}
 	return errors.New("value < 0")
