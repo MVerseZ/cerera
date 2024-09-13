@@ -8,6 +8,12 @@ Most of them are EVM-compatible.
 Pioneer of all - bitcoin network.
 Cerera network - simple transaction PoW chain with limited inner coin.
 
+Cerera provides secure storage for user accounts, stored off chain.
+There are block with transactions (or empty) with on-chain data. It open and anybody can only-read it.
+
+As the any blockchain project there is RPC communication protocol via HTTP(S).
+
+There is no any VM for virtual contracts creation. But transaction entity can store big data, like CSV dataframes or multimedia content.
 
 Author: gnupunk, veers
 Moscow, 2024-...
