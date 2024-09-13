@@ -200,6 +200,7 @@ func (v *D5Vault) Size() int64 {
 		return s
 	}
 }
+
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
 
 	// decrement first
