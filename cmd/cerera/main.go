@@ -66,8 +66,10 @@ func main() {
 
 	storage.NewD5Vault(cfg)
 
-	validator.NewValidator(ctx, *cfg)
-	chain.InitBlockChain(cfg)
+	// miner.Start()
+
+	// validator.NewValidator(ctx, *cfg)
+	// chain.InitBlockChain(cfg)
 
 	// chain.InitChain()
 	// miner.InitMiner()

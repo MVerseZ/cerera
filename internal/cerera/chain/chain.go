@@ -171,6 +171,7 @@ func (bc *Chain) BlockGenerator() {
 func (bc *Chain) G(latest *block.Block) {
 	var vld = validator.Get()
 	var pool = pool.Get()
+
 	head := &block.Header{
 		Ctx:           latest.Header().Ctx,
 		Difficulty:    latest.Header().Difficulty,

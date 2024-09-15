@@ -16,8 +16,9 @@ type coinbaseData struct {
 // Create a global instance of coinbaseData
 var Coinbase coinbaseData
 
-var AddressHex = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000A"
-var TotalValue = types.FloatToBigInt(37 * 10 << 24)
+var AddressHex = "0xf0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f"
+var TotalValue = types.FloatToBigInt(1 * 10 << 31)
+var blockReward = types.FloatToBigInt(1024.0)
 
 // SetCoinbase initializes the global Coinbase data.
 func SetCoinbase() {
@@ -52,4 +53,15 @@ func GetCoinbaseBalance() *big.Int {
 
 func CoinBaseStateAccount() types.StateAccount {
 	return Coinbase.coinbaseAccount
+}
+
+func RewardBlock() *big.Int {
+	Coinbase.balance = big.NewInt(0).Sub(Coinbase.balance, blockReward)
+	return blockReward
+}
+
+func Faucet(faucetValue int) *big.Int {
+	var faucetVal_BigInt = types.FloatToBigInt(float64(faucetValue))
+	Coinbase.balance = big.NewInt(0).Sub(Coinbase.balance, faucetVal_BigInt)
+	return faucetVal_BigInt
 }

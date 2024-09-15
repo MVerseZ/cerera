@@ -78,14 +78,14 @@ func NewD5Vault(cfg *config.Config) Vault {
 		MPub:     publicKey.B58Serialize(),
 	}
 
-	vlt.accounts.Append(rootHashAddress, rootSA)
-	vlt.coinBase = coinbase.CoinBaseStateAccount()
+	// vlt.accounts.Append(rootHashAddress, rootSA)
+	// vlt.coinBase = coinbase.CoinBaseStateAccount()
 
-	fmt.Println(vlt.coinBase.Balance)
-	fmt.Println(vlt.coinBase.Address)
+	// fmt.Println(vlt.coinBase.Balance)
+	// fmt.Println(vlt.coinBase.Address)
 
 	// ???
-	vlt.accounts.Append(vlt.coinBase.Address, vlt.coinBase)
+	// vlt.accounts.Append(vlt.coinBase.Address, vlt.coinBase)
 
 	// sync with fs
 	if cfg.Vault.PATH == "EMPTY" {
@@ -200,6 +200,7 @@ func (v *D5Vault) Size() int64 {
 		return s
 	}
 }
+
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
 
 	// decrement first
@@ -224,15 +225,15 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 }
 
 // faucet method without creating transaction
-func (v *D5Vault) FaucetBalance(to types.Address, val *big.Int) {
+func (v *D5Vault) FaucetBalance(to types.Address, val int) {
 	var destSA = v.Get(to)
-	destSA.Balance.Add(destSA.Balance, val)
+	var faucetTo = coinbase.Faucet(val)
+	destSA.Balance.Add(destSA.Balance, faucetTo)
 	UpdateVault(destSA.Bytes())
 }
+
 func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) bool {
-
 	// ecdsa.Verify(publicKey, tx.Hash().Bytes(), r, s)
-
 	return false
 }
 
