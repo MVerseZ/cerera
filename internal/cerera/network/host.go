@@ -115,40 +115,11 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 			continue
 		}
 		var remoteAddr = incomingConnection.RemoteAddr()
-		log.Println("Connected to ", remoteAddr)
+		fmt.Printf("Client is: %s\r\n", remoteAddr)
 		h.peers = append(h.peers, remoteAddr)
-		// go handleConnection(conn)
+		go customHandleConnection(incomingConnection)
 	}
 
-	// !!!
-
-	// // Create a new libp2p Host
-	// h, err := libp2p.New(
-	// 	libp2p.ListenAddrStrings("/ip4/" + localIP + "/tcp/" + strconv.Itoa(cfg.NetCfg.P2P)),
-	// )
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Initialize the Host struct
-	// p := types.DecodePrivKey(cfg.NetCfg.PRIV)
-	// b := types.EncodePrivateKeyToByte(p)
-	// dHost := &Host{
-	// 	Addr:    cfg.NetCfg.ADDR,
-	// 	NetHost: h,
-	// 	K:       b,
-	// 	c:       ctx,
-	// }
-	// fmt.Println("Create host with cerera addr:", dHost.Addr)
-	// log.Println("Create host with cerera addr:", dHost.Addr)
-	// fmt.Println("Create host with net addrs:", dHost.NetHost.Addrs())
-	// log.Println("Create host with net addrs:", dHost.NetHost.Addrs())
-
-	// // Connect to Swarm
-	// // ConnectToSwarm(dHost)
-	// go dHost.serviceLoop()
-
-	// return dHost
 }
 
 // ConnectToSwarm connects the host to a swarm

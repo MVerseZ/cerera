@@ -1,70 +1,36 @@
 package miner
 
-// PROTOTYPE STRUCTURE
 import (
-	"crypto/sha256"
-	"fmt"
-	"strconv"
-	"strings"
+	"math/big"
 	"time"
+
+	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/types"
 )
 
-type SimpleTransaction struct {
-	ID     int
-	from   string
-	to     string
-	amount int
-}
-type SimpleBlock struct {
-	ID                int
-	previousBlockHash string
-	transactions      []SimpleTransaction
+// PROTOTYPE STRUCTURE
+
+type Miner struct {
+	difficulty int64
 }
 
-func blockHash(o interface{}, nonce string) []byte {
-	h := sha256.New()
-	h.Write([]byte(fmt.Sprintf("%v%s", o, nonce)))
-	return h.Sum(nil)
-}
-func mine(o interface{}, difficulty int) {
-	maxnonce := 100000000000
-	prefixZeros := strings.Repeat("0", difficulty)
-	var nonce int
-	for nonce <= maxnonce {
-		hashResult := fmt.Sprintf("%x", blockHash(o, strconv.Itoa(nonce)))
-		nonce++
-		if strings.HasPrefix(hashResult, prefixZeros) {
-			fmt.Printf("Nouce is : %d\r\n", nonce)
-			fmt.Printf("The block Hash  is : %s\r\n", hashResult)
-			break
-		}
-	}
+func CalculateBlockHash(b block.Block) {
 
 }
-func Start() {
-	currentTime := time.Now()
-	difficulty := 10 // increase number for make mining harder
-	transone := SimpleTransaction{
-		ID:     1,
-		from:   "mahdi",
-		to:     "mohammad",
-		amount: 25,
-	}
-	tanstwo := SimpleTransaction{
-		ID:     2,
-		from:   "roya",
-		to:     "negin",
-		amount: 99,
-	}
-	block := SimpleBlock{
-		ID:                1,
-		previousBlockHash: "00000000001fd09d3cf161db54434c9e518cf80e94811e7762c3aee8a7af39af",
-		transactions:      []SimpleTransaction{transone, tanstwo},
-	}
-	fmt.Println("Start Mining")
-	mine(block, difficulty)
-	fmt.Println("End of Mining")
-	duration := time.Since(currentTime)
-	fmt.Printf("Mining took %s\r\n", duration)
 
+func MineBlock(latest *block.Block, addr types.Address) {
+	head := &block.Header{
+		Ctx:        latest.Header().Ctx,
+		Difficulty: latest.Header().Difficulty,
+		Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
+		Height:     latest.Header().Height + 1,
+		Index:      latest.Header().Index + 1,
+		Timestamp:  uint64(time.Now().UnixMilli()),
+		Number:     big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
+		// PrevHash:      bc.info.Latest,
+		Confirmations: 1,
+		Node:          addr,
+		Root:          latest.Header().Root,
+		GasLimit:      latest.Head.GasLimit, // todo get gas limit dynamically
+	}
 }
