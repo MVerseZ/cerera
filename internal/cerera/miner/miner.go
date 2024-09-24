@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"fmt"
 	"math/big"
 	"time"
 
@@ -33,4 +34,5 @@ func MineBlock(latest *block.Block, addr types.Address) {
 		Root:          latest.Header().Root,
 		GasLimit:      latest.Head.GasLimit, // todo get gas limit dynamically
 	}
+	fmt.Println(head)
 }

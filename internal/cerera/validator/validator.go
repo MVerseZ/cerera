@@ -12,6 +12,7 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 
@@ -168,8 +169,6 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 }
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
-	// when validator says that block is correct, node get reward for it
-	// it should be automatic as same level with autogen alogrythm of chain
-	// if block.Confirmations > 2 then node gets reward
-	return true
+	// move logic to consensus
+	return consensus.ConfirmBlock(b)
 }

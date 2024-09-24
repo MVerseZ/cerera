@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/Arceliar/phony"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -103,7 +105,12 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 		panic(err)
 	}
 	h.Status = h.Status << 1
-	fmt.Printf("Start network host at: %s\r\n", listener.Addr())
+	fmt.Printf("Start network host at: %s with cerera address: %s\r\n",
+		listener.Addr(), cfg.NetCfg.ADDR)
+	consensus.Add(listener.Addr(), cfg.NetCfg.ADDR)
+	fmt.Printf("Init client...")
+	go InitClient(cfg.NetCfg.ADDR)
+	fmt.Printf("Consensus status: %f\r\n", consensus.ConsensusStatus())
 	fmt.Printf("Status: %x\r\n", h.Status)
 	fmt.Printf("Wait for peers...\r\n")
 
@@ -120,41 +127,6 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 		go customHandleConnection(incomingConnection)
 	}
 
-}
-
-// ConnectToSwarm connects the host to a swarm
-func ConnectToSwarm(h *Host) {
-	const swarmCfg = "swarm.ddd"
-	var s network.Stream
-
-	if _, err := os.Stat(swarmCfg); err == nil {
-		h.NetType = 0x2
-		s = InitClient(h, h.Addr.String())
-	} else {
-		h.NetType = 0x1
-		s = InitServer(h)
-	}
-	h.Stream = s
-}
-
-// isOwnAddress checks if the given address matches any of the host's addresses
-func isOwnAddress(addr string) bool {
-	host, err := os.Hostname()
-	if err != nil {
-		log.Printf("Unable to get hostname: %v", err)
-		return false
-	}
-	addrs, err := net.LookupHost(host)
-	if err != nil {
-		log.Printf("Unable to lookup host: %v", err)
-		return false
-	}
-	for _, a := range addrs {
-		if a == addr {
-			return true
-		}
-	}
-	return false
 }
 
 // serviceLoop handles the service loop for the host
@@ -266,16 +238,23 @@ func customHandleConnection(conn net.Conn) {
 	for {
 		// Next decode the incoming data into Go value
 		var req Request
+		var resp Response
 		if err := dec.Decode(&req); err != nil {
 			log.Println("failed to unmarshal request:", err)
 			return
 		}
-
 		// result
 		result := req.Method
-
+		if strings.Contains(result, "consensus") {
+			resp.ID = req.ID
+			resp.JSONRPC = req.JSONRPC
+			params := req.Params
+			fmt.Println(result)
+			fmt.Println(params...)
+			resp.Result = consensus.HandleConsensusRequest(conn.RemoteAddr(), req.Method, req.Params)
+		}
 		// encode result to JSON array
-		if err := enc.Encode(&result); err != nil {
+		if err := enc.Encode(&resp); err != nil {
 			log.Println("failed to encode data:", err)
 			return
 		}

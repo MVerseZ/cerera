@@ -96,7 +96,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(10 * time.Second)),
+		blockTicker:    time.NewTicker(time.Duration(60 * time.Second)),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
@@ -208,24 +208,27 @@ func (bc *Chain) G(latest *block.Block) {
 
 	bc.data = append(bc.data, *newBlock)
 
-	bc.t.Add(newBlock)
-	var t, err = bc.t.VerifyTree()
-	if err != nil || !t {
-		log.Printf("Verifying trie error: %s\r\n", err)
-	} else {
-		bc.info.Latest = newBlock.Hash()
-		bc.info.Total = bc.info.Total + 1
-		bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-		bc.currentBlock = newBlock
-		err := SaveToVault(*newBlock)
-		if err == nil {
-			var rewardAddress = newBlock.Head.Node
-			fmt.Printf("Reward to: %s\r\n", rewardAddress)
+	if vld.ValidateBlock(*newBlock) {
+		bc.t.Add(newBlock)
+		var t, err = bc.t.VerifyTree()
+		if err != nil || !t {
+			log.Printf("Verifying trie error: %s\r\n", err)
+		} else {
+			bc.info.Latest = newBlock.Hash()
+			bc.info.Total = bc.info.Total + 1
+			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+			bc.currentBlock = newBlock
+			err := SaveToVault(*newBlock)
+			if err == nil {
+				var rewardAddress = newBlock.Head.Node
+				fmt.Printf("Reward to: %s\r\n", rewardAddress)
+			}
 		}
+		// clear array with included txs
+		pool.Prepared = nil
+	} else {
+		return
 	}
-
-	// clear array with included txs
-	pool.Prepared = nil
 }
 
 // change block generation time

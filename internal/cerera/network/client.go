@@ -1,67 +1,75 @@
 package network
 
 import (
-	"bufio"
-	"context"
+	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
+	"net"
+	"time"
 
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
-	ma "github.com/multiformats/go-multiaddr"
+	"github.com/cerera/internal/cerera/types"
 )
 
 type Client struct {
+	addr types.Address
 }
 
-func InitClient(h *Host, localAddr string) network.Stream {
-	var swarmCfg = "swarm.ddd"
-	f, err := os.Open(swarmCfg)
+var client Client
+var (
+	pollMinutes int = 10
+)
+
+func InitClient(cereraAddress types.Address) {
+	c, err := net.Dial("tcp", "addr")
+
 	if err != nil {
 		panic(err)
 	}
-	defer f.Close()
+	defer c.Close()
 
-	scanner := bufio.NewScanner(f)
-	var swarmArr []string
-	for scanner.Scan() {
-		swarmArr = append(swarmArr, scanner.Text())
+	client = Client{
+		addr: cereraAddress,
 	}
-	if err := scanner.Err(); err != nil {
-		panic(err)
-	}
-	fmt.Printf("Swarm is:%s\r\n", swarmArr[0])
-	fmt.Printf("Joining\r\n")
 
-	// check swarm address with local
-	var addrs = strings.Split(swarmArr[0], ":")
-	vAddress := addrs[0]
-	nAddress := addrs[1]
-	if vAddress != localAddr {
-		maddr, err := ma.NewMultiaddr(nAddress)
-		if err != nil {
-			panic(err)
+	go customHandleConnectionClient(c)
+
+	for {
+		//time.Sleep(pollMinutes * time.Minute)
+		time.Sleep(time.Duration(3) * time.Second)
+	}
+}
+
+func customHandleConnectionClient(conn net.Conn) {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Println("error closing connection:", err)
 		}
-		remoteHost, err := peer.AddrInfoFromP2pAddr(maddr)
-		if err != nil {
-			panic(err)
+	}()
+
+	dec := json.NewDecoder(conn)
+	enc := json.NewEncoder(conn)
+
+	var resp Response
+	var reqParams = []interface{}{client.addr}
+	hReq := Request{
+		JSONRPC: "2.0",
+		Method:  "cerera.consensus.join",
+		Params:  reqParams,
+		ID:      1,
+	}
+
+	if err := enc.Encode(&hReq); err != nil {
+		fmt.Println("failed to encode data:", err)
+		return
+	}
+
+	for {
+
+		if err := dec.Decode(&resp); err != nil {
+			fmt.Println("failed to unmarshal request:", err)
+			return
 		}
-		if h.NetHost.Addrs()[0] == maddr {
-			return nil
-		}
-		h.NetHost.Peerstore().AddAddrs(remoteHost.ID, remoteHost.Addrs, peerstore.PermanentAddrTTL)
-		s, err := h.NetHost.NewStream(context.Background(), remoteHost.ID, DiscoveryServiceTag)
-		if err != nil {
-			panic(err)
-		}
-		h.Status = 0x2
-		rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-		go h.ClientProtocol(rw)
-		h.Stream = s
-		return h.Stream
-	} else {
-		return nil
+		// result
+		result := resp.Result
+		fmt.Println(result)
 	}
 }

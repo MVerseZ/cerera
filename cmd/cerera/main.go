@@ -11,6 +11,7 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
@@ -59,17 +60,18 @@ func main() {
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
 
+	consensus.Start()
+
 	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// minwinsvc.SetOnExit(cancel)
 
 	go network.InitNetworkHost(ctx, *cfg)
-
 	storage.NewD5Vault(cfg)
 
 	// miner.Start()
 
-	// validator.NewValidator(ctx, *cfg)
-	// chain.InitBlockChain(cfg)
+	validator.NewValidator(ctx, *cfg)
+	chain.InitBlockChain(cfg)
 
 	// chain.InitChain()
 	// miner.InitMiner()
