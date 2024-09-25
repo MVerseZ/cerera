@@ -23,7 +23,7 @@ var (
 )
 
 func InitClient(cereraAddress types.Address) {
-	c, err := net.Dial("tcp", "127.0.0.1:90009")
+	c, err := net.Dial("tcp", "addr")
 
 	if err != nil {
 		fmt.Println(err)
@@ -79,7 +79,9 @@ func customHandleConnectionClient(conn net.Conn) {
 
 		switch v := result.(type) {
 		case map[string]interface{}:
-			if client.status == 0x1 {
+
+			switch s := client.status; s {
+			case 0x1:
 				tmpJson, err := json.Marshal(v)
 				if err != nil {
 					fmt.Println(err)
@@ -111,8 +113,7 @@ func customHandleConnectionClient(conn net.Conn) {
 					}
 				}
 				client.status = 0x2
-			}
-			if client.status == 0x2 {
+			case 0x2:
 				tmpJson, err := json.Marshal(v)
 				if err != nil {
 					fmt.Println(err)
@@ -123,8 +124,9 @@ func customHandleConnectionClient(conn net.Conn) {
 					fmt.Println(err)
 					return
 				}
-				fmt.Println(b.Hash())
-				chain.GetBlockChain().UpdateChain(b)
+				chain.GetBlockChain().UpdateChain(&b)
+			default:
+
 			}
 
 		case string:

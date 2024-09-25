@@ -138,3 +138,11 @@ func GetChainSourceSize() (int64, error) {
 	}
 	return fi.Size(), nil
 }
+
+func ClearVault() error {
+	if err := os.Truncate("./chain.dat", 0); err != nil {
+		fmt.Printf("Failed to truncate: %v", err)
+		return err
+	}
+	return nil
+}

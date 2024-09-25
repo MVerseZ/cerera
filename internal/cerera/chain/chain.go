@@ -45,8 +45,8 @@ type Chain struct {
 
 var bch Chain
 
-func GetBlockChain() Chain {
-	return bch
+func GetBlockChain() *Chain {
+	return &bch
 }
 func InitBlockChain(cfg *config.Config) Chain {
 
@@ -96,7 +96,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(10 * time.Second)),
+		blockTicker:    time.NewTicker(time.Duration(30 * time.Minute)),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
@@ -212,6 +212,7 @@ func (bc *Chain) G(latest *block.Block) {
 		if err != nil || !t {
 			log.Printf("Verifying trie error: %s\r\n", err)
 		} else {
+			newBlock.Confirmations += 1
 			bc.info.Latest = newBlock.Hash()
 			bc.info.Total = bc.info.Total + 1
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
@@ -236,9 +237,28 @@ func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
 }
 
-func (bc Chain) UpdateChain(b block.Block) {
-	fmt.Println(bc.currentBlock.Head.Number)
-	fmt.Println(b.Head.Number)
+func (bc *Chain) UpdateChain(newBlock *block.Block) {
+	fmt.Printf("Current index: %d with hash: %s\r\n", bc.currentBlock.Head.Number, bc.currentBlock.Hash())
+	fmt.Printf("Incoming index: %d with hash: %s\r\n", newBlock.Head.Number, newBlock.Hash())
+
+	if newBlock.Head.Number.Cmp(big.NewInt(0)) == 0 {
+		// replace all
+		ClearVault()
+		bc.data = nil
+	}
+	newBlock.Confirmations += 1
+	bc.data = append(bc.data, *newBlock)
+	fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Number, newBlock.Hash())
+
+	// bc.currentBlock = newBlock
+	err := SaveToVault(*newBlock)
+	if err == nil {
+		var rewardAddress = newBlock.Head.Node
+		fmt.Printf("Reward to: %s\r\n", rewardAddress)
+	}
+	bc.info.Latest = newBlock.Hash()
+	bc.info.Total = bc.info.Total + 1
+	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 }
 
 // return lenght of array
