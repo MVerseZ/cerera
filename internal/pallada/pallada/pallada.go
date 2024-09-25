@@ -115,7 +115,7 @@ func Execute(method string, params []interface{}) interface{} {
 			pld.Data = "Error"
 			return 0xf
 		}
-		pld.Data = bc.GetBlock(blockHashStr)
+		pld.Data = bc.GetBlock(common.HexToHash(blockHashStr))
 	case "getblockheader", "cerera.getBlockHeader":
 		// get header by block hash
 		blockHashStr, ok := params[0].(string)

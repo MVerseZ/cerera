@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Arceliar/phony"
+	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/types"
@@ -252,11 +253,44 @@ func customHandleConnection(conn net.Conn) {
 			fmt.Println(result)
 			fmt.Println(params...)
 			resp.Result = consensus.HandleConsensusRequest(conn.RemoteAddr(), req.Method, req.Params)
-		}
-		// encode result to JSON array
-		if err := enc.Encode(&resp); err != nil {
-			log.Println("failed to encode data:", err)
-			return
+			if strings.Contains(result, "join") {
+				var latestResp Response
+				latestResp.ID = req.ID
+				latestResp.JSONRPC = req.JSONRPC
+				latestResp.Result = chain.GetBlockChain().GetLatestBlock()
+				if err := enc.Encode(&latestResp); err != nil {
+					fmt.Println("failed to encode data:", err)
+					return
+				}
+			}
+			if strings.Contains(result, "sync") {
+				diff, ok1 := params[0].(float64)
+				if !ok1 {
+					panic(ok1)
+				}
+				fmt.Println(diff)
+				var ch = chain.GetBlockChain()
+				for i := 0; i < int(diff); i++ {
+					var bh = ch.GetBlockHash(i)
+					var b = ch.GetBlock(bh)
+
+					var syncResp Response
+					syncResp.ID = req.ID
+					syncResp.JSONRPC = req.JSONRPC
+					syncResp.Result = b
+					if err := enc.Encode(&syncResp); err != nil {
+						fmt.Println("failed to encode data:", err)
+						return
+					}
+				}
+			}
+		} else {
+			fmt.Println("send default response:", resp)
+			// encode result to JSON array
+			if err := enc.Encode(&resp); err != nil {
+				fmt.Println("failed to encode data:", err)
+				return
+			}
 		}
 	}
 }

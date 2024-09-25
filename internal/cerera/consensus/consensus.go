@@ -11,8 +11,9 @@ import (
 )
 
 type Voter struct {
-	addr  net.Addr
-	cAddr types.Address
+	addr        net.Addr
+	cAddr       types.Address
+	syncPercent float32
 }
 
 type Consensus struct {
@@ -22,10 +23,10 @@ type Consensus struct {
 	CurrentStatus           float64
 }
 
-var c Consensus
+var c *Consensus
 
 func Start() {
-	c = Consensus{
+	c = &Consensus{
 		Nodes:  make([]Voter, 0),
 		Latest: block.CrvBlockHash(block.Genesis()), //simplify
 	}
@@ -47,18 +48,6 @@ func Add(address net.Addr, cAddress types.Address) float64 {
 	return CalculateProposals(c)
 }
 
-func CalculateProposals(c Consensus) float64 {
-	if len(c.Nodes) < 2 {
-		return 1.0
-	}
-	if len(c.Nodes) == 2 {
-		return 0.5
-	}
-	var newProposalW = ((float64(len(c.Nodes)) / 2) + 1) / float64(len(c.Nodes))
-	fmt.Println(newProposalW)
-	return newProposalW
-}
-
 func ConsensusStatus() float64 {
 	return c.CurrentProposalsPercent
 }
@@ -73,13 +62,29 @@ func HandleConsensusRequest(netAddr net.Addr, method string, params []interface{
 		}
 		return Add(netAddr, types.HexToAddress(strCereraAddr))
 	}
-	return 0x1
+	return []byte{0xa, 0xa, 0xa}
+}
+
+func CalculateProposals(c *Consensus) float64 {
+	if len(c.Nodes) < 2 {
+		c.CurrentProposalsPercent = 1.0
+		return 1.0
+	}
+	if len(c.Nodes) == 2 {
+		c.CurrentProposalsPercent = 0.5
+		return 0.5
+	}
+	var newProposalW = ((float64(len(c.Nodes)) / 2) + 1) / float64(len(c.Nodes))
+	fmt.Printf("NEW PROPOSAL COEFFICIENT:%f\r\n", newProposalW)
+	c.CurrentProposalsPercent = newProposalW
+	return newProposalW
 }
 
 func ConfirmBlock(b block.Block) bool {
+	fmt.Printf("Confirmind block %s with percent %f\r\n", b.Hash(), c.CurrentProposalsPercent)
 	if c.CurrentProposalsPercent == 1.0 {
 		return true
 	} else {
+		return false
 	}
-	return false
 }

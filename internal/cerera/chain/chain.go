@@ -96,7 +96,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(60 * time.Second)),
+		blockTicker:    time.NewTicker(time.Duration(10 * time.Second)),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
@@ -134,10 +134,9 @@ func (bc Chain) GetBlockHash(number int) common.Hash {
 	return common.EmptyHash()
 }
 
-func (bc Chain) GetBlock(blockHash string) *block.Block {
-	var bHash = common.HexToHash(blockHash)
+func (bc Chain) GetBlock(blockHash common.Hash) *block.Block {
 	for _, b := range bc.data {
-		if b.Hash().Compare(bHash) == 0 {
+		if b.Hash().Compare(blockHash) == 0 {
 			return &b
 		}
 	}
@@ -206,9 +205,8 @@ func (bc *Chain) G(latest *block.Block) {
 	newBlock.Head.Size = int(finalSize)
 	newBlock.Head.GasUsed += uint64(finalSize)
 
-	bc.data = append(bc.data, *newBlock)
-
 	if vld.ValidateBlock(*newBlock) {
+		bc.data = append(bc.data, *newBlock)
 		bc.t.Add(newBlock)
 		var t, err = bc.t.VerifyTree()
 		if err != nil || !t {
@@ -227,6 +225,7 @@ func (bc *Chain) G(latest *block.Block) {
 		// clear array with included txs
 		pool.Prepared = nil
 	} else {
+		fmt.Printf("Block unconfirmed: %s\r\n", newBlock.Hash())
 		return
 	}
 }

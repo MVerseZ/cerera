@@ -3,9 +3,12 @@ package network
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
 	"time"
 
+	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/types"
 )
 
@@ -19,10 +22,11 @@ var (
 )
 
 func InitClient(cereraAddress types.Address) {
-	c, err := net.Dial("tcp", "addr")
+	c, err := net.Dial("tcp", "127.0.0.1:90009")
 
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 	defer c.Close()
 
@@ -54,7 +58,7 @@ func customHandleConnectionClient(conn net.Conn) {
 		JSONRPC: "2.0",
 		Method:  "cerera.consensus.join",
 		Params:  reqParams,
-		ID:      1,
+		ID:      5422899109,
 	}
 
 	if err := enc.Encode(&hReq); err != nil {
@@ -70,6 +74,45 @@ func customHandleConnectionClient(conn net.Conn) {
 		}
 		// result
 		result := resp.Result
-		fmt.Println(result)
+
+		switch v := result.(type) {
+		case map[string]interface{}:
+			tmpJson, err := json.Marshal(v)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			var b block.Block
+			if err := json.Unmarshal(tmpJson, &b); err != nil {
+				fmt.Println(err)
+				return
+			}
+			//fmt.Printf("block: %s\r\n", b.Hash())
+			var currentBlock = chain.GetBlockChain().GetLatestBlock()
+			// fmt.Println(currentBlock.GetLatestBlock().Hash())
+			// fmt.Println(b.Hash())
+			if b.Hash().String() != currentBlock.Hash().String() {
+				if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
+					var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
+					var reqParams = []interface{}{diff}
+					hReq := Request{
+						JSONRPC: "2.0",
+						Method:  "cerera.consensus.sync",
+						Params:  reqParams,
+						ID:      5422899110,
+					}
+					if err := enc.Encode(&hReq); err != nil {
+						fmt.Println("failed to encode data:", err)
+						return
+					}
+				}
+			}
+		case string:
+			fmt.Printf("block_str: %s\r\n", v)
+		case float64:
+			fmt.Printf("cons stat: %f\r\n", v)
+		default:
+			fmt.Println("unknown")
+		}
 	}
 }
