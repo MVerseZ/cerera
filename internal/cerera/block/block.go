@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 	"unsafe"
 
 	"github.com/cerera/internal/cerera/common"
@@ -129,7 +128,6 @@ func GenerateGenesis(nodeAddress types.Address) *Block {
 		Difficulty:    big.NewInt(11111111111),
 		Extra:         []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
 		Height:        0,
-		Timestamp:     uint64(time.Now().UnixMilli()),
 		GasLimit:      250000,
 		GasUsed:       1,
 		Number:        big.NewInt(0),

@@ -90,13 +90,13 @@ func InitBlockChain(cfg *config.Config) Chain {
 		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
 		Size:      0,
 	}
-
+	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	bch = Chain{
 		autoGen:        cfg.AUTOGEN,
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(10 * time.Second)),
+		blockTicker:    time.NewTicker(time.Duration(30 * time.Minute)),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
@@ -212,6 +212,7 @@ func (bc *Chain) G(latest *block.Block) {
 		if err != nil || !t {
 			log.Printf("Verifying trie error: %s\r\n", err)
 		} else {
+			newBlock.Confirmations += 1
 			bc.info.Latest = newBlock.Hash()
 			bc.info.Total = bc.info.Total + 1
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size

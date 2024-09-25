@@ -31,6 +31,7 @@ func Genesis() Block {
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
 	genesisBlock.Transactions = []types.GTransaction{}
+	genesisBlock.Confirmations = 10001
 	//make([]common.Hash, 0)
 	var finalSize = unsafe.Sizeof(genesisBlock)
 	genesisBlock.Head.Size = int(finalSize)
