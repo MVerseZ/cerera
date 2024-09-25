@@ -236,6 +236,11 @@ func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
 }
 
+func (bc Chain) UpdateChain(b block.Block) {
+	fmt.Println(bc.currentBlock.Head.Number)
+	fmt.Println(b.Head.Number)
+}
+
 // return lenght of array
 func ValidateBlocks(blocks []block.Block) (int, error) {
 	var vld = validator.Get()

@@ -75,7 +75,6 @@ func CalculateProposals(c *Consensus) float64 {
 		return 0.5
 	}
 	var newProposalW = ((float64(len(c.Nodes)) / 2) + 1) / float64(len(c.Nodes))
-	fmt.Printf("NEW PROPOSAL COEFFICIENT:%f\r\n", newProposalW)
 	c.CurrentProposalsPercent = newProposalW
 	return newProposalW
 }

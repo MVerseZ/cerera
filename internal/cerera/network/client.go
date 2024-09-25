@@ -124,6 +124,7 @@ func customHandleConnectionClient(conn net.Conn) {
 					return
 				}
 				fmt.Println(b.Hash())
+				chain.GetBlockChain().UpdateChain(b)
 			}
 
 		case string:
