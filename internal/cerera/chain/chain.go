@@ -90,7 +90,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
 		Size:      0,
 	}
-
+	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	bch = Chain{
 		autoGen:        cfg.AUTOGEN,
 		chainId:        cfg.Chain.ChainID,

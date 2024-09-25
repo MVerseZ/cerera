@@ -270,7 +270,7 @@ func customHandleConnection(conn net.Conn) {
 				}
 				fmt.Println(diff)
 				var ch = chain.GetBlockChain()
-				for i := 0; i < int(diff); i++ {
+				for i := 0; i < int(diff)+1; i++ {
 					var bh = ch.GetBlockHash(i)
 					var b = ch.GetBlock(bh)
 
@@ -282,6 +282,7 @@ func customHandleConnection(conn net.Conn) {
 						fmt.Println("failed to encode data:", err)
 						return
 					}
+
 				}
 			}
 		} else {
