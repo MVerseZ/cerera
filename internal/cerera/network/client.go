@@ -13,7 +13,8 @@ import (
 )
 
 type Client struct {
-	addr types.Address
+	addr   types.Address
+	status byte
 }
 
 var client Client
@@ -31,7 +32,8 @@ func InitClient(cereraAddress types.Address) {
 	defer c.Close()
 
 	client = Client{
-		addr: cereraAddress,
+		addr:   cereraAddress,
+		status: 0x1,
 	}
 
 	go customHandleConnectionClient(c)
@@ -77,36 +79,53 @@ func customHandleConnectionClient(conn net.Conn) {
 
 		switch v := result.(type) {
 		case map[string]interface{}:
-			tmpJson, err := json.Marshal(v)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			var b block.Block
-			if err := json.Unmarshal(tmpJson, &b); err != nil {
-				fmt.Println(err)
-				return
-			}
-			//fmt.Printf("block: %s\r\n", b.Hash())
-			var currentBlock = chain.GetBlockChain().GetLatestBlock()
-			// fmt.Println(currentBlock.GetLatestBlock().Hash())
-			// fmt.Println(b.Hash())
-			if b.Hash().String() != currentBlock.Hash().String() {
-				if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
-					var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
-					var reqParams = []interface{}{diff}
-					hReq := Request{
-						JSONRPC: "2.0",
-						Method:  "cerera.consensus.sync",
-						Params:  reqParams,
-						ID:      5422899110,
-					}
-					if err := enc.Encode(&hReq); err != nil {
-						fmt.Println("failed to encode data:", err)
-						return
+			if client.status == 0x1 {
+				tmpJson, err := json.Marshal(v)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				var b block.Block
+				if err := json.Unmarshal(tmpJson, &b); err != nil {
+					fmt.Println(err)
+					return
+				}
+				//fmt.Printf("block: %s\r\n", b.Hash())
+				var currentBlock = chain.GetBlockChain().GetLatestBlock()
+				// fmt.Println(currentBlock.GetLatestBlock().Hash())
+				// fmt.Println(b.Hash())
+				if b.Hash().String() != currentBlock.Hash().String() {
+					if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
+						var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
+						var reqParams = []interface{}{diff}
+						hReq := Request{
+							JSONRPC: "2.0",
+							Method:  "cerera.consensus.sync",
+							Params:  reqParams,
+							ID:      5422899110,
+						}
+						if err := enc.Encode(&hReq); err != nil {
+							fmt.Println("failed to encode data:", err)
+							return
+						}
 					}
 				}
+				client.status = 0x2
 			}
+			if client.status == 0x2 {
+				tmpJson, err := json.Marshal(v)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				var b block.Block
+				if err := json.Unmarshal(tmpJson, &b); err != nil {
+					fmt.Println(err)
+					return
+				}
+				fmt.Println(b.Hash())
+			}
+
 		case string:
 			fmt.Printf("block_str: %s\r\n", v)
 		case float64:
