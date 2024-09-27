@@ -53,7 +53,11 @@ func InitBlockChain(cfg *config.Config) Chain {
 	genesisBlock := block.Genesis()
 	dataBlocks := make([]block.Block, 0)
 
-	var t *trie.MerkleTree
+	var (
+		t         *trie.MerkleTree
+		chainWork = 0
+		total     = 0
+	)
 	if cfg.Chain.Path == "EMPTY" {
 		var list []trie.Content
 		list = append(list, genesisBlock)
@@ -78,6 +82,10 @@ func InitBlockChain(cfg *config.Config) Chain {
 		var list []trie.Content
 		for _, v := range dataBlocks {
 			list = append(list, v)
+			total += 1
+			chainWork += v.Head.Size
+			// 		bc.info.Total = bc.info.Total + 1
+			// bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 		}
 
 		t, _ = trie.NewTree(list)
@@ -85,8 +93,8 @@ func InitBlockChain(cfg *config.Config) Chain {
 	}
 
 	stats := BlockChainStatus{
-		Total:     0,
-		ChainWork: 0,
+		Total:     total,
+		ChainWork: chainWork,
 		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
 		Size:      0,
 	}
@@ -96,7 +104,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(30 * time.Minute)),
+		blockTicker:    time.NewTicker(time.Duration(1 * time.Minute)),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
@@ -172,18 +180,17 @@ func (bc *Chain) G(latest *block.Block) {
 	var pool = pool.Get()
 
 	head := &block.Header{
-		Ctx:           latest.Header().Ctx,
-		Difficulty:    latest.Header().Difficulty,
-		Extra:         []byte("OP_AUTO_GEN_BLOCK_DAT"),
-		Height:        latest.Header().Height + 1,
-		Index:         latest.Header().Index + 1,
-		Timestamp:     uint64(time.Now().UnixMilli()),
-		Number:        big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
-		PrevHash:      bc.info.Latest,
-		Confirmations: 1,
-		Node:          bc.currentAddress,
-		Root:          latest.Header().Root,
-		GasLimit:      latest.Head.GasLimit, // todo get gas limit dynamically
+		Ctx:        latest.Header().Ctx,
+		Difficulty: latest.Header().Difficulty,
+		Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
+		Height:     latest.Header().Height + 1,
+		Index:      latest.Header().Index + 1,
+		Timestamp:  uint64(time.Now().UnixMilli()),
+		Number:     big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
+		PrevHash:   bc.info.Latest,
+		Node:       bc.currentAddress,
+		Root:       latest.Header().Root,
+		GasLimit:   latest.Head.GasLimit, // todo get gas limit dynamically
 	}
 	// cpy version, should store elsewhere
 	head.V = latest.Head.V
@@ -212,7 +219,6 @@ func (bc *Chain) G(latest *block.Block) {
 		if err != nil || !t {
 			log.Printf("Verifying trie error: %s\r\n", err)
 		} else {
-			newBlock.Confirmations += 1
 			bc.info.Latest = newBlock.Hash()
 			bc.info.Total = bc.info.Total + 1
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
@@ -246,7 +252,6 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 		ClearVault()
 		bc.data = nil
 	}
-	newBlock.Confirmations += 1
 	bc.data = append(bc.data, *newBlock)
 	fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Number, newBlock.Hash())
 

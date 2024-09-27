@@ -10,18 +10,17 @@ import (
 
 func Genesis() Block {
 	var genesisHeader = &Header{
-		Ctx:           17,
-		Difficulty:    big.NewInt(11111111111),
-		Extra:         []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
-		Height:        0,
-		Timestamp:     uint64(time.Now().UnixMilli()),
-		GasLimit:      250000,
-		GasUsed:       249999,
-		Number:        big.NewInt(0),
-		Confirmations: 1,
-		Node:          types.EmptyAddress(),
-		Size:          0,
-		V:             "ALPHA-0.0.1",
+		Ctx:        17,
+		Difficulty: big.NewInt(11111111111),
+		Extra:      []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
+		Height:     0,
+		Timestamp:  uint64(time.Now().UnixMilli()),
+		GasLimit:   250000,
+		GasUsed:    249999,
+		Number:     big.NewInt(0),
+		Node:       types.EmptyAddress(),
+		Size:       0,
+		V:          "ALPHA-0.0.1",
 	}
 
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
@@ -31,7 +30,6 @@ func Genesis() Block {
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
 	genesisBlock.Transactions = []types.GTransaction{}
-	genesisBlock.Confirmations = 10001
 	//make([]common.Hash, 0)
 	var finalSize = unsafe.Sizeof(genesisBlock)
 	genesisBlock.Head.Size = int(finalSize)

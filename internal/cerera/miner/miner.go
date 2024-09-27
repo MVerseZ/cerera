@@ -29,10 +29,9 @@ func MineBlock(latest *block.Block, addr types.Address) {
 		Timestamp:  uint64(time.Now().UnixMilli()),
 		Number:     big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
 		// PrevHash:      bc.info.Latest,
-		Confirmations: 1,
-		Node:          addr,
-		Root:          latest.Header().Root,
-		GasLimit:      latest.Head.GasLimit, // todo get gas limit dynamically
+		Node:     addr,
+		Root:     latest.Header().Root,
+		GasLimit: latest.Head.GasLimit, // todo get gas limit dynamically
 	}
 	fmt.Println(head)
 }
