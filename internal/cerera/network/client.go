@@ -23,7 +23,8 @@ var (
 )
 
 func InitClient(cereraAddress types.Address) {
-	c, err := net.Dial("tcp", "addr")
+	time.Sleep(5 * time.Second)
+	c, err := net.Dial("tcp", "10.0.85.2:6116")
 
 	if err != nil {
 		fmt.Println(err)
@@ -76,7 +77,7 @@ func customHandleConnectionClient(conn net.Conn) {
 		}
 		// result
 		result := resp.Result
-
+		fmt.Printf("Current client status: %x\r\n", client.status)
 		switch v := result.(type) {
 		case map[string]interface{}:
 
@@ -92,26 +93,36 @@ func customHandleConnectionClient(conn net.Conn) {
 					fmt.Println(err)
 					return
 				}
-				//fmt.Printf("block: %s\r\n", b.Hash())
-				var currentBlock = chain.GetBlockChain().GetLatestBlock()
+
 				// fmt.Println(currentBlock.GetLatestBlock().Hash())
 				// fmt.Println(b.Hash())
+
+				var syncParams []interface{}
+				fmt.Println("METHOD WITH CHAIN")
+				var currentBlock = chain.GetBlockChain().GetLatestBlock()
 				if b.Hash().String() != currentBlock.Hash().String() {
 					if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
 						var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
-						var reqParams = []interface{}{diff}
-						hReq := Request{
-							JSONRPC: "2.0",
-							Method:  "cerera.consensus.sync",
-							Params:  reqParams,
-							ID:      5422899110,
-						}
-						if err := enc.Encode(&hReq); err != nil {
-							fmt.Println("failed to encode data:", err)
-							return
-						}
+						syncParams = []interface{}{diff}
+					} else {
+						syncParams = []interface{}{0}
 					}
+				} else {
+					syncParams = []interface{}{currentBlock.Head.Number}
 				}
+				hReq := Request{
+					JSONRPC: "2.0",
+					Method:  "cerera.consensus.sync",
+					Params:  syncParams,
+					ID:      5422899110,
+				}
+				if err := enc.Encode(&hReq); err != nil {
+					fmt.Println("failed to encode data:", err)
+					return
+				}
+
+				// 	}
+				// }
 				client.status = 0x2
 			case 0x2:
 				tmpJson, err := json.Marshal(v)
@@ -124,7 +135,11 @@ func customHandleConnectionClient(conn net.Conn) {
 					fmt.Println(err)
 					return
 				}
-				chain.GetBlockChain().UpdateChain(&b)
+				fmt.Println("METHOD WITH CHAIN")
+				// chain.GetBlockChain().UpdateChain(&b)
+				client.status += 1
+			case 0x3:
+				fmt.Println("Client with status 0x3 receive message")
 			default:
 
 			}
@@ -133,7 +148,14 @@ func customHandleConnectionClient(conn net.Conn) {
 			fmt.Printf("block_str: %s\r\n", v)
 		case float64:
 			fmt.Printf("cons stat: %f\r\n", v)
+		case map[string]map[string]interface{}:
+			fmt.Printf("SWARM BLOCKS\r\n")
+		case interface{}:
+			fmt.Printf("SWARM BLOCKS ARR\r\n")
+			// receive blocks and fullfilled chain
+			client.status += 1
 		default:
+			fmt.Println(v)
 			fmt.Println("unknown")
 		}
 	}

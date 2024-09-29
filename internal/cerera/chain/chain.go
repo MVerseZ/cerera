@@ -104,12 +104,13 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(1 * time.Minute)),
+		blockTicker:    time.NewTicker(time.Duration(1 * time.Second)),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
 		t:              t,
+		DataChannel:    make(chan []byte),
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	go bch.BlockGenerator()

@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/Arceliar/phony"
-	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/pallada/pallada"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/multiformats/go-multiaddr"
@@ -42,9 +42,11 @@ type Host struct {
 
 	// Network graph data
 	peers []net.Addr
+	// connection <-->
+	conn net.Conn
 }
 
-var h *Host
+var cereraHost *Host
 
 // Node interface defines the structure of a Node in the network
 type Node interface {
@@ -73,15 +75,15 @@ func CheckIPAddressType(ip string) int {
 // InitNetworkHost initializes a new host struct
 func InitNetworkHost(ctx context.Context, cfg config.Config) {
 
-	h = &Host{
+	cereraHost = &Host{
 		Status:  0x1,
 		NetType: 0x1,
 		peers:   make([]net.Addr, 0),
 	}
 
 	// init rpc requests handling in
-	h.SetUpHttp(ctx, cfg)
-	h.Status = h.Status << 1
+	cereraHost.SetUpHttp(ctx, cfg)
+	cereraHost.Status = cereraHost.Status << 1
 
 	// Find local IP addresses
 	addrs, err := net.InterfaceAddrs()
@@ -105,14 +107,14 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	if err != nil {
 		panic(err)
 	}
-	h.Status = h.Status << 1
+	cereraHost.Status = cereraHost.Status << 1
 	fmt.Printf("Start network host at: %s with cerera address: %s\r\n",
 		listener.Addr(), cfg.NetCfg.ADDR)
 	consensus.Add(listener.Addr(), cfg.NetCfg.ADDR)
 	fmt.Printf("Init client...")
 	go InitClient(cfg.NetCfg.ADDR)
 	fmt.Printf("Consensus status: %f\r\n", consensus.ConsensusStatus())
-	fmt.Printf("Status: %x\r\n", h.Status)
+	fmt.Printf("Status: %x\r\n", cereraHost.Status)
 	fmt.Printf("Wait for peers...\r\n")
 
 	for {
@@ -124,7 +126,7 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 		}
 		var remoteAddr = incomingConnection.RemoteAddr()
 		fmt.Printf("Client is: %s\r\n", remoteAddr)
-		h.peers = append(h.peers, remoteAddr)
+		cereraHost.peers = append(cereraHost.peers, remoteAddr)
 		go customHandleConnection(incomingConnection)
 	}
 
@@ -246,45 +248,33 @@ func customHandleConnection(conn net.Conn) {
 		}
 		// result
 		result := req.Method
+
 		if strings.Contains(result, "consensus") {
 			resp.ID = req.ID
 			resp.JSONRPC = req.JSONRPC
 			params := req.Params
 			fmt.Println(result)
 			fmt.Println(params...)
-			resp.Result = consensus.HandleConsensusRequest(conn.RemoteAddr(), req.Method, req.Params)
-			if strings.Contains(result, "join") {
-				var latestResp Response
-				latestResp.ID = req.ID
-				latestResp.JSONRPC = req.JSONRPC
-				latestResp.Result = chain.GetBlockChain().GetLatestBlock()
-				if err := enc.Encode(&latestResp); err != nil {
-					fmt.Println("failed to encode data:", err)
-					return
-				}
-			}
-			if strings.Contains(result, "sync") {
-				diff, ok1 := params[0].(float64)
-				if !ok1 {
-					panic(ok1)
-				}
-				fmt.Println(diff)
-				var ch = chain.GetBlockChain()
-				for i := 0; i < int(diff)+1; i++ {
-					var bh = ch.GetBlockHash(i)
-					var b = ch.GetBlock(bh)
 
-					var syncResp Response
-					syncResp.ID = req.ID
-					syncResp.JSONRPC = req.JSONRPC
-					syncResp.Result = b
-					if err := enc.Encode(&syncResp); err != nil {
-						fmt.Println("failed to encode data:", err)
-						return
-					}
-
-				}
+			var latestResp Response
+			latestResp.ID = req.ID
+			latestResp.JSONRPC = req.JSONRPC
+			latestResp.Result = pallada.Execute(result, params)
+			// switch result.(type) {
+			// case string:
+			// 	fmt.Println("Sttring")
+			// case block.Block:
+			// 	fmt.Println("Block")
+			// case common.Hash:
+			// 	fmt.Println("Hash")
+			// default:
+			// 	fmt.Println("Unknown")
+			// }
+			if err := enc.Encode(&latestResp); err != nil {
+				fmt.Println("failed to encode data:", err)
+				return
 			}
+
 		} else {
 			fmt.Println("send default response:", resp)
 			// encode result to JSON array
@@ -294,4 +284,9 @@ func customHandleConnection(conn net.Conn) {
 			}
 		}
 	}
+
+}
+
+func Test(data []byte) {
+
 }

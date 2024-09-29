@@ -1,6 +1,7 @@
 package pallada
 
 import (
+	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/pool"
@@ -185,6 +186,19 @@ func Execute(method string, params []interface{}) interface{} {
 		pld.Data = "Cerera configuration: "
 	case "cerera.control.ipconfig":
 		pld.Data = "Cerera network configuration: "
+	case "cerera.consensus.join":
+		// guest use latest block for sync
+		pld.Data = bc.GetLatestBlock()
+	case "cerera.consensus.sync":
+		diff, ok1 := params[0].(float64)
+		if !ok1 {
+			panic(ok1)
+		}
+		var diffBlocks = make([]*block.Block, 0)
+		for i := 0; i < int(diff)+1; i++ {
+			diffBlocks = append(diffBlocks, bc.GetBlock(bc.GetBlockHash(i)))
+		}
+		pld.Data = diffBlocks
 	default:
 		pld.Data = "Method not supported"
 	}
