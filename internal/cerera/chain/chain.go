@@ -43,7 +43,10 @@ type Chain struct {
 	DataChannel    chan []byte
 }
 
-var bch Chain
+var (
+	bch        Chain
+	BLOCKTIMER = time.Duration(1 * time.Second)
+)
 
 func GetBlockChain() *Chain {
 	return &bch
@@ -104,7 +107,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(1 * time.Second)),
+		blockTicker:    time.NewTicker(BLOCKTIMER),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
@@ -265,6 +268,14 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	bc.info.Latest = newBlock.Hash()
 	bc.info.Total = bc.info.Total + 1
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+}
+
+func (bc *Chain) Idle() {
+	bc.autoGen = false
+}
+
+func (bc *Chain) Resume() {
+	bc.autoGen = true
 }
 
 // return lenght of array

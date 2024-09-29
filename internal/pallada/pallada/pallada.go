@@ -188,6 +188,7 @@ func Execute(method string, params []interface{}) interface{} {
 		pld.Data = "Cerera network configuration: "
 	case "cerera.consensus.join":
 		// guest use latest block for sync
+		bc.Idle()
 		pld.Data = bc.GetLatestBlock()
 	case "cerera.consensus.sync":
 		diff, ok1 := params[0].(float64)
@@ -199,6 +200,12 @@ func Execute(method string, params []interface{}) interface{} {
 			diffBlocks = append(diffBlocks, bc.GetBlock(bc.GetBlockHash(i)))
 		}
 		pld.Data = diffBlocks
+	case "cerera.consensus.ready":
+		// bc.Resume()
+		// guest use latest block for sync
+		pld.Data = bc.GetLatestBlock().Nonce
+	case "cerera.consensus.block":
+
 	default:
 		pld.Data = "Method not supported"
 	}
