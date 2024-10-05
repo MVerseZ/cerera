@@ -216,6 +216,8 @@ func (bc *Chain) G(latest *block.Block) {
 	newBlock.Head.Size = int(finalSize)
 	newBlock.Head.GasUsed += uint64(finalSize)
 
+	// bc.DataChannel <- newBlock.ToBytes()
+
 	if vld.ValidateBlock(*newBlock) {
 		bc.data = append(bc.data, *newBlock)
 		bc.t.Add(newBlock)

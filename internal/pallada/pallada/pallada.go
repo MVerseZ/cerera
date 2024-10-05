@@ -1,6 +1,8 @@
 package pallada
 
 import (
+	"fmt"
+
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
@@ -30,7 +32,7 @@ func Execute(method string, params []interface{}) interface{} {
 	if (Pallada{}) == pld {
 		Prepare()
 	}
-
+	fmt.Printf("Request: %s\r\n", method)
 	// get inner components
 	// there is singletons and when call Get* returns struct of component
 	var vlt = storage.GetVault()
@@ -188,22 +190,34 @@ func Execute(method string, params []interface{}) interface{} {
 		pld.Data = "Cerera network configuration: "
 	case "cerera.consensus.join":
 		// guest use latest block for sync
-		bc.Idle()
-		pld.Data = bc.GetLatestBlock()
+		if len(params) != 1 {
+			pld.Data = "Wrong count of params"
+		} else {
+			addrStr, ok1 := params[0].(string)
+			if !ok1 {
+				pld.Data = "Error parse params"
+				return 0xf
+			} else {
+				var cereraClientAddress = types.HexToAddress(addrStr)
+				fmt.Printf("Address: %s\r\n", cereraClientAddress)
+				bc.Idle()
+				pld.Data = fmt.Sprintf("LATEST#%d", bc.GetLatestBlock().Head.Index)
+			}
+		}
 	case "cerera.consensus.sync":
-		diff, ok1 := params[0].(float64)
-		if !ok1 {
-			panic(ok1)
+		var result = make([]*block.Block, 0)
+		for i := 0; i < bc.GetLatestBlock().Head.Height; i++ {
+			var h = bc.GetBlockHash(i)
+			var b = bc.GetBlock(h)
+			result = append(result, b)
 		}
-		var diffBlocks = make([]*block.Block, 0)
-		for i := 0; i < int(diff)+1; i++ {
-			diffBlocks = append(diffBlocks, bc.GetBlock(bc.GetBlockHash(i)))
-		}
-		pld.Data = diffBlocks
+		pld.Data = result
+	case "cerera.consensus.done":
+		pld.Data = "DONE"
 	case "cerera.consensus.ready":
-		// bc.Resume()
+		bc.Resume()
 		// guest use latest block for sync
-		pld.Data = bc.GetLatestBlock().Nonce
+		pld.Data = bc.GetLatestBlock().Hash()
 	case "cerera.consensus.block":
 
 	default:
@@ -211,3 +225,154 @@ func Execute(method string, params []interface{}) interface{} {
 	}
 	return pld.Data
 }
+
+func ExecuteChain(req types.Request, resp types.Response) types.Request {
+	// get inner components
+	// there is singletons and when call Get* returns struct of component
+	// var vlt = storage.GetVault()
+	var bc = chain.GetBlockChain()
+	// var vldtr = validator.Get()
+	// var p = pool.Get()
+	// var traceReqs []types.Request
+	fmt.Printf("Chain of: %s - %d\r\n", req.Method, resp.ID)
+	if req.Method == "cerera.consensus.join" {
+		bc.Idle()
+		// var cnt, err = strconv.Atoi(strings.Split(resp.Result.(string), "#")[1])
+		// if err != nil {
+		// 	return nil
+		// }
+		// for i := 0; i < cnt; i++ {
+		var reqParams = []interface{}{}
+		return types.Request{
+			JSONRPC: "2.0",
+			Method:  "cerera.consensus.sync",
+			Params:  reqParams,
+			ID:      485649652556,
+		}
+		// 	traceReqs = append(traceReqs, packReq)
+		// }
+		// return traceReqs
+	}
+	if req.Method == "cerera.consensus.sync" {
+		var reqParams = []interface{}{}
+		return types.Request{
+			JSONRPC: "2.0",
+			Method:  "cerera.consensus.done",
+			Params:  reqParams,
+			ID:      485649652557,
+		}
+	}
+	var reqParams = []interface{}{}
+	return types.Request{
+		JSONRPC: "2.0",
+		Method:  "cerera.consensus.done",
+		Params:  reqParams,
+		ID:      485649652558,
+	}
+}
+
+func SyncRequest() types.Request {
+	var reqParams = []interface{}{}
+	hReq := types.Request{
+		JSONRPC: "2.0",
+		Method:  "cerera.consensus.sync",
+		Params:  reqParams,
+		ID:      5786965128189,
+	}
+	return hReq
+}
+
+// func HandleResponse(resp types.Response) {
+// 	result := resp.Result
+// 	fmt.Printf("Current client status: %x\r\n", client.status)
+// 	switch v := result.(type) {
+// 	case map[string]interface{}:
+
+// 		switch s := client.status; s {
+// 		case 0x1:
+// 			tmpJson, err := json.Marshal(v)
+// 			if err != nil {
+// 				fmt.Println(err)
+// 				continue
+// 			}
+// 			var b block.Block
+// 			if err := json.Unmarshal(tmpJson, &b); err != nil {
+// 				fmt.Println(err)
+// 				return
+// 			}
+
+// 			// fmt.Println(currentBlock.GetLatestBlock().Hash())
+// 			// fmt.Println(b.Hash())
+
+// 			var syncParams []interface{}
+// 			fmt.Println("METHOD WITH CHAIN")
+// 			var currentBlock = chain.GetBlockChain().GetLatestBlock()
+// 			if b.Hash().String() != currentBlock.Hash().String() {
+// 				if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
+// 					var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
+// 					syncParams = []interface{}{diff}
+// 				} else {
+// 					syncParams = []interface{}{0}
+// 				}
+// 			} else {
+// 				syncParams = []interface{}{currentBlock.Head.Number}
+// 			}
+// 			hReq := Request{
+// 				JSONRPC: "2.0",
+// 				Method:  "cerera.consensus.sync",
+// 				Params:  syncParams,
+// 				ID:      5422899110,
+// 			}
+// 			if err := enc.Encode(&hReq); err != nil {
+// 				fmt.Println("failed to encode data:", err)
+// 				return
+// 			}
+
+// 			// 	}
+// 			// }
+// 			client.status = 0x2
+// 		case 0x2:
+// 			tmpJson, err := json.Marshal(v)
+// 			if err != nil {
+// 				fmt.Println(err)
+// 				continue
+// 			}
+// 			var b block.Block
+// 			if err := json.Unmarshal(tmpJson, &b); err != nil {
+// 				fmt.Println(err)
+// 				return
+// 			}
+// 			fmt.Println("METHOD WITH CHAIN")
+// 			// chain.GetBlockChain().UpdateChain(&b)
+// 			client.status += 1
+// 		default:
+// 			fmt.Printf("Response map default client status\r\n")
+// 		}
+
+// 	case string:
+// 		var h = common.HexToHash(v)
+// 		fmt.Printf("block_str: %s\r\n", h)
+// 	case float64:
+// 		fmt.Printf("cons stat: %f\r\n", v)
+// 	case map[string]map[string]interface{}:
+// 		fmt.Printf("SWARM BLOCKS\r\n")
+// 	case interface{}:
+// 		fmt.Printf("SWARM BLOCKS ARR\r\n")
+// 		// receive blocks and fullfilled chain
+
+// 		hReq := Request{
+// 			JSONRPC: "2.0",
+// 			Method:  "cerera.consensus.ready",
+// 			Params:  nil,
+// 			ID:      5422899110,
+// 		}
+// 		if err := enc.Encode(&hReq); err != nil {
+// 			fmt.Println("failed to encode data:", err)
+// 			return
+// 		}
+// 		client.status += 1
+// 	default:
+// 		fmt.Println(v)
+// 		fmt.Println("unknown")
+// 	}
+// }

@@ -170,6 +170,5 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
 	// move logic to consensus
-
 	return consensus.ConfirmBlock(b)
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/btcsuite/websocket"
+	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/pallada/pallada"
 )
 
@@ -35,7 +36,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			return
 		}
 
-		var request Request
+		var request types.Request
 		err = json.Unmarshal(body, &request)
 		if err != nil {
 			fmt.Println(err)
@@ -48,7 +49,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		// fmt.Printf("Result byte is:%x\r\n", result)
 		pallada.Execute(request.Method, request.Params)
 
-		var response = Response{
+		var response = types.Response{
 			Result: pallada.GetData(),
 		}
 
@@ -120,28 +121,11 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 
 			// Обработка сообщения и генерация ответа
 			// В этом примере просто отправляем обратно полученное сообщение
-			var request Request
-			var response Response
+			var request types.Request
+			var response types.Response
 			response.JSONRPC = "2.0"
 			response.ID = request.ID
 			err = json.Unmarshal(message, &request)
 		}
 	}
-}
-
-type Request struct {
-	JSONRPC string        `json:"jsonrpc"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
-	ID      int           `json:"id"`
-}
-type Response struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result"`
-	ID      int         `json:"id"`
-	Error   *Error      `json:"error,omitempty"`
-}
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
 }

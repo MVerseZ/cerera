@@ -5,17 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Arceliar/phony"
-	"github.com/cerera/internal/cerera/block"
-	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/types"
@@ -46,8 +42,6 @@ type Host struct {
 
 	// Network graph data
 	peers []net.Addr
-	// connection <-->
-	conn net.Conn
 }
 
 var cereraHost *Host
@@ -87,7 +81,6 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 
 	// init rpc requests handling in
 	cereraHost.SetUpHttp(ctx, cfg)
-	cereraHost.Status = cereraHost.Status << 1
 
 	// Find local IP addresses
 	addrs, err := net.InterfaceAddrs()
@@ -111,12 +104,14 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	if err != nil {
 		panic(err)
 	}
-	cereraHost.Status = cereraHost.Status << 1
 	fmt.Printf("Start network host at: %s with cerera address: %s\r\n",
 		listener.Addr(), cfg.NetCfg.ADDR)
+
 	consensus.Add(listener.Addr(), cfg.NetCfg.ADDR)
+
 	fmt.Printf("Init client...")
 	go InitClient(cfg.NetCfg.ADDR)
+
 	fmt.Printf("Consensus status: %f\r\n", consensus.ConsensusStatus())
 	fmt.Printf("Status: %x\r\n", cereraHost.Status)
 	fmt.Printf("Wait for peers...\r\n")
@@ -244,39 +239,24 @@ func customHandleConnection(conn net.Conn) {
 	// command-loop
 	for {
 		// Next decode the incoming data into Go value
-		var req Request
-		var resp Response
+		var req types.Request
+		var res types.Response
 		if err := dec.Decode(&req); err != nil {
 			log.Println("failed to unmarshal request:", err)
 			return
 		}
 		// result
-		result := req.Method
+		method := req.Method
+		params := req.Params
 
-		if strings.Contains(result, "consensus") {
-			resp.ID = req.ID
-			resp.JSONRPC = req.JSONRPC
-			params := req.Params
-			fmt.Println(result)
-			fmt.Println(params...)
-
-			var latestResp Response
-			latestResp.ID = req.ID
-			latestResp.JSONRPC = req.JSONRPC
-			latestResp.Result = pallada.Execute(result, params)
-			if err := enc.Encode(&latestResp); err != nil {
-				fmt.Println("failed to encode data:", err)
-				return
-			}
-
-		} else {
-			fmt.Println("send default response:", resp)
-			// encode result to JSON array
-			if err := enc.Encode(&resp); err != nil {
-				fmt.Println("failed to encode data:", err)
-				return
-			}
+		res.ID = req.ID
+		res.JSONRPC = req.JSONRPC
+		res.Result = pallada.Execute(method, params)
+		if err := enc.Encode(&res); err != nil {
+			fmt.Println("failed to encode data:", err)
+			return
 		}
+
 	}
 
 }
@@ -295,7 +275,7 @@ var (
 
 func InitClient(cereraAddress types.Address) {
 	time.Sleep(5 * time.Second)
-	c, err := net.Dial("tcp", "172.23.32.1:6116")
+	c, err := net.Dial("tcp", "10.0.85.2:6116")
 
 	if err != nil {
 		fmt.Println(err)
@@ -307,13 +287,7 @@ func InitClient(cereraAddress types.Address) {
 		addr:   cereraAddress,
 		status: 0x1,
 	}
-
-	go customHandleConnectionClient(c)
-
-	for {
-		//time.Sleep(pollMinutes * time.Minute)
-		time.Sleep(time.Duration(3) * time.Second)
-	}
+	customHandleConnectionClient(c)
 }
 
 func customHandleConnectionClient(conn net.Conn) {
@@ -325,118 +299,42 @@ func customHandleConnectionClient(conn net.Conn) {
 
 	dec := json.NewDecoder(conn)
 	enc := json.NewEncoder(conn)
+	var req types.Request
+	var resp types.Response
 
-	var resp Response
 	var reqParams = []interface{}{client.addr}
-	hReq := Request{
+	req = types.Request{
 		JSONRPC: "2.0",
 		Method:  "cerera.consensus.join",
 		Params:  reqParams,
 		ID:      5422899109,
 	}
-
-	if err := enc.Encode(&hReq); err != nil {
+	if err := enc.Encode(&req); err != nil {
 		fmt.Println("failed to encode data:", err)
 		return
 	}
 
 	for {
-
 		if err := dec.Decode(&resp); err != nil {
-			fmt.Println("failed to unmarshal request:", err)
+			log.Println("failed to unmarshal request:", err)
 			return
 		}
-		// result
-		result := resp.Result
-		fmt.Printf("Current client status: %x\r\n", client.status)
-		switch v := result.(type) {
-		case map[string]interface{}:
+		// fmt.Printf("Result on client %s\r\n", resp.Result)
 
-			switch s := client.status; s {
-			case 0x1:
-				tmpJson, err := json.Marshal(v)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				var b block.Block
-				if err := json.Unmarshal(tmpJson, &b); err != nil {
-					fmt.Println(err)
-					return
-				}
+		// switch resp.Result.(type) {
+		// case []block.Block:
+		// 	fmt.Println("HERE")
+		// default:
+		// 	fmt.Println("DEFAULT")
+		// }
 
-				// fmt.Println(currentBlock.GetLatestBlock().Hash())
-				// fmt.Println(b.Hash())
-
-				var syncParams []interface{}
-				fmt.Println("METHOD WITH CHAIN")
-				var currentBlock = chain.GetBlockChain().GetLatestBlock()
-				if b.Hash().String() != currentBlock.Hash().String() {
-					if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
-						var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
-						syncParams = []interface{}{diff}
-					} else {
-						syncParams = []interface{}{0}
-					}
-				} else {
-					syncParams = []interface{}{currentBlock.Head.Number}
-				}
-				hReq := Request{
-					JSONRPC: "2.0",
-					Method:  "cerera.consensus.sync",
-					Params:  syncParams,
-					ID:      5422899110,
-				}
-				if err := enc.Encode(&hReq); err != nil {
-					fmt.Println("failed to encode data:", err)
-					return
-				}
-
-				// 	}
-				// }
-				client.status = 0x2
-			case 0x2:
-				tmpJson, err := json.Marshal(v)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				var b block.Block
-				if err := json.Unmarshal(tmpJson, &b); err != nil {
-					fmt.Println(err)
-					return
-				}
-				fmt.Println("METHOD WITH CHAIN")
-				// chain.GetBlockChain().UpdateChain(&b)
-				client.status += 1
-			default:
-
-			}
-
-		case string:
-			fmt.Printf("block_str: %s\r\n", v)
-		case float64:
-			fmt.Printf("cons stat: %f\r\n", v)
-		case map[string]map[string]interface{}:
-			fmt.Printf("SWARM BLOCKS\r\n")
-		case interface{}:
-			fmt.Printf("SWARM BLOCKS ARR\r\n")
-			// receive blocks and fullfilled chain
-
-			hReq := Request{
-				JSONRPC: "2.0",
-				Method:  "cerera.consensus.ready",
-				Params:  nil,
-				ID:      5422899110,
-			}
-			if err := enc.Encode(&hReq); err != nil {
+		if resp.Result != "DONE" {
+			var traceReq = pallada.ExecuteChain(req, resp)
+			if err := enc.Encode(&traceReq); err != nil {
 				fmt.Println("failed to encode data:", err)
 				return
 			}
-			client.status += 1
-		default:
-			fmt.Println(v)
-			fmt.Println("unknown")
+			req = traceReq
 		}
 	}
 }

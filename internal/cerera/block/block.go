@@ -22,7 +22,7 @@ type Header struct {
 	GasLimit   uint64        `json:"gasLimit"         gencodec:"required"`
 	GasUsed    uint64        `json:"gasUsed"          gencodec:"required"`
 	Height     int           `json:"height" gencodec:"required"`
-	Index      int           `json:"index" gencodec:"required"`
+	Index      uint64        `json:"index" gencodec:"required"`
 	Node       types.Address `json:"node" gencodec:"required"`
 	Number     *big.Int      `json:"number"           gencodec:"required"`
 	PrevHash   common.Hash   `json:"prevHash" gencodec:"required"`
