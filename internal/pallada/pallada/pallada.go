@@ -199,9 +199,13 @@ func Execute(method string, params []interface{}) interface{} {
 				return 0xf
 			} else {
 				var cereraClientAddress = types.HexToAddress(addrStr)
-				fmt.Printf("Address: %s\r\n", cereraClientAddress)
-				bc.Idle()
-				pld.Data = fmt.Sprintf("LATEST#%d", bc.GetLatestBlock().Head.Index)
+				if vldtr.CheckAddress(cereraClientAddress) {
+					fmt.Printf("Address: %s\r\n", cereraClientAddress)
+					bc.Idle()
+					pld.Data = fmt.Sprintf("LATEST#%d", bc.GetLatestBlock().Head.Index)
+				} else {
+					pld.Data = "DONE"
+				}
 			}
 		}
 	case "cerera.consensus.sync":
