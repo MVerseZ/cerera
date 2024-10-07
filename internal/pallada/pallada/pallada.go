@@ -1,6 +1,7 @@
 package pallada
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/cerera/internal/cerera/block"
@@ -210,7 +211,7 @@ func Execute(method string, params []interface{}) interface{} {
 		}
 	case "cerera.consensus.sync":
 		var result = make([]*block.Block, 0)
-		for i := 0; i < bc.GetLatestBlock().Head.Height; i++ {
+		for i := 0; i < bc.GetLatestBlock().Head.Height+1; i++ {
 			var h = bc.GetBlockHash(i)
 			var b = bc.GetBlock(h)
 			result = append(result, b)
@@ -258,6 +259,28 @@ func ExecuteChain(req types.Request, resp types.Response) types.Request {
 		// return traceReqs
 	}
 	if req.Method == "cerera.consensus.sync" {
+		switch t := resp.Result.(type) {
+		case []interface{}:
+			for i := 0; i < len(t); i++ {
+				jsonData, err := json.Marshal(t[i])
+				if err != nil {
+					fmt.Println("Ошибка при маршалинге:", err)
+					continue
+				}
+				var blk block.Block
+				err = json.Unmarshal(jsonData, &blk)
+				if err != nil {
+					fmt.Println("Ошибка при анмаршалинге:", err)
+					continue
+				}
+				bc.UpdateChain(&blk)
+			}
+		case string:
+			fmt.Println(t)
+		default:
+			fmt.Println(111)
+		}
+
 		var reqParams = []interface{}{}
 		return types.Request{
 			JSONRPC: "2.0",

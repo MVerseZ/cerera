@@ -52,15 +52,22 @@ func GetBlockChain() *Chain {
 	return &bch
 }
 func InitBlockChain(cfg *config.Config) Chain {
-
-	genesisBlock := block.Genesis()
-	dataBlocks := make([]block.Block, 0)
-
 	var (
 		t         *trie.MerkleTree
 		chainWork = 0
 		total     = 0
 	)
+
+	stats := BlockChainStatus{
+		Total:     total,
+		ChainWork: chainWork,
+		Latest:    common.EmptyHash(),
+		Size:      0,
+	}
+
+	genesisBlock := block.Genesis()
+	dataBlocks := make([]block.Block, 0)
+
 	if cfg.Chain.Path == "EMPTY" {
 		var list []trie.Content
 		list = append(list, genesisBlock)
@@ -85,8 +92,8 @@ func InitBlockChain(cfg *config.Config) Chain {
 		var list []trie.Content
 		for _, v := range dataBlocks {
 			list = append(list, v)
-			total += 1
-			chainWork += v.Head.Size
+			stats.Total += 1
+			stats.ChainWork += v.Head.Size
 			// 		bc.info.Total = bc.info.Total + 1
 			// bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 		}
@@ -95,12 +102,6 @@ func InitBlockChain(cfg *config.Config) Chain {
 		t.VerifyTree()
 	}
 
-	stats := BlockChainStatus{
-		Total:     total,
-		ChainWork: chainWork,
-		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
-		Size:      0,
-	}
 	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	bch = Chain{
 		autoGen:        cfg.AUTOGEN,
@@ -219,7 +220,6 @@ func (bc *Chain) G(latest *block.Block) {
 	// bc.DataChannel <- newBlock.ToBytes()
 
 	if vld.ValidateBlock(*newBlock) {
-		bc.data = append(bc.data, *newBlock)
 		bc.t.Add(newBlock)
 		var t, err = bc.t.VerifyTree()
 		if err != nil || !t {
@@ -233,6 +233,7 @@ func (bc *Chain) G(latest *block.Block) {
 			if err == nil {
 				var rewardAddress = newBlock.Head.Node
 				fmt.Printf("Reward to: %s\r\n", rewardAddress)
+				bc.data = append(bc.data, *newBlock)
 			}
 		}
 		// clear array with included txs

@@ -92,7 +92,7 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && CheckIPAddressType(ipnet.IP.String()) == 2 {
 			localIP = ipnet.IP.String()
-			break
+
 		}
 	}
 	if localIP == "" {
