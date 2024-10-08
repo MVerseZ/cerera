@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 	"unsafe"
 
 	"github.com/cerera/internal/cerera/common"
@@ -17,28 +16,32 @@ import (
 
 // Header represents a block header in the blockchain.
 type Header struct {
-	Ctx           int           `json:"ctx" gencodec:"required"`
-	Confirmations int           `json:"-"`
-	Difficulty    *big.Int      `json:"difficulty"       gencodec:"required"`
-	Extra         []byte        `json:"extraData"        gencodec:"required"`
-	GasLimit      uint64        `json:"gasLimit"         gencodec:"required"`
-	GasUsed       uint64        `json:"gasUsed"          gencodec:"required"`
-	Height        int           `json:"height" gencodec:"required"`
-	Index         int           `json:"index" gencodec:"required"`
-	Node          types.Address `json:"node" gencodec:"required"`
-	Number        *big.Int      `json:"number"           gencodec:"required"`
-	PrevHash      common.Hash   `json:"prevHash" gencodec:"required"`
-	Root          common.Hash   `json:"stateRoot"        gencodec:"required"`
-	Size          int           `json:"size" gencodec:"required"`
-	Timestamp     uint64        `json:"timestamp"        gencodec:"required"`
-	V             string        `json:"version"        gencodec:"required"`
+	Ctx        int           `json:"ctx" gencodec:"required"`
+	Difficulty *big.Int      `json:"difficulty"       gencodec:"required"`
+	Extra      []byte        `json:"extraData"        gencodec:"required"`
+	GasLimit   uint64        `json:"gasLimit"         gencodec:"required"`
+	GasUsed    uint64        `json:"gasUsed"          gencodec:"required"`
+	Height     int           `json:"height" gencodec:"required"`
+	Index      uint64        `json:"index" gencodec:"required"`
+	Node       types.Address `json:"node" gencodec:"required"`
+	Number     *big.Int      `json:"number"           gencodec:"required"`
+	PrevHash   common.Hash   `json:"prevHash" gencodec:"required"`
+	Root       common.Hash   `json:"stateRoot"        gencodec:"required"`
+	Size       int           `json:"size" gencodec:"required"`
+	Timestamp  uint64        `json:"timestamp"        gencodec:"required"`
+	V          string        `json:"version"        gencodec:"required"`
 }
 
 type Block struct {
-	Confirmations int                  `json:"confirmations" gencodec:"required"`
-	Nonce         int                  `json:"nonce" gencodec:"required"`
-	Head          *Header              `json:"header" gencodec:"required"`
-	Transactions  []types.GTransaction //`json:"transactions" gencodec:"required"`
+	Nonce        int                  `json:"nonce" gencodec:"required"`
+	Head         *Header              `json:"header" gencodec:"required"`
+	Transactions []types.GTransaction `json:"transactions," gencodec:"required"`
+}
+
+type UnconfirmedBlock struct {
+	Nonce        int                  `json:"nonce" gencodec:"required"`
+	Head         *Header              `json:"header" gencodec:"required"`
+	Transactions []types.GTransaction //`json:"transactions" gencodec:"required"`
 }
 
 func (b Block) CalculateHash() ([]byte, error) {
@@ -80,7 +83,6 @@ func (b *Block) Header() *Header { return CopyHeader(b.Head) }
 // Function for compare block headers, may be deprecated later.
 func (b *Block) EqHead(other *Header) bool {
 	return b.Head.Ctx == other.Ctx &&
-		b.Head.Confirmations == other.Confirmations &&
 		b.Head.Height == other.Height &&
 		b.Head.Difficulty.Cmp(other.Difficulty) == 0 &&
 		b.Head.GasUsed == other.GasUsed &&
@@ -113,7 +115,6 @@ func CopyHeader(h *Header) *Header {
 	cpy.Height = h.Height
 	cpy.Root = h.Root
 	cpy.Timestamp = h.Timestamp
-	cpy.Confirmations = h.Confirmations
 	cpy.Size = h.Size
 	cpy.Difficulty = h.Difficulty
 	cpy.Node = h.Node
@@ -125,18 +126,16 @@ func CopyHeader(h *Header) *Header {
 
 func GenerateGenesis(nodeAddress types.Address) *Block {
 	var genesisHeader = &Header{
-		Ctx:           17,
-		Difficulty:    big.NewInt(11111111111),
-		Extra:         []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
-		Height:        0,
-		Timestamp:     uint64(time.Now().UnixMilli()),
-		GasLimit:      250000,
-		GasUsed:       1,
-		Number:        big.NewInt(0),
-		Confirmations: 1,
-		Node:          nodeAddress,
-		Size:          0,
-		V:             "ALPHA-0.0.1",
+		Ctx:        17,
+		Difficulty: big.NewInt(11111111111),
+		Extra:      []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
+		Height:     0,
+		GasLimit:   250000,
+		GasUsed:    1,
+		Number:     big.NewInt(0),
+		Node:       nodeAddress,
+		Size:       0,
+		V:          "ALPHA-0.0.1",
 	}
 
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
@@ -194,9 +193,11 @@ type Blocks []*Block
 
 func CrvBlockHash(block Block) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
+
 	var data = make([]byte, 0)
 	data = append(data, block.ToBytes()...)
 	hw.Write(data)
+
 	h.SetBytes(hw.Sum(nil))
 	return h
 }

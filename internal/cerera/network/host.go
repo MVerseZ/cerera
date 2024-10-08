@@ -9,12 +9,13 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/pallada/pallada"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/multiformats/go-multiaddr"
@@ -43,7 +44,7 @@ type Host struct {
 	peers []net.Addr
 }
 
-var h *Host
+var cereraHost *Host
 
 // Node interface defines the structure of a Node in the network
 type Node interface {
@@ -72,15 +73,14 @@ func CheckIPAddressType(ip string) int {
 // InitNetworkHost initializes a new host struct
 func InitNetworkHost(ctx context.Context, cfg config.Config) {
 
-	h = &Host{
+	cereraHost = &Host{
 		Status:  0x1,
 		NetType: 0x1,
 		peers:   make([]net.Addr, 0),
 	}
 
 	// init rpc requests handling in
-	h.SetUpHttp(ctx, cfg)
-	h.Status = h.Status << 1
+	cereraHost.SetUpHttp(ctx, cfg)
 
 	// Find local IP addresses
 	addrs, err := net.InterfaceAddrs()
@@ -92,6 +92,7 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && CheckIPAddressType(ipnet.IP.String()) == 2 {
 			localIP = ipnet.IP.String()
+
 		}
 	}
 	if localIP == "" {
@@ -104,14 +105,16 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	if err != nil {
 		panic(err)
 	}
-	h.Status = h.Status << 1
 	fmt.Printf("Start network host at: %s with cerera address: %s\r\n",
 		listener.Addr(), cfg.NetCfg.ADDR)
+
 	consensus.Add(listener.Addr(), cfg.NetCfg.ADDR)
+
 	fmt.Printf("Init client...")
 	go InitClient(cfg.NetCfg.ADDR)
+
 	fmt.Printf("Consensus status: %f\r\n", consensus.ConsensusStatus())
-	fmt.Printf("Status: %x\r\n", h.Status)
+	fmt.Printf("Status: %x\r\n", cereraHost.Status)
 	fmt.Printf("Wait for peers...\r\n")
 
 	for {
@@ -123,7 +126,7 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 		}
 		var remoteAddr = incomingConnection.RemoteAddr()
 		fmt.Printf("Client is: %s\r\n", remoteAddr)
-		h.peers = append(h.peers, remoteAddr)
+		cereraHost.peers = append(cereraHost.peers, remoteAddr)
 		go customHandleConnection(incomingConnection)
 	}
 
@@ -237,26 +240,102 @@ func customHandleConnection(conn net.Conn) {
 	// command-loop
 	for {
 		// Next decode the incoming data into Go value
-		var req Request
-		var resp Response
+		var req types.Request
+		var res types.Response
 		if err := dec.Decode(&req); err != nil {
 			log.Println("failed to unmarshal request:", err)
 			return
 		}
 		// result
-		result := req.Method
-		if strings.Contains(result, "consensus") {
-			resp.ID = req.ID
-			resp.JSONRPC = req.JSONRPC
-			params := req.Params
-			fmt.Println(result)
-			fmt.Println(params...)
-			resp.Result = consensus.HandleConsensusRequest(conn.RemoteAddr(), req.Method, req.Params)
-		}
-		// encode result to JSON array
-		if err := enc.Encode(&resp); err != nil {
-			log.Println("failed to encode data:", err)
+		method := req.Method
+		params := req.Params
+
+		res.ID = req.ID
+		res.JSONRPC = req.JSONRPC
+		res.Result = pallada.Execute(method, params)
+		if err := enc.Encode(&res); err != nil {
+			fmt.Println("failed to encode data:", err)
 			return
+		}
+
+	}
+
+}
+
+///// CLIENT CODE
+
+type Client struct {
+	addr   types.Address
+	status byte
+}
+
+var client Client
+var (
+	pollMinutes int = 10
+)
+
+func InitClient(cereraAddress types.Address) {
+	time.Sleep(5 * time.Second)
+	c, err := net.Dial("tcp", "10.0.85.2:6116")
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer c.Close()
+
+	client = Client{
+		addr:   cereraAddress,
+		status: 0x1,
+	}
+	customHandleConnectionClient(c)
+}
+
+func customHandleConnectionClient(conn net.Conn) {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Println("error closing connection:", err)
+		}
+	}()
+
+	dec := json.NewDecoder(conn)
+	enc := json.NewEncoder(conn)
+	var req types.Request
+	var resp types.Response
+
+	var reqParams = []interface{}{client.addr}
+	req = types.Request{
+		JSONRPC: "2.0",
+		Method:  "cerera.consensus.join",
+		Params:  reqParams,
+		ID:      5422899109,
+	}
+	if err := enc.Encode(&req); err != nil {
+		fmt.Println("failed to encode data:", err)
+		return
+	}
+
+	for {
+		if err := dec.Decode(&resp); err != nil {
+			log.Println("failed to unmarshal request:", err)
+			return
+		}
+		// fmt.Printf("Result on client %s\r\n", resp.Result)
+
+		// switch resp.Result.(type) {
+		// case []block.Block:
+		// 	fmt.Println("HERE")
+		// default:
+		// 	fmt.Println("DEFAULT")
+		// }
+
+		if resp.Result != "DONE" {
+			var traceReq = pallada.ExecuteChain(req, resp)
+			if err := enc.Encode(&traceReq); err != nil {
+				fmt.Println("failed to encode data:", err)
+				return
+			}
+			req = traceReq
 		}
 	}
 }

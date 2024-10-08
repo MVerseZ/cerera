@@ -39,20 +39,19 @@ func prepareSignedTx() *types.GTransaction {
 
 func createTestHeader() *Header {
 	header := &Header{
-		Ctx:           1,
-		Difficulty:    big.NewInt(100),
-		Extra:         []byte("extra data"),
-		Root:          common.EmptyHash(),
-		Number:        big.NewInt(42),
-		GasLimit:      5000000,
-		GasUsed:       3000000,
-		Timestamp:     uint64(time.June),
-		Height:        10,
-		Node:          nodeAddress,
-		Confirmations: 10001,
-		PrevHash:      common.EmptyHash(),
-		Index:         42,
-		Size:          13,
+		Ctx:        1,
+		Difficulty: big.NewInt(100),
+		Extra:      []byte("extra data"),
+		Root:       common.EmptyHash(),
+		Number:     big.NewInt(42),
+		GasLimit:   5000000,
+		GasUsed:    3000000,
+		Timestamp:  uint64(time.June),
+		Height:     10,
+		Node:       nodeAddress,
+		PrevHash:   common.EmptyHash(),
+		Index:      42,
+		Size:       13,
 	}
 	return header
 }
@@ -78,20 +77,19 @@ func createTestBlock() *Block {
 	)
 
 	header := &Header{
-		Ctx:           1,
-		Difficulty:    big.NewInt(100),
-		Extra:         []byte("extra data"),
-		Root:          common.EmptyHash(),
-		Number:        big.NewInt(42),
-		GasLimit:      5000000,
-		GasUsed:       3000000,
-		Timestamp:     uint64(time.June),
-		Height:        10,
-		Node:          nodeAddress,
-		Confirmations: 10001,
-		PrevHash:      common.EmptyHash(),
-		Index:         42,
-		Size:          13,
+		Ctx:        1,
+		Difficulty: big.NewInt(100),
+		Extra:      []byte("extra data"),
+		Root:       common.EmptyHash(),
+		Number:     big.NewInt(42),
+		GasLimit:   5000000,
+		GasUsed:    3000000,
+		Timestamp:  uint64(time.June),
+		Height:     10,
+		Node:       nodeAddress,
+		PrevHash:   common.EmptyHash(),
+		Index:      42,
+		Size:       13,
 	}
 
 	b := &Block{
@@ -136,9 +134,6 @@ func TestBlockFields(t *testing.T) {
 	}
 	if block.Head.Node != expectedAddr {
 		t.Errorf("expected Index to be %s, got %s", expectedAddr, block.Head.Node)
-	}
-	if block.Head.Confirmations != 10001 {
-		t.Errorf("expected Confirmations to be 10001, got %d", block.Head.Confirmations)
 	}
 	if block.Head.Size != 13 {
 		t.Errorf("expected Size to be 13, got %d", block.Head.Size)

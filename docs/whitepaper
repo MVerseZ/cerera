@@ -1,7 +1,7 @@
 Cerera network.
 Version 1.
 (Cerera Blockchain network v.1)
-
+________________________________________________
 Abstract
 There are many types of blockchains with different integrations. 
 Most of them are EVM-compatible.
@@ -15,5 +15,20 @@ As the any blockchain project there is RPC communication protocol via HTTP(S).
 
 There is no any VM for virtual contracts creation. But transaction entity can store big data, like CSV dataframes or multimedia content.
 
+________________________________________________
+Consensus algorythm
+Based on Raft with some mods.
+
+Example for nodes (A[100]), (B[0])
+
+A <------------> B
+A <---B--join--- B
+A ----Latest---> B
+A <---B--sync--- B[100]
+A ----[100]----> B
+A <---B--done--- B
+
+Now A[100+N], B[100] (N - count waiting for consensus)
+________________________________________________
 Author: gnupunk, veers
-Moscow, 2024-...
+Moscow, 2024

@@ -26,6 +26,7 @@ func Get() Validator {
 }
 
 type Validator interface {
+	CheckAddress(addr types.Address) bool
 	GasPrice() *big.Int
 	GetVersion() string
 	Faucet(addrStr string, valFor int) error
@@ -40,6 +41,7 @@ type Validator interface {
 }
 
 type DDDDDValidator struct {
+	currentAddress types.Address
 	currentStatus  int
 	minGasPrice    *big.Int
 	storage        string
@@ -56,6 +58,7 @@ func NewValidator(ctx context.Context, cfg config.Config) Validator {
 		signer:         types.NewSimpleSignerWithPen(cfg.Chain.ChainID, p),
 		balance:        big.NewInt(0), // Initialize balance
 		currentVersion: "ALPHA-0.0.1",
+		currentAddress: cfg.NetCfg.ADDR,
 	}
 	return v
 }
@@ -171,4 +174,9 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
 	// move logic to consensus
 	return consensus.ConfirmBlock(b)
+}
+
+func (v *DDDDDValidator) CheckAddress(addr types.Address) bool {
+	// move logic to consensus
+	return v.currentAddress != addr
 }

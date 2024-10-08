@@ -43,17 +43,31 @@ type Chain struct {
 	DataChannel    chan []byte
 }
 
-var bch Chain
+var (
+	bch        Chain
+	BLOCKTIMER = time.Duration(1 * time.Second)
+)
 
-func GetBlockChain() Chain {
-	return bch
+func GetBlockChain() *Chain {
+	return &bch
 }
 func InitBlockChain(cfg *config.Config) Chain {
+	var (
+		t         *trie.MerkleTree
+		chainWork = 0
+		total     = 0
+	)
+
+	stats := BlockChainStatus{
+		Total:     total,
+		ChainWork: chainWork,
+		Latest:    common.EmptyHash(),
+		Size:      0,
+	}
 
 	genesisBlock := block.Genesis()
 	dataBlocks := make([]block.Block, 0)
 
-	var t *trie.MerkleTree
 	if cfg.Chain.Path == "EMPTY" {
 		var list []trie.Content
 		list = append(list, genesisBlock)
@@ -78,30 +92,29 @@ func InitBlockChain(cfg *config.Config) Chain {
 		var list []trie.Content
 		for _, v := range dataBlocks {
 			list = append(list, v)
+			stats.Total += 1
+			stats.ChainWork += v.Head.Size
+			// 		bc.info.Total = bc.info.Total + 1
+			// bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 		}
 
 		t, _ = trie.NewTree(list)
 		t.VerifyTree()
 	}
 
-	stats := BlockChainStatus{
-		Total:     0,
-		ChainWork: 0,
-		Latest:    dataBlocks[len(dataBlocks)-1].Hash(),
-		Size:      0,
-	}
-
+	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	bch = Chain{
 		autoGen:        cfg.AUTOGEN,
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   &dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(time.Duration(60 * time.Second)),
+		blockTicker:    time.NewTicker(BLOCKTIMER),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
 		t:              t,
+		DataChannel:    make(chan []byte),
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	go bch.BlockGenerator()
@@ -134,10 +147,9 @@ func (bc Chain) GetBlockHash(number int) common.Hash {
 	return common.EmptyHash()
 }
 
-func (bc Chain) GetBlock(blockHash string) *block.Block {
-	var bHash = common.HexToHash(blockHash)
+func (bc Chain) GetBlock(blockHash common.Hash) *block.Block {
 	for _, b := range bc.data {
-		if b.Hash().Compare(bHash) == 0 {
+		if b.Hash().Compare(blockHash) == 0 {
 			return &b
 		}
 	}
@@ -173,18 +185,17 @@ func (bc *Chain) G(latest *block.Block) {
 	var pool = pool.Get()
 
 	head := &block.Header{
-		Ctx:           latest.Header().Ctx,
-		Difficulty:    latest.Header().Difficulty,
-		Extra:         []byte("OP_AUTO_GEN_BLOCK_DAT"),
-		Height:        latest.Header().Height + 1,
-		Index:         latest.Header().Index + 1,
-		Timestamp:     uint64(time.Now().UnixMilli()),
-		Number:        big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
-		PrevHash:      bc.info.Latest,
-		Confirmations: 1,
-		Node:          bc.currentAddress,
-		Root:          latest.Header().Root,
-		GasLimit:      latest.Head.GasLimit, // todo get gas limit dynamically
+		Ctx:        latest.Header().Ctx,
+		Difficulty: latest.Header().Difficulty,
+		Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
+		Height:     latest.Header().Height + 1,
+		Index:      latest.Header().Index + 1,
+		Timestamp:  uint64(time.Now().UnixMilli()),
+		Number:     big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
+		PrevHash:   bc.info.Latest,
+		Node:       bc.currentAddress,
+		Root:       latest.Header().Root,
+		GasLimit:   latest.Head.GasLimit, // todo get gas limit dynamically
 	}
 	// cpy version, should store elsewhere
 	head.V = latest.Head.V
@@ -206,7 +217,7 @@ func (bc *Chain) G(latest *block.Block) {
 	newBlock.Head.Size = int(finalSize)
 	newBlock.Head.GasUsed += uint64(finalSize)
 
-	bc.data = append(bc.data, *newBlock)
+	// bc.DataChannel <- newBlock.ToBytes()
 
 	if vld.ValidateBlock(*newBlock) {
 		bc.t.Add(newBlock)
@@ -222,11 +233,13 @@ func (bc *Chain) G(latest *block.Block) {
 			if err == nil {
 				var rewardAddress = newBlock.Head.Node
 				fmt.Printf("Reward to: %s\r\n", rewardAddress)
+				bc.data = append(bc.data, *newBlock)
 			}
 		}
 		// clear array with included txs
 		pool.Prepared = nil
 	} else {
+		fmt.Printf("Block unconfirmed: %s\r\n", newBlock.Hash())
 		return
 	}
 }
@@ -235,6 +248,37 @@ func (bc *Chain) G(latest *block.Block) {
 // val multiply by milliseconds (ms)
 func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
+}
+
+func (bc *Chain) UpdateChain(newBlock *block.Block) {
+	fmt.Printf("Current index: %d with hash: %s\r\n", bc.currentBlock.Head.Number, bc.currentBlock.Hash())
+	fmt.Printf("Incoming index: %d with hash: %s\r\n", newBlock.Head.Number, newBlock.Hash())
+
+	if newBlock.Head.Number.Cmp(big.NewInt(0)) == 0 {
+		// replace all
+		ClearVault()
+		bc.data = nil
+	}
+	bc.data = append(bc.data, *newBlock)
+	fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Number, newBlock.Hash())
+
+	// bc.currentBlock = newBlock
+	err := SaveToVault(*newBlock)
+	if err == nil {
+		var rewardAddress = newBlock.Head.Node
+		fmt.Printf("Reward to: %s\r\n", rewardAddress)
+	}
+	bc.info.Latest = newBlock.Hash()
+	bc.info.Total = bc.info.Total + 1
+	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+}
+
+func (bc *Chain) Idle() {
+	bc.autoGen = false
+}
+
+func (bc *Chain) Resume() {
+	bc.autoGen = true
 }
 
 // return lenght of array
