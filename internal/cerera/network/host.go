@@ -7,22 +7,24 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/pallada/pallada"
+	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/multiformats/go-multiaddr"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const DiscoveryInterval = time.Hour
 const DiscoveryServiceTag = "/vavilov/1.0.0"
 
 type Host struct {
@@ -52,24 +54,6 @@ type Node interface {
 	Host() Host
 }
 
-func CheckIPAddressType(ip string) int {
-	if net.ParseIP(ip) == nil {
-		log.Printf("Invalid IP Address: %s\n", ip)
-		return 1
-	}
-	for i := 0; i < len(ip); i++ {
-		switch ip[i] {
-		case '.':
-			log.Printf("Given IP Address %s is IPV4 type\n", ip)
-			return 2
-		case ':':
-			log.Printf("Given IP Address %s is IPV6 type\n", ip)
-			return 3
-		}
-	}
-	return 4
-}
-
 // InitNetworkHost initializes a new host struct
 func InitNetworkHost(ctx context.Context, cfg config.Config) {
 
@@ -80,7 +64,7 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	}
 
 	// init rpc requests handling in
-	cereraHost.SetUpHttp(ctx, cfg)
+	// cereraHost.SetUpHttp(ctx, cfg)
 
 	// Find local IP addresses
 	addrs, err := net.InterfaceAddrs()
@@ -98,38 +82,27 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	if localIP == "" {
 		panic("No local IP address found")
 	}
-
-	// !!! solution without libp2p
-	var networkType = "tcp" // tcp4 tcp6
-	listener, err := net.Listen(networkType, localIP+":"+strconv.Itoa(cfg.NetCfg.P2P))
+	// BASED ON
+	// https://github.com/libp2p/go-libp2p/blob/master/examples/pubsub
+	var networkType = "tcp"
+	h, err := libp2p.New(libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/%s/%s", localIP, networkType, strconv.Itoa(cfg.NetCfg.P2P))))
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Start network host at: %s with cerera address: %s\r\n",
-		listener.Addr(), cfg.NetCfg.ADDR)
 
-	consensus.Add(listener.Addr(), cfg.NetCfg.ADDR)
-
-	fmt.Printf("Init client...")
-	go InitClient(cfg.NetCfg.ADDR)
-
-	fmt.Printf("Consensus status: %f\r\n", consensus.ConsensusStatus())
-	fmt.Printf("Status: %x\r\n", cereraHost.Status)
-	fmt.Printf("Wait for peers...\r\n")
-
-	for {
-		var incomingConnection, err = listener.Accept()
-		if err != nil {
-			log.Println(err)
-			incomingConnection.Close()
-			continue
-		}
-		var remoteAddr = incomingConnection.RemoteAddr()
-		fmt.Printf("Client is: %s\r\n", remoteAddr)
-		cereraHost.peers = append(cereraHost.peers, remoteAddr)
-		go customHandleConnection(incomingConnection)
+	ps, err := pubsub.NewGossipSub(ctx, h)
+	if err != nil {
+		panic(err)
 	}
 
+	if err := setupDiscovery(h); err != nil {
+		panic(err)
+	}
+
+	_, err = JoinChatRoom(ctx, ps, h.ID(), cfg.NetCfg.ADDR, "room")
+	if err != nil {
+		panic(err)
+	}
 }
 
 // serviceLoop handles the service loop for the host
@@ -208,21 +181,6 @@ func (h *Host) _stop() error {
 		}
 	}
 	return nil
-}
-
-// WriteSwarmData writes the swarm data to a file
-func WriteSwarmData(chainAddress types.Address, mAddress string) {
-	const swarmCfg = "swarm.ddd"
-	maddr, errAddr := multiaddr.NewMultiaddr(mAddress)
-	if errAddr != nil {
-		panic(errAddr)
-	}
-	swarm := make(map[types.Address]multiaddr.Multiaddr)
-	swarm[chainAddress] = maddr
-	err := os.WriteFile(swarmCfg, []byte(fmt.Sprintf("%s:%s", chainAddress, mAddress)), 0644)
-	if err != nil {
-		panic(err)
-	}
 }
 
 func customHandleConnection(conn net.Conn) {
@@ -338,4 +296,26 @@ func customHandleConnectionClient(conn net.Conn) {
 			req = traceReq
 		}
 	}
+}
+
+// discoveryNotifee gets notified when we find a new peer via mDNS discovery
+type discoveryNotifee struct {
+	h host.Host
+}
+
+// HandlePeerFound connects to peers discovered via mDNS. Once they're connected,
+// the PubSub system will automatically start interacting with them if they also
+// support PubSub.
+func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
+	fmt.Printf("discovered new peer %s\n", pi.ID)
+	err := n.h.Connect(context.Background(), pi)
+	if err != nil {
+		fmt.Printf("error connecting to peer %s: %s\n", pi.ID, err)
+	}
+}
+
+func setupDiscovery(h host.Host) error {
+	// setup mDNS discovery to find local peers
+	s := mdns.NewMdnsService(h, DiscoveryServiceTag, &discoveryNotifee{h: h})
+	return s.Start()
 }

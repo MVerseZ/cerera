@@ -26,8 +26,7 @@ func InitServer(h *Host) network.Stream {
 	}
 	var addr = h.NetHost.Addrs()[0]
 	fmt.Printf("My address is: %s\r\n", fmt.Sprintf("%s/p2p/%s", addr, h.NetHost.ID()))
-	var endPointAddress = fmt.Sprintf("%s/p2p/%s", addr, h.NetHost.ID())
-	WriteSwarmData(h.Addr, endPointAddress)
+	// var endPointAddress = fmt.Sprintf("%s/p2p/%s", addr, h.NetHost.ID())
 	h.NetHost.SetStreamHandler("/vavilov/1.0.0", h.ServerProtocol)
 	h.Status = 0x2
 	return h.Stream

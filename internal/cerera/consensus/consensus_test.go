@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"net"
 	"testing"
 
@@ -41,4 +42,20 @@ func TestConsensus_More1(t *testing.T) {
 	Add(addr1, cereraAddress1)
 	Add(addr2, cereraAddress2)
 	assert.NotEqual(t, ConsensusStatus(), float64(1.0))
+}
+
+func TestStatus(t *testing.T) {
+	Start()
+	for i := 0; i < 7; i++ {
+		addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("1.1.1.%d:1234", i))
+		if err != nil {
+			panic(err)
+		}
+		Add(
+			addr,
+			types.HexToAddress(fmt.Sprintf("0x000000000%x", i)),
+		)
+	}
+
+	PrintInfo(false)
 }

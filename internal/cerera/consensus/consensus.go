@@ -11,9 +11,10 @@ import (
 )
 
 type Voter struct {
-	addr        net.Addr
-	cAddr       types.Address
-	syncPercent float32
+	addr                net.Addr
+	cAddr               types.Address
+	syncPercent         float32
+	lastResponseCounter int
 }
 
 type Consensus struct {
@@ -28,7 +29,7 @@ var c *Consensus
 func Start() {
 	c = &Consensus{
 		Nodes:  make([]Voter, 0),
-		Latest: block.CrvBlockHash(block.Genesis()), //simplify
+		Latest: types.EmptyCodeRootHash,
 	}
 	c.CurrentStatus = 1.0
 	c.CurrentProposalsPercent = CalculateProposals(c)
@@ -42,8 +43,10 @@ func Add(address net.Addr, cAddress types.Address) float64 {
 	}
 
 	c.Nodes = append(c.Nodes, Voter{
-		addr:  address,
-		cAddr: cAddress,
+		addr:                address,
+		cAddr:               cAddress,
+		lastResponseCounter: 0,
+		syncPercent:         0.0,
 	})
 	return CalculateProposals(c)
 }
@@ -85,5 +88,20 @@ func ConfirmBlock(b block.Block) bool {
 		return true
 	} else {
 		return false
+	}
+}
+
+func PrintInfo(v bool) {
+	fmt.Printf(
+		"Proposal percent: %f\r\nStatus: %f\r\nLatest: %s\r\nTotal: %d\r\n",
+		c.CurrentProposalsPercent,
+		c.CurrentStatus,
+		c.Latest,
+		len(c.Nodes),
+	)
+	if v {
+		for i := 0; i < len(c.Nodes); i++ {
+			fmt.Printf("Voter - %s:%s\r\n", c.Nodes[i].addr, c.Nodes[i].cAddr)
+		}
 	}
 }

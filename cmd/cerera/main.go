@@ -66,12 +66,12 @@ func main() {
 	// minwinsvc.SetOnExit(cancel)
 
 	go network.InitNetworkHost(ctx, *cfg)
-	storage.NewD5Vault(cfg)
+	// storage.NewD5Vault(cfg)
 
 	// miner.Start()
 
-	validator.NewValidator(ctx, *cfg)
-	chain.InitBlockChain(cfg)
+	// validator.NewValidator(ctx, *cfg)
+	// chain.InitBlockChain(cfg)
 
 	// chain.InitChain()
 	// miner.InitMiner()
