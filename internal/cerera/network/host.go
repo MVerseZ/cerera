@@ -49,7 +49,7 @@ type Host struct {
 var cereraHost *Host
 
 // Node interface defines the structure of a Node in the network
-type Node interface {
+type NodeI interface {
 	Context() context.Context
 	Host() Host
 }

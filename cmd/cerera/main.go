@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
@@ -60,12 +61,38 @@ func main() {
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
 
-	consensus.Start()
+	// consensus.Start()
 
 	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// minwinsvc.SetOnExit(cancel)
 
-	go network.InitNetworkHost(ctx, *cfg)
+	n := network.NewNode(int64(rand.IntN(5000-3003) + 3003))
+	go n.Run()
+
+	// sigCh := make(chan os.Signal, 1)
+
+	// signal.Notify(sigCh,
+	// 	syscall.SIGHUP,
+	// 	syscall.SIGINT,
+	// 	syscall.SIGTERM,
+	// 	syscall.SIGQUIT)
+
+	pid := strconv.Itoa(os.Getpid())
+
+	fmt.Printf("\n===>PBFT Demo PID:%s\n", pid)
+	fmt.Println()
+	fmt.Println()
+	fmt.Println("==============================================>")
+	fmt.Println("*                                             *")
+	fmt.Println("*     Practical Byzantine Fault Tolerance     *")
+	fmt.Println("*                                             *")
+	fmt.Println("<==============================================")
+	fmt.Println()
+	fmt.Println()
+	// sig := <-sigCh
+	// fmt.Printf("Finish by signal:===>[%s]\n", sig.String())
+
+	// go network.InitNetworkHost(ctx, *cfg)
 	// storage.NewD5Vault(cfg)
 
 	// miner.Start()

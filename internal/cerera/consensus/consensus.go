@@ -17,17 +17,17 @@ type Voter struct {
 	lastResponseCounter int
 }
 
-type Consensus struct {
+type ConsensusOld struct {
 	Nodes                   []Voter
 	Latest                  common.Hash
 	CurrentProposalsPercent float64
 	CurrentStatus           float64
 }
 
-var c *Consensus
+var c *ConsensusOld
 
 func Start() {
-	c = &Consensus{
+	c = &ConsensusOld{
 		Nodes:  make([]Voter, 0),
 		Latest: types.EmptyCodeRootHash,
 	}
@@ -68,7 +68,7 @@ func HandleConsensusRequest(netAddr net.Addr, method string, params []interface{
 	return []byte{0xa, 0xa, 0xa}
 }
 
-func CalculateProposals(c *Consensus) float64 {
+func CalculateProposals(c *ConsensusOld) float64 {
 	if len(c.Nodes) < 2 {
 		c.CurrentProposalsPercent = 1.0
 		return 1.0
