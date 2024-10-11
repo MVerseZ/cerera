@@ -3,6 +3,8 @@ package network
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -63,6 +65,8 @@ func JoinChatRoom(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID, cerera
 		Messages: make(chan *ChatMessage, ChatRoomBufSize),
 	}
 
+	fmt.Printf("Join channel: %s\r\n", topicName(roomName))
+
 	// start reading messages from the subscription in a loop
 	go cr.readLoop()
 	return cr, nil
@@ -89,6 +93,8 @@ func (cr *ChatRoom) ListPeers() []peer.ID {
 // readLoop pulls messages from the pubsub topic and pushes them onto the Messages channel.
 func (cr *ChatRoom) readLoop() {
 	for {
+		time.Sleep(3 * time.Second)
+		cr.Publish("test")
 		msg, err := cr.sub.Next(cr.ctx)
 		if err != nil {
 			close(cr.Messages)

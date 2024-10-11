@@ -13,7 +13,6 @@ import (
 	"github.com/Arceliar/phony"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/pallada/pallada"
 	"github.com/libp2p/go-libp2p"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -35,7 +34,8 @@ type Host struct {
 
 	DataChannel chan []byte
 
-	c context.Context
+	c  context.Context
+	cr *ChatRoom
 
 	// Overlay Swarm
 	Status  byte
@@ -56,12 +56,6 @@ type Node interface {
 
 // InitNetworkHost initializes a new host struct
 func InitNetworkHost(ctx context.Context, cfg config.Config) {
-
-	cereraHost = &Host{
-		Status:  0x1,
-		NetType: 0x1,
-		peers:   make([]net.Addr, 0),
-	}
 
 	// init rpc requests handling in
 	// cereraHost.SetUpHttp(ctx, cfg)
@@ -85,7 +79,7 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 	// BASED ON
 	// https://github.com/libp2p/go-libp2p/blob/master/examples/pubsub
 	var networkType = "tcp"
-	h, err := libp2p.New(libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/%s/%s", localIP, networkType, strconv.Itoa(cfg.NetCfg.P2P))))
+	h, err := libp2p.New(libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/%s/%s", networkType, strconv.Itoa(cfg.NetCfg.P2P))))
 	if err != nil {
 		panic(err)
 	}
@@ -99,20 +93,15 @@ func InitNetworkHost(ctx context.Context, cfg config.Config) {
 		panic(err)
 	}
 
-	_, err = JoinChatRoom(ctx, ps, h.ID(), cfg.NetCfg.ADDR, "room")
+	crm, err := JoinChatRoom(ctx, ps, h.ID(), cfg.NetCfg.ADDR, "room")
 	if err != nil {
 		panic(err)
 	}
-}
-
-// serviceLoop handles the service loop for the host
-func (h *Host) serviceLoop() {
-	var errc chan error
-
-	// h.NetHost.
-
-	if errc == nil {
-		select {}
+	cereraHost = &Host{
+		Status:  0x1,
+		NetType: 0x1,
+		peers:   make([]net.Addr, 0),
+		cr:      crm,
 	}
 }
 
@@ -181,121 +170,6 @@ func (h *Host) _stop() error {
 		}
 	}
 	return nil
-}
-
-func customHandleConnection(conn net.Conn) {
-	defer func() {
-		if err := conn.Close(); err != nil {
-			log.Println("error closing connection:", err)
-		}
-	}()
-
-	// create json encoder/decoder using the io.Conn as
-	// io.Writer and io.Reader for streaming IO
-	dec := json.NewDecoder(conn)
-	enc := json.NewEncoder(conn)
-
-	// command-loop
-	for {
-		// Next decode the incoming data into Go value
-		var req types.Request
-		var res types.Response
-		if err := dec.Decode(&req); err != nil {
-			log.Println("failed to unmarshal request:", err)
-			return
-		}
-		// result
-		method := req.Method
-		params := req.Params
-
-		res.ID = req.ID
-		res.JSONRPC = req.JSONRPC
-		res.Result = pallada.Execute(method, params)
-		if err := enc.Encode(&res); err != nil {
-			fmt.Println("failed to encode data:", err)
-			return
-		}
-
-	}
-
-}
-
-///// CLIENT CODE
-
-type Client struct {
-	addr   types.Address
-	status byte
-}
-
-var client Client
-var (
-	pollMinutes int = 10
-)
-
-func InitClient(cereraAddress types.Address) {
-	time.Sleep(5 * time.Second)
-	c, err := net.Dial("tcp", "10.0.85.2:6116")
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer c.Close()
-
-	client = Client{
-		addr:   cereraAddress,
-		status: 0x1,
-	}
-	customHandleConnectionClient(c)
-}
-
-func customHandleConnectionClient(conn net.Conn) {
-	defer func() {
-		if err := conn.Close(); err != nil {
-			fmt.Println("error closing connection:", err)
-		}
-	}()
-
-	dec := json.NewDecoder(conn)
-	enc := json.NewEncoder(conn)
-	var req types.Request
-	var resp types.Response
-
-	var reqParams = []interface{}{client.addr}
-	req = types.Request{
-		JSONRPC: "2.0",
-		Method:  "cerera.consensus.join",
-		Params:  reqParams,
-		ID:      5422899109,
-	}
-	if err := enc.Encode(&req); err != nil {
-		fmt.Println("failed to encode data:", err)
-		return
-	}
-
-	for {
-		if err := dec.Decode(&resp); err != nil {
-			log.Println("failed to unmarshal request:", err)
-			return
-		}
-		// fmt.Printf("Result on client %s\r\n", resp.Result)
-
-		// switch resp.Result.(type) {
-		// case []block.Block:
-		// 	fmt.Println("HERE")
-		// default:
-		// 	fmt.Println("DEFAULT")
-		// }
-
-		if resp.Result != "DONE" {
-			var traceReq = pallada.ExecuteChain(req, resp)
-			if err := enc.Encode(&traceReq); err != nil {
-				fmt.Println("failed to encode data:", err)
-				return
-			}
-			req = traceReq
-		}
-	}
 }
 
 // discoveryNotifee gets notified when we find a new peer via mDNS discovery
