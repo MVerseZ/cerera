@@ -40,6 +40,7 @@ func NewSimpleP2pLib(id int64, msgChan chan<- *message.ConMessage) P2pNetwork {
 		MsgChan: msgChan,
 	}
 	go sp.monitor()
+
 	for _, pid := range nodeList {
 		if pid == id {
 			continue
@@ -55,6 +56,7 @@ func NewSimpleP2pLib(id int64, msgChan chan<- *message.ConMessage) P2pNetwork {
 		fmt.Printf("node [%d] connected=[%s=>%s]\n", pid, conn.LocalAddr().String(), conn.RemoteAddr().String())
 		go sp.waitData(conn)
 	}
+
 	return sp
 }
 
