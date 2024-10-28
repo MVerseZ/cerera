@@ -41,21 +41,22 @@ func NewSimpleP2pLib(id int64, msgChan chan<- *message.ConMessage) P2pNetwork {
 	}
 	go sp.monitor()
 
-	for _, pid := range nodeList {
-		if pid == id {
-			continue
-		}
+	// for _, pid := range nodeList {
+	// if pid == id {
+	// 	continue
+	// }
 
-		rPort := message.PortByID(pid)
-		conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{Port: rPort})
-		if err != nil {
-			fmt.Printf("\nnode [%d] is not valid currently\n", pid)
-			continue
-		}
-		sp.Peers[conn.RemoteAddr().String()] = conn
-		fmt.Printf("node [%d] connected=[%s=>%s]\n", pid, conn.LocalAddr().String(), conn.RemoteAddr().String())
-		go sp.waitData(conn)
+	// rPort := message.PortByID(pid)
+	// 0.0.0.0:34199
+	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{Port: 34659})
+	if err != nil {
+		fmt.Printf("\nnode [%d] is not valid currently\n", 34199)
+		// continue
 	}
+	sp.Peers[conn.RemoteAddr().String()] = conn
+	fmt.Printf("node [%d] connected=[%s=>%s]\n", 34199, conn.LocalAddr().String(), conn.RemoteAddr().String())
+	go sp.waitData(conn)
+	// }
 
 	return sp
 }

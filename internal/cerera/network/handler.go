@@ -106,7 +106,7 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 			return
 		}
 
-		AddWsClientConnection(conn)
+		// AddWsClientConnection(conn)
 
 		for {
 			_, message, err := conn.ReadMessage()

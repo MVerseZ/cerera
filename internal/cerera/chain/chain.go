@@ -234,7 +234,7 @@ func (bc *Chain) G(latest *block.Block) {
 			err := SaveToVault(*newBlock)
 			if err == nil {
 				var rewardAddress = newBlock.Head.Node
-				fmt.Printf("Reward to: %s\r\n", rewardAddress)
+				fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
 				bc.data = append(bc.data, *newBlock)
 			}
 		}

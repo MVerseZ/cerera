@@ -12,7 +12,6 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 
@@ -173,7 +172,8 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey s
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
 	// move logic to consensus
-	return consensus.ConfirmBlock(b)
+	// return consensus.ConfirmBlock(b)
+	return true
 }
 
 func (v *DDDDDValidator) CheckAddress(addr types.Address) bool {

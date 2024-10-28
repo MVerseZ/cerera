@@ -144,7 +144,6 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 	}
 	cfg.NetCfg.ADDR = currentNodeAddress
 	cfg.NetCfg.PRIV = ppk
-
 	cfg.NetCfg.PUB = types.EncodePublicKeyToByte(&nodeK.PublicKey)
 
 	cfg.WriteConfigToFile()

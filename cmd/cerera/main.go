@@ -5,10 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 
 	"github.com/cerera/internal/cerera/chain"
@@ -30,7 +28,7 @@ func (p *Process) Stop() {
 type cerera struct {
 	bc     chain.Chain
 	g      validator.Validator
-	h      *network.Host
+	h      *network.Node
 	p      *pool.Pool
 	proc   Process
 	v      storage.Vault
@@ -41,6 +39,8 @@ type cerera struct {
 func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
+	port := flag.Int("p", -1, "p2p port for connections")
+	swarmAddress := flag.String("s", "", "swarm address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
 	flag.Parse()
@@ -66,29 +66,20 @@ func main() {
 	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// minwinsvc.SetOnExit(cancel)
 
-	n := network.NewNode(int64(rand.IntN(5000-3003) + 3003))
-	go n.Run()
+	// if *port == 10 {
+	// 	c := network.NewClient()
+	// 	c.Start()
 
-	// sigCh := make(chan os.Signal, 1)
+	// } else {
+	n := network.NewServer(ctx, cfg, *port)
+	if *swarmAddress != "" {
+		fmt.Printf("Connect to sward at address: %s\r\n", *swarmAddress)
+		n.JoinSwarm(*swarmAddress)
+	}
+	// n.SetUpHttp(ctx, *cfg)
+	go n.Start()
+	// }
 
-	// signal.Notify(sigCh,
-	// 	syscall.SIGHUP,
-	// 	syscall.SIGINT,
-	// 	syscall.SIGTERM,
-	// 	syscall.SIGQUIT)
-
-	pid := strconv.Itoa(os.Getpid())
-
-	fmt.Printf("\n===>PBFT Demo PID:%s\n", pid)
-	fmt.Println()
-	fmt.Println()
-	fmt.Println("==============================================>")
-	fmt.Println("*                                             *")
-	fmt.Println("*     Practical Byzantine Fault Tolerance     *")
-	fmt.Println("*                                             *")
-	fmt.Println("<==============================================")
-	fmt.Println()
-	fmt.Println()
 	// sig := <-sigCh
 	// fmt.Printf("Finish by signal:===>[%s]\n", sig.String())
 
@@ -128,7 +119,6 @@ func main() {
 	// go s.Execute()
 
 	<-ctx.Done()
-	_ = c.h.Stop()
 	c.proc.Stop()
 }
 

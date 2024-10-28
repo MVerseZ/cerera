@@ -181,6 +181,23 @@ func EncodePublicKeyToByte(pub *ecdsa.PublicKey) []byte {
 	return pemEncoded
 }
 
+func DecodeByteToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("failed to decode PEM block containing public key")
+	}
+	x509Encoded := block.Bytes
+	pub, err := x509.ParsePKIXPublicKey(x509Encoded)
+	if err != nil {
+		return nil, err
+	}
+	ecdsaPub, ok := pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("not an ECDSA public key")
+	}
+	return ecdsaPub, nil
+}
+
 func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {
 	block, _ := pem.Decode([]byte(pemEncoded))
 	x509Encoded := block.Bytes
