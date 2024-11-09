@@ -144,12 +144,13 @@ func SplitMsg(bmsg []byte) (HeaderMsg, []byte, []byte) {
 	header = HeaderMsg(hhbyte)
 	switch header {
 	case hRequest, hPrePrepare, hPrepare, hCommit:
-		payload = bmsg[headerLength : len(bmsg)-256]
-		signature = bmsg[len(bmsg)-256:]
+		payload = bmsg[headerLength : len(bmsg)-71] //256
+		signature = bmsg[len(bmsg)-71:]
 	case hReply:
 		payload = bmsg[headerLength:]
 		signature = []byte{}
 	}
+	fmt.Printf("REC SIG:\r\n %d\r\n", signature)
 	return header, payload, signature
 }
 

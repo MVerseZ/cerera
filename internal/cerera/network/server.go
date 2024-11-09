@@ -1,13 +1,13 @@
 package network
 
 import (
+	"bytes"
 	"context"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"time"
 
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
@@ -34,18 +34,24 @@ func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 	}
 
 	fmt.Println("Ваши IP-адреса:")
-	for _, addr := range addrs {
-		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-			if ipNet.IP.To4() != nil {
-				fmt.Println(ipNet.IP.String())
-			}
-		}
-	}
+	fmt.Printf("%d\r\n", len(addrs))
+	// for _, addr := range addrs {
+	// 	if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+	// 		if ipNet.IP.To4() != nil {
+	// 			fmt.Println(ipNet.IP.String())
+	// 		}
+	// 	}
+	// }
 
 	server := &Server{
 		NewNode(nodeId, cfg),
 		fmt.Sprintf(urlName, nodeIdToPort(nodeId)),
 	}
+	pubKnownServer := &GossipServer{
+		fmt.Sprintf(urlName, nodeIdToPort(nodeId)+10),
+		server,
+	}
+	go pubKnownServer.Start()
 	// fmt.Println(server.node)
 	return server
 
@@ -68,7 +74,7 @@ func (s *Server) Start() {
 	}
 }
 
-func (s *Server) addPreKnownNode(conn net.Conn) {
+func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 	s.node.mutex.Lock()
 	defer s.node.mutex.Unlock()
 
@@ -77,7 +83,7 @@ func (s *Server) addPreKnownNode(conn net.Conn) {
 	for _, knownNode := range s.node.knownNodes {
 		if knownNode.url == remoteAddr {
 			fmt.Printf("Node %s is already known\n", remoteAddr)
-			return
+			return "", errors.New("node is already known\n")
 		}
 	}
 
@@ -89,6 +95,7 @@ func (s *Server) addPreKnownNode(conn net.Conn) {
 	}
 	s.node.knownNodes = append(s.node.knownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
+	return s.url, nil
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
@@ -96,33 +103,52 @@ func (s *Server) handleConnection(conn net.Conn) {
 	if err != nil {
 		panic(err)
 	}
-	s.addPreKnownNode(conn)
 	s.node.msgQueue <- req
 }
 
-func (s *Server) JoinSwarm(addr string) {
+func (s *Server) JoinSwarm(gossipAddr string) error {
+
 	pbk := s.node.keypair.pubkey
 	msg, err := types.PublicKeyToString(pbk)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}
-	req := Request{
-		msg,
-		hex.EncodeToString(generateDigest(msg)),
-	}
-	reqmsg := &RequestMsg{
-		"solve",
-		int(time.Now().Unix()),
-		s.node.NodeID,
-		req,
-	}
-	sig, err := s.node.signMessage(reqmsg)
+	fmt.Printf("Send key:\r\n%s\r\n", msg)
+	conn, err := net.Dial("tcp", gossipAddr)
 	if err != nil {
-		fmt.Printf("%v\n", err)
+		return fmt.Errorf("%s is not online", gossipAddr)
 	}
-	logBroadcastMsg(hRequest, reqmsg)
-	go send(ComposeMsg(hRequest, reqmsg, sig), addr)
-	// c.request = reqmsg
+	defer conn.Close()
+	_, err = io.Copy(conn, bytes.NewReader([]byte(msg)))
+	if err != nil {
+		return fmt.Errorf("%v", err)
+	}
+
+	// swardResp, err := io.ReadAll(conn)
+	// swardAddrStr = string(swardResp)
+
+	// req := Request{
+	// 	msg,
+	// 	hex.EncodeToString(generateDigest(msg)),
+	// }
+	// reqmsg := &RequestMsg{
+	// 	"solve",
+	// 	int(time.Now().Unix()),
+	// 	s.node.NodeID,
+	// 	req,
+	// }
+	// sig, err := s.node.signMessage(reqmsg)
+	// // fmt.Printf("SIG:\r\n %d\r\n", sig)
+	// // fmt.Printf("SIG LEN:\r\n %d\r\n", len(sig))
+	// if err != nil {
+	// 	fmt.Printf("%v\n", err)
+	// }
+	// logBroadcastMsg(hRequest, reqmsg)
+	// if err := send(ComposeMsg(hRequest, reqmsg, sig), swardAddrStr); err != nil {
+	// 	fmt.Printf("cannot connect to %s. Reason: %s\r\n", swardAddrStr, err)
+	// }
+	// // c.request = reqmsg
+	return nil
 }
 
 func (s *Server) SetUpHttp(ctx context.Context, cfg config.Config) {

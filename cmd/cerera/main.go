@@ -40,7 +40,7 @@ func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
 	port := flag.Int("p", -1, "p2p port for connections")
-	swarmAddress := flag.String("s", "", "swarm address")
+	gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
 	flag.Parse()
@@ -72,9 +72,9 @@ func main() {
 
 	// } else {
 	n := network.NewServer(ctx, cfg, *port)
-	if *swarmAddress != "" {
-		fmt.Printf("Connect to sward at address: %s\r\n", *swarmAddress)
-		n.JoinSwarm(*swarmAddress)
+	if *gossipAddress != "" {
+		fmt.Printf("Connect to sward at gossip address: %s\r\n", *gossipAddress)
+		n.JoinSwarm(*gossipAddress)
 	}
 	// n.SetUpHttp(ctx, *cfg)
 	go n.Start()

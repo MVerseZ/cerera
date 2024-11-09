@@ -109,7 +109,9 @@ func (node *Node) handleMsg() {
 func (node *Node) handleRequest(payload []byte, sig []byte) {
 	var request RequestMsg
 	var prePrepareMsg PrePrepareMsg
+	fmt.Println(payload)
 	err := json.Unmarshal(payload, &request)
+
 	if err != nil {
 		fmt.Printf("error happened:%v", err)
 		return
