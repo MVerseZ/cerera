@@ -11,6 +11,7 @@ const headerLength = 12
 type HeaderMsg string
 
 const (
+	hJoin       HeaderMsg = "Join"
 	hRequest    HeaderMsg = "Request"
 	hPrePrepare HeaderMsg = "PrePrepare"
 	hPrepare    HeaderMsg = "Prepare"
@@ -20,6 +21,19 @@ const (
 
 type Msg interface {
 	String() string
+}
+
+// <JOIN, address, pubkey>
+type JoinMsg struct {
+	Operation string  `json:"operation"`
+	Timestamp int     `json:"timestamp"`
+	ClientID  int     `json:"clientID"`
+	CRequest  Request `json:"request"`
+}
+
+func (msg JoinMsg) String() string {
+	bmsg, _ := json.MarshalIndent(msg, "", "	")
+	return string(bmsg) + "\n"
 }
 
 // <REQUEST, o, t, c>
@@ -149,8 +163,13 @@ func SplitMsg(bmsg []byte) (HeaderMsg, []byte, []byte) {
 	case hReply:
 		payload = bmsg[headerLength:]
 		signature = []byte{}
+	case hJoin:
+		payload = bmsg[headerLength : len(bmsg)-71]
+		signature = bmsg[len(bmsg)-71:]
+
+		fmt.Printf("Join msg:%s\r\n", bmsg)
+		fmt.Printf("Join msg:%s\r\n", bmsg[len(bmsg)-71:])
 	}
-	fmt.Printf("REC SIG:\r\n %d\r\n", signature)
 	return header, payload, signature
 }
 

@@ -114,18 +114,17 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 				log.Println("Failed to read message from WebSocket:", err)
 				break
 			}
-
 			if string(message) == "ping" {
 				conn.WriteJSON("pong")
 			}
 
-			// Обработка сообщения и генерация ответа
-			// В этом примере просто отправляем обратно полученное сообщение
-			var request types.Request
-			var response types.Response
-			response.JSONRPC = "2.0"
-			response.ID = request.ID
-			err = json.Unmarshal(message, &request)
 		}
+	}
+}
+
+func BroadCastWs(data []byte) {
+	var wst = GetTransport()
+	for i := 0; i < len(wst.wsListeners); i++ {
+		wst.wsListeners[i].WriteJSON(data)
 	}
 }

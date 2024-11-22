@@ -3,12 +3,15 @@ package network
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"time"
 
+	"github.com/btcsuite/websocket"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,10 +19,16 @@ import (
 )
 
 var urlName = "localhost:%d"
+var transportServer *Server
+
+func GetTransport() *Server {
+	return transportServer
+}
 
 type Server struct {
-	node *Node
-	url  string
+	node        *Node
+	url         string
+	wsListeners []*websocket.Conn
 }
 
 func nodeIdToPort(nodeId int) int {
@@ -43,17 +52,13 @@ func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 	// 	}
 	// }
 
-	server := &Server{
+	transportServer = &Server{
 		NewNode(nodeId, cfg),
 		fmt.Sprintf(urlName, nodeIdToPort(nodeId)),
+		make([]*websocket.Conn, 0),
 	}
-	pubKnownServer := &GossipServer{
-		fmt.Sprintf(urlName, nodeIdToPort(nodeId)+10),
-		server,
-	}
-	go pubKnownServer.Start()
 	// fmt.Println(server.node)
-	return server
+	return transportServer
 
 }
 
@@ -114,40 +119,31 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		fmt.Printf("%v\n", err)
 	}
 	fmt.Printf("Send key:\r\n%s\r\n", msg)
+
+	req := Request{
+		msg,
+		hex.EncodeToString(generateDigest(msg)),
+	}
+	reqmsg := &JoinMsg{
+		"join",
+		int(time.Now().Unix()),
+		s.node.NodeID,
+		req,
+	}
+	sig, err := signMessage(reqmsg, s.node.keypair.privkey)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
+
 	conn, err := net.Dial("tcp", gossipAddr)
 	if err != nil {
 		return fmt.Errorf("%s is not online", gossipAddr)
 	}
 	defer conn.Close()
-	_, err = io.Copy(conn, bytes.NewReader([]byte(msg)))
+	_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
 	if err != nil {
 		return fmt.Errorf("%v", err)
 	}
-
-	// swardResp, err := io.ReadAll(conn)
-	// swardAddrStr = string(swardResp)
-
-	// req := Request{
-	// 	msg,
-	// 	hex.EncodeToString(generateDigest(msg)),
-	// }
-	// reqmsg := &RequestMsg{
-	// 	"solve",
-	// 	int(time.Now().Unix()),
-	// 	s.node.NodeID,
-	// 	req,
-	// }
-	// sig, err := s.node.signMessage(reqmsg)
-	// // fmt.Printf("SIG:\r\n %d\r\n", sig)
-	// // fmt.Printf("SIG LEN:\r\n %d\r\n", len(sig))
-	// if err != nil {
-	// 	fmt.Printf("%v\n", err)
-	// }
-	// logBroadcastMsg(hRequest, reqmsg)
-	// if err := send(ComposeMsg(hRequest, reqmsg, sig), swardAddrStr); err != nil {
-	// 	fmt.Printf("cannot connect to %s. Reason: %s\r\n", swardAddrStr, err)
-	// }
-	// // c.request = reqmsg
 	return nil
 }
 
@@ -177,4 +173,8 @@ func (s *Server) SetUpHttp(ctx context.Context, cfg config.Config) {
 	fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
 	go http.HandleFunc("/", HandleRequest(ctx))
 	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
+}
+
+func AddWsListener(conn *websocket.Conn) {
+
 }

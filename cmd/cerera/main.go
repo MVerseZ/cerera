@@ -15,6 +15,7 @@ import (
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/cerera/internal/coinbase"
 )
 
 type Process struct {
@@ -76,7 +77,7 @@ func main() {
 		fmt.Printf("Connect to sward at gossip address: %s\r\n", *gossipAddress)
 		n.JoinSwarm(*gossipAddress)
 	}
-	// n.SetUpHttp(ctx, *cfg)
+	n.SetUpHttp(ctx, *cfg)
 	go n.Start()
 	// }
 
@@ -84,28 +85,28 @@ func main() {
 	// fmt.Printf("Finish by signal:===>[%s]\n", sig.String())
 
 	// go network.InitNetworkHost(ctx, *cfg)
-	// storage.NewD5Vault(cfg)
+	storage.NewD5Vault(cfg)
 
 	// miner.Start()
 
-	// validator.NewValidator(ctx, *cfg)
-	// chain.InitBlockChain(cfg)
+	validator.NewValidator(ctx, *cfg)
+	chain.InitBlockChain(cfg)
 
 	// chain.InitChain()
 	// miner.InitMiner()
 
 	c := cerera{
-		// g:      validator.NewValidator(ctx, *cfg),
+		// g:  validator.NewValidator(ctx, *cfg),
 		// bc: chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
 		// h: host,
-		// p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
+		p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		// v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
 	}
 
 	// c.v.Prepare()
 
-	// coinbase.SetCoinbase()
+	coinbase.SetCoinbase()
 
 	// s := gigea.Ring{
 	// Pool:       c.p,

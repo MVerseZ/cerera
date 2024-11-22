@@ -1,7 +1,6 @@
 package pallada
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/cerera/internal/cerera/block"
@@ -11,6 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/cerera/internal/coinbase"
 )
 
 var pld Pallada
@@ -47,6 +47,8 @@ func Execute(method string, params []interface{}) interface{} {
 	case "accounts", "account.getAll":
 		// get all accounts of system
 		pld.Data = vlt.GetAll()
+	case "coinbase":
+		pld.Data = types.BigIntToFloat(coinbase.TotalValue)
 	case "create_account", "account.create":
 		// get all accounts of system
 		//
@@ -133,39 +135,43 @@ func Execute(method string, params []interface{}) interface{} {
 		pld.Data = p.GetInfo()
 	case "signrawtransactionwithkey", "cerera.signTransaction":
 		// sign transaction with key (signer will pay fees and value for transfer)
-		if len(params) > 1 {
-			txHashStr, ok1 := params[0].(string)
-			kStr, ok2 := params[1].(string)
-			if !ok1 || !ok2 {
-				pld.Data = "Error"
-				return 0xf
-			}
-			var txHash = common.HexToHash(txHashStr)
-			resHash, err := vldtr.SignRawTransactionWithKey(txHash, kStr)
-			if err != nil {
-				pld.Data = "Error while sign tx"
-				return 0xf
-			}
-			pld.Data = resHash
-		} else {
-			pld.Data = "Wrong count of params"
-			return 0xf
-		}
+		pld.Data = "Method not supported"
+		return 0xe
+		// if len(params) > 1 {
+		// 	txHashStr, ok1 := params[0].(string)
+		// 	kStr, ok2 := params[1].(string)
+		// 	if !ok1 || !ok2 {
+		// 		pld.Data = "Error"
+		// 		return 0xf
+		// 	}
+		// 	var txHash = common.HexToHash(txHashStr)
+		// 	resHash, err := vldtr.SignRawTransactionWithKey(txHash, kStr)
+		// 	if err != nil {
+		// 		pld.Data = "Error while sign tx"
+		// 		return 0xf
+		// 	}
+		// 	pld.Data = resHash
+		// } else {
+		// 	pld.Data = "Wrong count of params"
+		// 	return 0xf
+		// }
 	case "send_tx", "cerera.sendTransaction":
 		// send transaction to address
 
+		// signer
 		// address
 		// value
 		// gas
 		// message
-		if len(params) < 2 {
+		if len(params) < 3 {
 			pld.Data = "Wrong count of params"
 		} else {
-			addrStr, ok1 := params[0].(string)
-			count, ok2 := params[1].(float64)
-			gas, ok3 := params[2].(float64)
-			msg, ok4 := params[3].(string)
-			if !ok1 || !ok2 || !ok3 || !ok4 {
+			kStr, ok0 := params[0].(string)
+			addrStr, ok1 := params[1].(string)
+			count, ok2 := params[2].(float64)
+			gas, ok3 := params[3].(float64)
+			msg, ok4 := params[4].(string)
+			if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
 				pld.Data = "Error parse params"
 				return 0xf
 			} else {
@@ -173,9 +179,14 @@ func Execute(method string, params []interface{}) interface{} {
 				var gasInt = int(gas)
 				var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)
 				if vldtr.ValidateRawTransaction(tx) {
-					go func() { p.Funnel <- []*types.GTransaction{tx} }()
+					resTx, err := vldtr.SignRawTransactionWithKey(tx, kStr)
+					if err != nil {
+						pld.Data = "Error while signing!"
+						return 0xf
+					}
 					// p.AddRawTransaction(tx)
-					pld.Data = tx.Hash()
+					p.Funnel <- []*types.GTransaction{resTx}
+					pld.Data = resTx.Hash()
 				} else {
 					pld.Data = types.EmptyCodeHash
 				}
@@ -231,73 +242,6 @@ func Execute(method string, params []interface{}) interface{} {
 	return pld.Data
 }
 
-func ExecuteChain(req types.Request, resp types.Response) types.Request {
-	// get inner components
-	// there is singletons and when call Get* returns struct of component
-	// var vlt = storage.GetVault()
-	var bc = chain.GetBlockChain()
-	// var vldtr = validator.Get()
-	// var p = pool.Get()
-	// var traceReqs []types.Request
-	fmt.Printf("Chain of: %s - %d\r\n", req.Method, resp.ID)
-	if req.Method == "cerera.consensus.join" {
-		bc.Idle()
-		// var cnt, err = strconv.Atoi(strings.Split(resp.Result.(string), "#")[1])
-		// if err != nil {
-		// 	return nil
-		// }
-		// for i := 0; i < cnt; i++ {
-		var reqParams = []interface{}{}
-		return types.Request{
-			JSONRPC: "2.0",
-			Method:  "cerera.consensus.sync",
-			Params:  reqParams,
-			ID:      485649652556,
-		}
-		// 	traceReqs = append(traceReqs, packReq)
-		// }
-		// return traceReqs
-	}
-	if req.Method == "cerera.consensus.sync" {
-		switch t := resp.Result.(type) {
-		case []interface{}:
-			for i := 0; i < len(t); i++ {
-				jsonData, err := json.Marshal(t[i])
-				if err != nil {
-					fmt.Println("Ошибка при маршалинге:", err)
-					continue
-				}
-				var blk block.Block
-				err = json.Unmarshal(jsonData, &blk)
-				if err != nil {
-					fmt.Println("Ошибка при анмаршалинге:", err)
-					continue
-				}
-				bc.UpdateChain(&blk)
-			}
-		case string:
-			fmt.Println(t)
-		default:
-			fmt.Println(111)
-		}
-
-		var reqParams = []interface{}{}
-		return types.Request{
-			JSONRPC: "2.0",
-			Method:  "cerera.consensus.done",
-			Params:  reqParams,
-			ID:      485649652557,
-		}
-	}
-	var reqParams = []interface{}{}
-	return types.Request{
-		JSONRPC: "2.0",
-		Method:  "cerera.consensus.done",
-		Params:  reqParams,
-		ID:      485649652558,
-	}
-}
-
 func SyncRequest() types.Request {
 	var reqParams = []interface{}{}
 	hReq := types.Request{
@@ -308,98 +252,3 @@ func SyncRequest() types.Request {
 	}
 	return hReq
 }
-
-// func HandleResponse(resp types.Response) {
-// 	result := resp.Result
-// 	fmt.Printf("Current client status: %x\r\n", client.status)
-// 	switch v := result.(type) {
-// 	case map[string]interface{}:
-
-// 		switch s := client.status; s {
-// 		case 0x1:
-// 			tmpJson, err := json.Marshal(v)
-// 			if err != nil {
-// 				fmt.Println(err)
-// 				continue
-// 			}
-// 			var b block.Block
-// 			if err := json.Unmarshal(tmpJson, &b); err != nil {
-// 				fmt.Println(err)
-// 				return
-// 			}
-
-// 			// fmt.Println(currentBlock.GetLatestBlock().Hash())
-// 			// fmt.Println(b.Hash())
-
-// 			var syncParams []interface{}
-// 			fmt.Println("METHOD WITH CHAIN")
-// 			var currentBlock = chain.GetBlockChain().GetLatestBlock()
-// 			if b.Hash().String() != currentBlock.Hash().String() {
-// 				if b.Head.Number.Cmp(currentBlock.Head.Number) > 0 {
-// 					var diff = big.NewInt(0).Sub(b.Head.Number, currentBlock.Head.Number)
-// 					syncParams = []interface{}{diff}
-// 				} else {
-// 					syncParams = []interface{}{0}
-// 				}
-// 			} else {
-// 				syncParams = []interface{}{currentBlock.Head.Number}
-// 			}
-// 			hReq := Request{
-// 				JSONRPC: "2.0",
-// 				Method:  "cerera.consensus.sync",
-// 				Params:  syncParams,
-// 				ID:      5422899110,
-// 			}
-// 			if err := enc.Encode(&hReq); err != nil {
-// 				fmt.Println("failed to encode data:", err)
-// 				return
-// 			}
-
-// 			// 	}
-// 			// }
-// 			client.status = 0x2
-// 		case 0x2:
-// 			tmpJson, err := json.Marshal(v)
-// 			if err != nil {
-// 				fmt.Println(err)
-// 				continue
-// 			}
-// 			var b block.Block
-// 			if err := json.Unmarshal(tmpJson, &b); err != nil {
-// 				fmt.Println(err)
-// 				return
-// 			}
-// 			fmt.Println("METHOD WITH CHAIN")
-// 			// chain.GetBlockChain().UpdateChain(&b)
-// 			client.status += 1
-// 		default:
-// 			fmt.Printf("Response map default client status\r\n")
-// 		}
-
-// 	case string:
-// 		var h = common.HexToHash(v)
-// 		fmt.Printf("block_str: %s\r\n", h)
-// 	case float64:
-// 		fmt.Printf("cons stat: %f\r\n", v)
-// 	case map[string]map[string]interface{}:
-// 		fmt.Printf("SWARM BLOCKS\r\n")
-// 	case interface{}:
-// 		fmt.Printf("SWARM BLOCKS ARR\r\n")
-// 		// receive blocks and fullfilled chain
-
-// 		hReq := Request{
-// 			JSONRPC: "2.0",
-// 			Method:  "cerera.consensus.ready",
-// 			Params:  nil,
-// 			ID:      5422899110,
-// 		}
-// 		if err := enc.Encode(&hReq); err != nil {
-// 			fmt.Println("failed to encode data:", err)
-// 			return
-// 		}
-// 		client.status += 1
-// 	default:
-// 		fmt.Println(v)
-// 		fmt.Println("unknown")
-// 	}
-// }

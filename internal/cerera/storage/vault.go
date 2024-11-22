@@ -225,11 +225,17 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 }
 
 // faucet method without creating transaction
-func (v *D5Vault) FaucetBalance(to types.Address, val int) {
+func (v *D5Vault) FaucetBalance(to types.Address, cntval int) error {
+
 	var destSA = v.Get(to)
-	var faucetTo = coinbase.Faucet(val)
+	var faucetTo = coinbase.Faucet(cntval)
+
 	destSA.Balance.Add(destSA.Balance, faucetTo)
 	UpdateVault(destSA.Bytes())
+
+	coinbase.TotalValue.Sub(coinbase.TotalValue, types.FloatToBigInt(float64(cntval)))
+
+	return nil
 }
 
 func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) bool {

@@ -55,7 +55,7 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
 		memPool:        mPool,
-		maintainTicker: time.NewTicker(time.Second * 5),
+		maintainTicker: time.NewTicker(1500 * time.Millisecond),
 		maxSize:        maxSize,
 		minGas:         minGas,
 

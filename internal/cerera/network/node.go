@@ -94,6 +94,8 @@ func (node *Node) handleMsg() {
 		msg := <-node.msgQueue
 		header, payload, sign := SplitMsg(msg)
 		switch header {
+		case hJoin:
+			node.handleJoin(payload, sign)
 		case hRequest:
 			node.handleRequest(payload, sign)
 		case hPrePrepare:
@@ -104,6 +106,11 @@ func (node *Node) handleMsg() {
 			node.handleCommit(payload, sign)
 		}
 	}
+}
+
+func (node *Node) handleJoin(payload []byte, sig []byte) {
+	fmt.Println("Join")
+
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {
