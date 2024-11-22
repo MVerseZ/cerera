@@ -10,11 +10,9 @@ import (
 	"math/big"
 
 	"github.com/cerera/internal/cerera/block"
-	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/consensus"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
+	"github.com/cerera/internal/coinbase"
 
 	"github.com/cerera/internal/cerera/types"
 )
@@ -31,9 +29,10 @@ type Validator interface {
 	GetVersion() string
 	Faucet(addrStr string, valFor int) error
 	PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction
+	Reward(node types.Address)
 	SetUp(chainId *big.Int)
 	Signer() types.Signer
-	SignRawTransactionWithKey(txHash common.Hash, kStr string) (common.Hash, error)
+	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) (*types.GTransaction, error)
 	ValidateRawTransaction(tx *types.GTransaction) bool
 	// validate and execute transaction
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
@@ -63,6 +62,11 @@ func NewValidator(ctx context.Context, cfg config.Config) Validator {
 	return v
 }
 
+func (v *DDDDDValidator) CheckAddress(addr types.Address) bool {
+	// move logic to consensus
+	return v.currentAddress != addr
+}
+
 func (v *DDDDDValidator) GetVersion() string {
 	return v.currentVersion
 }
@@ -74,15 +78,9 @@ func (v *DDDDDValidator) GasPrice() *big.Int {
 func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
 	if valFor > 0 {
 		var vault = storage.GetVault()
-		vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
-		return nil
+		return vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
 	}
 	return errors.New("value < 0")
-}
-
-func (v *DDDDDValidator) SetUp(chainId *big.Int) {
-	v.minGasPrice = big.NewInt(100)
-	v.signer = types.NewSimpleSignerWithPen(chainId, v.signatureKey)
 }
 
 func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction {
@@ -98,8 +96,64 @@ func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, ms
 	return tx
 }
 
+func (v *DDDDDValidator) Reward(nodeAddr types.Address) {
+	// TODO do not work
+
+	var vault = storage.GetVault()
+	vault.FaucetBalance(nodeAddr, coinbase.CurrentReward())
+}
+
+func (v *DDDDDValidator) SetUp(chainId *big.Int) {
+	v.minGasPrice = big.NewInt(100)
+	v.signer = types.NewSimpleSignerWithPen(chainId, v.signatureKey)
+}
+
 func (v *DDDDDValidator) Signer() types.Signer {
 	return v.signer
+}
+
+func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKey string) (*types.GTransaction, error) {
+	fmt.Printf("Start signing tx\r\n")
+	// p := pool.Get()
+	// fmt.Println(txHash)
+	// fmt.Println(signKey)
+	// var tx = p.GetTransaction(txHash)
+	fmt.Println(tx.IsSigned())
+
+	// get for tx
+	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
+
+	// sign tx
+	var vlt = storage.GetVault()
+	var signBytes = vlt.GetKey(signKey)
+
+	pemBlock, _ := pem.Decode([]byte(signBytes))
+	aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
+	if err1 != nil {
+		return nil, errors.New("error ParsePKC58 key")
+	}
+	fmt.Printf("Sing tx: %s\r\n", tx.Hash())
+
+	signTx, err2 := types.SignTx(tx, v.signer, aKey)
+	if err2 != nil {
+		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
+		return nil, errors.New("error while sign tx")
+	}
+	var r, vv, s = signTx.RawSignatureValues()
+	fmt.Printf("Raw values:%d %d %d\r\n", r, s, vv)
+	// update tx in mempool WHY ???
+	// p.UpdateTx(signTx)
+
+	// p.memPool[i] = *signTx
+	// network.PublishData("OP_TX_SIGNED", tx)
+	fmt.Printf("Now tx %s is %t\r\n", signTx.Hash(), signTx.IsSigned())
+	return signTx, nil
+}
+
+func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
+	// move logic to consensus
+	// return consensus.ConfirmBlock(b)
+	return true
 }
 
 // Validate and execute transaction
@@ -133,50 +187,4 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 
 func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
 	return true
-}
-
-func (v *DDDDDValidator) SignRawTransactionWithKey(txHash common.Hash, signKey string) (common.Hash, error) {
-	p := pool.Get()
-	fmt.Println(txHash)
-	fmt.Println(signKey)
-	var tx = p.GetTransaction(txHash)
-	fmt.Println(tx.IsSigned())
-
-	// get for tx
-	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
-
-	// sign tx
-	var vlt = storage.GetVault()
-	var signBytes = vlt.GetKey(signKey)
-
-	pemBlock, _ := pem.Decode([]byte(signBytes))
-	aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
-	if err1 != nil {
-		return common.EmptyHash(), errors.New("error ParsePKC58 key")
-	}
-
-	signTx, err2 := types.SignTx(tx, v.signer, aKey)
-	if err2 != nil {
-		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
-		return common.EmptyHash(), errors.New("error while sign tx")
-	}
-	var r, vv, s = signTx.RawSignatureValues()
-	fmt.Printf("Raw values:%d %d %d\r\n", r, s, vv)
-	// update tx in mempool
-	p.UpdateTx(*signTx)
-
-	// p.memPool[i] = *signTx
-	// network.PublishData("OP_TX_SIGNED", tx)
-	fmt.Printf("Now tx %s is %t\r\n", signTx.Hash(), signTx.IsSigned())
-	return signTx.Hash(), nil
-}
-
-func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
-	// move logic to consensus
-	return consensus.ConfirmBlock(b)
-}
-
-func (v *DDDDDValidator) CheckAddress(addr types.Address) bool {
-	// move logic to consensus
-	return v.currentAddress != addr
 }

@@ -11,11 +11,11 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/consensus"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/cerera/internal/coinbase"
 )
 
 type Process struct {
@@ -29,7 +29,7 @@ func (p *Process) Stop() {
 type cerera struct {
 	bc     chain.Chain
 	g      validator.Validator
-	h      *network.Host
+	h      *network.Node
 	p      *pool.Pool
 	proc   Process
 	v      storage.Vault
@@ -40,6 +40,8 @@ type cerera struct {
 func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
+	port := flag.Int("p", -1, "p2p port for connections")
+	gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
 	flag.Parse()
@@ -60,12 +62,29 @@ func main() {
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
 
-	consensus.Start()
+	// consensus.Start()
 
 	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// minwinsvc.SetOnExit(cancel)
 
-	go network.InitNetworkHost(ctx, *cfg)
+	// if *port == 10 {
+	// 	c := network.NewClient()
+	// 	c.Start()
+
+	// } else {
+	n := network.NewServer(ctx, cfg, *port)
+	if *gossipAddress != "" {
+		fmt.Printf("Connect to sward at gossip address: %s\r\n", *gossipAddress)
+		n.JoinSwarm(*gossipAddress)
+	}
+	n.SetUpHttp(ctx, *cfg)
+	go n.Start()
+	// }
+
+	// sig := <-sigCh
+	// fmt.Printf("Finish by signal:===>[%s]\n", sig.String())
+
+	// go network.InitNetworkHost(ctx, *cfg)
 	storage.NewD5Vault(cfg)
 
 	// miner.Start()
@@ -77,17 +96,17 @@ func main() {
 	// miner.InitMiner()
 
 	c := cerera{
-		// g:      validator.NewValidator(ctx, *cfg),
+		// g:  validator.NewValidator(ctx, *cfg),
 		// bc: chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
 		// h: host,
-		// p:      pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
+		p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		// v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
 	}
 
 	// c.v.Prepare()
 
-	// coinbase.SetCoinbase()
+	coinbase.SetCoinbase()
 
 	// s := gigea.Ring{
 	// Pool:       c.p,
@@ -101,7 +120,6 @@ func main() {
 	// go s.Execute()
 
 	<-ctx.Done()
-	_ = c.h.Stop()
 	c.proc.Stop()
 }
 

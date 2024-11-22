@@ -17,8 +17,13 @@ type coinbaseData struct {
 var Coinbase coinbaseData
 
 var AddressHex = "0xf0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f"
-var TotalValue = types.FloatToBigInt(1 * 10 << 31)
+var TotalValue = types.FloatToBigInt(21000000000.0)
+var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
 var blockReward = types.FloatToBigInt(1024.0)
+
+func CurrentReward() int {
+	return 1024
+}
 
 // SetCoinbase initializes the global Coinbase data.
 func SetCoinbase() {

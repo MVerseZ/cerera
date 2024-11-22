@@ -45,7 +45,7 @@ type Chain struct {
 
 var (
 	bch        Chain
-	BLOCKTIMER = time.Duration(1 * time.Second)
+	BLOCKTIMER = time.Duration(1 * time.Minute)
 )
 
 func GetBlockChain() *Chain {
@@ -61,7 +61,6 @@ func InitBlockChain(cfg *config.Config) Chain {
 	stats := BlockChainStatus{
 		Total:     total,
 		ChainWork: chainWork,
-		Latest:    common.EmptyHash(),
 		Size:      0,
 	}
 
@@ -76,6 +75,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 		InitChainVault(genesisBlock)
 		dataBlocks = append(dataBlocks, genesisBlock)
 		cfg.UpdateChainPath("./chain.dat")
+		stats.Latest = genesisBlock.Hash()
 	} else {
 		var readBlock, err = SyncVault()
 		if err != nil {
@@ -97,8 +97,10 @@ func InitBlockChain(cfg *config.Config) Chain {
 			// 		bc.info.Total = bc.info.Total + 1
 			// bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 		}
-
-		t, _ = trie.NewTree(list)
+		t, err = trie.NewTree(list)
+		if err != nil {
+			fmt.Printf("error trie validating: %s\r\n", err)
+		}
 		t.VerifyTree()
 	}
 
@@ -232,8 +234,9 @@ func (bc *Chain) G(latest *block.Block) {
 			err := SaveToVault(*newBlock)
 			if err == nil {
 				var rewardAddress = newBlock.Head.Node
-				fmt.Printf("Reward to: %s\r\n", rewardAddress)
+				fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
 				bc.data = append(bc.data, *newBlock)
+				vld.Reward(rewardAddress)
 			}
 		}
 		// clear array with included txs

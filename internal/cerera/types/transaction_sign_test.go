@@ -2,6 +2,7 @@ package types
 
 import (
 	"math/big"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -9,6 +10,10 @@ import (
 func TestSigningTx(t *testing.T) {
 
 	var acc, err = GenerateAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signerAcc, err := GenerateAccount()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +34,7 @@ func TestSigningTx(t *testing.T) {
 	}
 	itx := NewTx(txs)
 
-	signer := NewSimpleSignerWithPen(big.NewInt(25331), acc)
+	signer := NewSimpleSignerWithPen(big.NewInt(25331), signerAcc)
 
 	tx, err := SignTx(itx, signer, acc)
 	if err != nil {
@@ -48,6 +53,24 @@ func TestSigningTx(t *testing.T) {
 	}
 	if from != addr {
 		t.Errorf("exected from and address to be equal. Got %x want %x", from, addr)
+	}
+	if itx.Hash() != tx.Hash() {
+		t.Errorf("different hashes!! Got %s want %s", itx.Hash(), tx.Hash())
+	}
+	if itx.Value().Cmp(tx.Value()) != 0 {
+		t.Errorf("different inner values!! Got %d want %d", itx.Value(), tx.Value())
+	}
+	if !reflect.DeepEqual(itx.Data(), tx.Data()) {
+		t.Errorf("different data!! Got %s want %s", itx.Data(), tx.Data())
+	}
+	if itx.Gas() != tx.Gas() {
+		t.Errorf("different gas!! Got %d want %d", itx.Gas(), tx.Gas())
+	}
+	if itx.GasPrice().Cmp(tx.GasPrice()) != 0 {
+		t.Errorf("different gas!! Got %d want %d", itx.GasPrice(), tx.GasPrice())
+	}
+	if itx.Nonce() != tx.Nonce() {
+		t.Errorf("different nonce!! Got %d want %d", itx.Nonce(), tx.Nonce())
 	}
 }
 
