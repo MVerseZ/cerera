@@ -90,7 +90,9 @@ func (s *Server) Start() {
 		if err != nil {
 			panic(err)
 		}
+		s.addPreKnownNode(conn)
 		go s.handleConnection(conn)
+
 	}
 }
 
