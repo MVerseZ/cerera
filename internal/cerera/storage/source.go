@@ -97,7 +97,7 @@ func SaveToVault(account []byte) error {
 
 	// Decode account from bytes using BytesToStateAccount
 	accountData := types.BytesToStateAccount(account)
-	accountData.Status = "SYNC"
+	accountData.Status = "LOCAL"
 	accountDataToWrite := accountData.Bytes()
 	accountDataToWrite = append(accountDataToWrite, '\n') // Добавляем разделитель новой строки
 

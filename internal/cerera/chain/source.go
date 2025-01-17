@@ -50,7 +50,7 @@ func SyncVault() ([]block.Block, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read account data from file: %w", err)
+		return nil, fmt.Errorf("failed to read block data from file: %w", err)
 	}
 
 	return readBlocks, nil

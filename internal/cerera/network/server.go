@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -14,11 +15,12 @@ import (
 	"github.com/btcsuite/websocket"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/gigea/gigea"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var urlName = "localhost:%d"
+var urlName = "127.0.0.1:%d"
 var transportServer *Server
 
 func GetTransport() *Server {
@@ -38,12 +40,13 @@ func nodeIdToPort(nodeId int) int {
 func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		fmt.Println("Ошибка при получении IP-адресов:", err)
+		log.Fatalf("Ошибка при получении IP-адресов: %s", err)
+		// fmt.Println("Ошибка при получении IP-адресов:", err)
 
 	}
 
-	fmt.Println("Ваши IP-адреса:")
-	fmt.Printf("%d\r\n", len(addrs))
+	log.Println("Ваши IP-адреса:")
+	log.Printf("%d\r\n", len(addrs))
 	// for _, addr := range addrs {
 	// 	if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
 	// 		if ipNet.IP.To4() != nil {
@@ -57,6 +60,18 @@ func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 		fmt.Sprintf(urlName, nodeIdToPort(nodeId)),
 		make([]*websocket.Conn, 0),
 	}
+
+	err = transportServer.JoinSwarm(cfg.Gossip)
+	if err != nil {
+		// panic(err)
+		fmt.Printf("gigea.network.error! %s\r\n", err)
+		gigea.SetStatus(1)
+		fmt.Println("Running in local mode")
+	} else {
+		gigea.SetStatus(2)
+		fmt.Println("Running in full mode")
+	}
+
 	// fmt.Println(server.node)
 	return transportServer
 
@@ -112,39 +127,43 @@ func (s *Server) handleConnection(conn net.Conn) {
 }
 
 func (s *Server) JoinSwarm(gossipAddr string) error {
+	if len(gossipAddr) > 0 {
+		pbk := s.node.keypair.pubkey
+		msg, err := types.PublicKeyToString(pbk)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+		}
+		fmt.Printf("Send key: %s\r\n", msg)
 
-	pbk := s.node.keypair.pubkey
-	msg, err := types.PublicKeyToString(pbk)
-	if err != nil {
-		fmt.Printf("%v\n", err)
+		req := Request{
+			msg,
+			hex.EncodeToString(generateDigest(msg)),
+		}
+		reqmsg := &JoinMsg{
+			"join",
+			int(time.Now().Unix()),
+			s.node.NodeID,
+			req,
+		}
+		sig, err := signMessage(reqmsg, s.node.keypair.privkey)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+		}
+		// Dial("ip4:1", "192.0.2.1")
+		fmt.Printf("dial gossip: %s\r\n", gossipAddr)
+		conn, err := net.Dial("tcp", gossipAddr)
+		if err != nil {
+			return fmt.Errorf("%s is not online", gossipAddr)
+		}
+		defer conn.Close()
+		_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
+		if err != nil {
+			return fmt.Errorf("%v", err)
+		}
+		return nil
+	} else {
+		return fmt.Errorf("%s", "empty/wrong gossip address!")
 	}
-	fmt.Printf("Send key:\r\n%s\r\n", msg)
-
-	req := Request{
-		msg,
-		hex.EncodeToString(generateDigest(msg)),
-	}
-	reqmsg := &JoinMsg{
-		"join",
-		int(time.Now().Unix()),
-		s.node.NodeID,
-		req,
-	}
-	sig, err := signMessage(reqmsg, s.node.keypair.privkey)
-	if err != nil {
-		fmt.Printf("%v\n", err)
-	}
-
-	conn, err := net.Dial("tcp", gossipAddr)
-	if err != nil {
-		return fmt.Errorf("%s is not online", gossipAddr)
-	}
-	defer conn.Close()
-	_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
-	if err != nil {
-		return fmt.Errorf("%v", err)
-	}
-	return nil
 }
 
 func (s *Server) SetUpHttp(ctx context.Context, cfg config.Config) {
@@ -170,7 +189,8 @@ func (s *Server) SetUpHttp(ctx context.Context, cfg config.Config) {
 		}
 	}()
 
-	fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
+	// fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
+	log.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
 	go http.HandleFunc("/", HandleRequest(ctx))
 	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
 }

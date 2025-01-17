@@ -94,13 +94,13 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	var usage uintptr
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
-	for _, k := range p.memPool {
+	for _, k := range p.Prepared {
 		var txSize = k.Size()
 		txPoolSize += int(txSize)
 		var txBts = unsafe.Sizeof(k)
 		usage += txBts
 		hashes = append(hashes, k.Hash())
-		cp = append(cp, k)
+		cp = append(cp, *k)
 	}
 	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
 	var result = MemPoolInfo{

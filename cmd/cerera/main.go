@@ -16,6 +16,7 @@ import (
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/internal/gigea/gigea"
 )
 
 type Process struct {
@@ -41,7 +42,7 @@ func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
 	port := flag.Int("p", -1, "p2p port for connections")
-	gossipAddress := flag.String("g", "", "gossip address")
+	// gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
 	flag.Parse()
@@ -62,38 +63,18 @@ func main() {
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
 
-	// consensus.Start()
+	//## No multithreading.
+	// start steps
 
-	// ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// minwinsvc.SetOnExit(cancel)
+	gigea.InitStatus()
 
-	// if *port == 10 {
-	// 	c := network.NewClient()
-	// 	c.Start()
-
-	// } else {
 	n := network.NewServer(ctx, cfg, *port)
-	if *gossipAddress != "" {
-		fmt.Printf("Connect to sward at gossip address: %s\r\n", *gossipAddress)
-		n.JoinSwarm(*gossipAddress)
-	}
 	n.SetUpHttp(ctx, *cfg)
 	go n.Start()
-	// }
-
-	// sig := <-sigCh
-	// fmt.Printf("Finish by signal:===>[%s]\n", sig.String())
-
-	// go network.InitNetworkHost(ctx, *cfg)
-	storage.NewD5Vault(cfg)
-
-	// miner.Start()
 
 	validator.NewValidator(ctx, *cfg)
+	storage.NewD5Vault(cfg)
 	chain.InitBlockChain(cfg)
-
-	// chain.InitChain()
-	// miner.InitMiner()
 
 	c := cerera{
 		// g:  validator.NewValidator(ctx, *cfg),
@@ -107,17 +88,6 @@ func main() {
 	// c.v.Prepare()
 
 	coinbase.SetCoinbase()
-
-	// s := gigea.Ring{
-	// Pool:       c.p,
-	// Chain:      &c.bc,
-	// Counter:    0,
-	// RoundTimer: time.NewTicker(time.Duration(3 * time.Second)),
-	// }
-
-	// c.g.SetUp(cfg.Chain.ChainID)
-
-	// go s.Execute()
 
 	<-ctx.Done()
 	c.proc.Stop()
