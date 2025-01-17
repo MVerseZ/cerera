@@ -4,13 +4,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"math/big"
+	"os"
 
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/internal/gigea/gigea"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -87,18 +90,29 @@ func NewD5Vault(cfg *config.Config) Vault {
 	// ???
 	// vlt.accounts.Append(vlt.coinBase.Address, vlt.coinBase)
 
-	// sync with fs
-	if cfg.Vault.PATH == "EMPTY" {
+	if _, err := os.Stat("./vault.dat"); errors.Is(err, os.ErrNotExist) || cfg.Vault.PATH == "EMPTY" {
+		// path/to/whatever does not exist
 		if err := InitSecureVault(rootSA); err != nil {
 			panic(err)
 		}
 		cfg.UpdateVaultPath("./vault.dat")
-	} else {
+	}
+
+	vlt.path = cfg.Vault.PATH
+	//sync with network and fc
+	switch stat := gigea.C.Status; stat {
+	case 1:
+		// local mode
 		if err := SyncVault(cfg.Vault.PATH); err != nil {
 			panic(err)
 		}
+	case 2:
+		// network mode
+		fmt.Println("gigea.vault.status")
+		fmt.Println(gigea.C)
+		panic("gigea.vault.status")
 	}
-	vlt.path = cfg.Vault.PATH
+
 	return &vlt
 }
 

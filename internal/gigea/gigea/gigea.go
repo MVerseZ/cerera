@@ -3,14 +3,9 @@ package gigea
 import (
 	"fmt"
 	"time"
-
-	"github.com/cerera/internal/cerera/chain"
-	"github.com/cerera/internal/cerera/pool"
 )
 
 type Ring struct {
-	Pool       *pool.Pool
-	Chain      *chain.Chain
 	Counter    int64
 	RoundTimer *time.Ticker
 }

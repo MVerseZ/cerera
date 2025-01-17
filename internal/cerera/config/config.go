@@ -55,6 +55,7 @@ type Config struct {
 	AUTOGEN bool   // auto generating blocks
 	VERSION string // version field
 	VER     int    // other version field
+	Gossip  string
 }
 
 func GenerageConfig() *Config {
@@ -86,6 +87,7 @@ func GenerageConfig() *Config {
 			},
 			VERSION: "ALPHA",
 			VER:     1,
+			Gossip:  "127.0.0.1:8079",
 		}
 		cfg.WriteConfigToFile()
 	} else {
