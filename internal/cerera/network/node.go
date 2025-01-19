@@ -115,23 +115,24 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 	// fmt.Printf("%s\r\n", len(node.knownNodes))
 
 	// msg := vlt.Size()
-	// req := Request{
-	// 	string(msg),
-	// 	hex.EncodeToString(generateDigest(msg)),
-	// }
-	// reqmsg := &JoinMsg{
-	// 	"join",
-	// 	int(time.Now().Unix()),
-	// 	node.NodeID,
-	// 	req,
-	// }
-	// sig, err := signMessage(reqmsg, node.keypair.privkey)
-	// if err != nil {
-	// 	fmt.Printf("%v\n", err)
-	// }
 
-	// _, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
-	fmt.Printf("%d\r\n", len(node.knownNodes))
+	var ms = "_CERERA_SYNC_OP"
+	req := Request{
+		ms,
+		hex.EncodeToString(generateDigest(ms)),
+	}
+	reqmsg := &JoinMsg{
+		"join",
+		int(time.Now().Unix()),
+		node.NodeID,
+		req,
+	}
+	sig, err := signMessage(reqmsg, node.keypair.privkey)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
+
+	node.broadcast(ComposeMsg(hJoin, reqmsg, sig))
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {

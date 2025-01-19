@@ -41,7 +41,7 @@ type cerera struct {
 func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
-	port := flag.Int("p", -1, "p2p port for connections")
+	port := flag.Int("p", 1, "p2p port for connections")
 	// gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
@@ -72,15 +72,15 @@ func main() {
 	n.SetUpHttp(ctx, *cfg)
 	go n.Start()
 
-	validator.NewValidator(ctx, *cfg)
-	storage.NewD5Vault(cfg)
-	chain.InitBlockChain(cfg)
+	// validator.NewValidator(ctx, *cfg)
+	// storage.NewD5Vault(cfg)
+	// chain.InitBlockChain(cfg)
 
 	c := cerera{
 		// g:  validator.NewValidator(ctx, *cfg),
 		// bc: chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
 		// h: host,
-		p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
+		// p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		// v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
 	}

@@ -34,7 +34,7 @@ type Server struct {
 }
 
 func nodeIdToPort(nodeId int) int {
-	return nodeId + 8080
+	return nodeId + 8090
 }
 
 func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
@@ -117,11 +117,15 @@ func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 	}
 	s.node.knownNodes = append(s.node.knownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
+	gigea.SetStatus(2)
+	fmt.Println("Running in full mode")
 	return s.url, nil
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
 	req, err := io.ReadAll(conn)
+	fmt.Println(conn.LocalAddr())
+	fmt.Println(conn.RemoteAddr())
 	if err != nil {
 		panic(err)
 	}
@@ -153,11 +157,22 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		}
 		// Dial("ip4:1", "192.0.2.1")
 		fmt.Printf("dial gossip: %s\r\n", gossipAddr)
-		conn, err := net.Dial("tcp", gossipAddr)
+
+		laddr, err := net.ResolveTCPAddr("tcp", s.url)
+		if err != nil {
+			return fmt.Errorf("error while parse address %s", s.url)
+		}
+		raddr, err := net.ResolveTCPAddr("tcp", gossipAddr)
+		if err != nil {
+			return fmt.Errorf("error while parse address  %s", gossipAddr)
+		}
+		conn, err := net.DialTCP("tcp", laddr, raddr)
+		// conn, err := net.Dial("tcp", gossipAddr)
 		if err != nil {
 			return fmt.Errorf("%s is not online", gossipAddr)
 		}
 		defer conn.Close()
+
 		_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
 		if err != nil {
 			return fmt.Errorf("%v", err)
