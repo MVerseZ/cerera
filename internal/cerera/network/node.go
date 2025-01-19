@@ -109,8 +109,29 @@ func (node *Node) handleMsg() {
 }
 
 func (node *Node) handleJoin(payload []byte, sig []byte) {
-	fmt.Println("Join")
+	fmt.Println("Join message received")
 
+	// var vlt = storage.GetVault()
+	// fmt.Printf("%s\r\n", len(node.knownNodes))
+
+	// msg := vlt.Size()
+	// req := Request{
+	// 	string(msg),
+	// 	hex.EncodeToString(generateDigest(msg)),
+	// }
+	// reqmsg := &JoinMsg{
+	// 	"join",
+	// 	int(time.Now().Unix()),
+	// 	node.NodeID,
+	// 	req,
+	// }
+	// sig, err := signMessage(reqmsg, node.keypair.privkey)
+	// if err != nil {
+	// 	fmt.Printf("%v\n", err)
+	// }
+
+	// _, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
+	fmt.Printf("%d\r\n", len(node.knownNodes))
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {
