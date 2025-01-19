@@ -110,6 +110,7 @@ func (node *Node) handleMsg() {
 
 func (node *Node) handleJoin(payload []byte, sig []byte) {
 	fmt.Println("Join message received")
+	time.Sleep(1 * time.Second)
 
 	// var vlt = storage.GetVault()
 	// fmt.Printf("%s\r\n", len(node.knownNodes))
@@ -132,6 +133,7 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		fmt.Printf("%v\n", err)
 	}
 
+	logBroadcastMsg(hJoin, reqmsg)
 	node.broadcast(ComposeMsg(hJoin, reqmsg, sig))
 }
 

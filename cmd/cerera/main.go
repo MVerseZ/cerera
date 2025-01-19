@@ -69,6 +69,10 @@ func main() {
 	gigea.InitStatus()
 
 	n := network.NewServer(ctx, cfg, *port)
+	err = n.JoinSwarm(cfg.Gossip)
+	if err != nil {
+		fmt.Printf("%s\r\n", err)
+	}
 	n.SetUpHttp(ctx, *cfg)
 	go n.Start()
 

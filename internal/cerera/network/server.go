@@ -61,16 +61,16 @@ func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 		make([]*websocket.Conn, 0),
 	}
 
-	err = transportServer.JoinSwarm(cfg.Gossip)
-	if err != nil {
-		// panic(err)
-		fmt.Printf("gigea.network.error! %s\r\n", err)
-		gigea.SetStatus(1)
-		fmt.Println("Running in local mode")
-	} else {
-		gigea.SetStatus(2)
-		fmt.Println("Running in full mode")
-	}
+	// err = transportServer.JoinSwarm(cfg.Gossip)
+	// if err != nil {
+	// 	// panic(err)
+	// 	fmt.Printf("gigea.network.error! %s\r\n", err)
+	// 	gigea.SetStatus(1)
+	// 	fmt.Println("Running in local mode")
+	// } else {
+	// 	gigea.SetStatus(2)
+	// 	fmt.Println("Running in full mode")
+	// }
 
 	// fmt.Println(server.node)
 	return transportServer
@@ -124,8 +124,7 @@ func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 
 func (s *Server) handleConnection(conn net.Conn) {
 	req, err := io.ReadAll(conn)
-	fmt.Println(conn.LocalAddr())
-	fmt.Println(conn.RemoteAddr())
+	fmt.Printf("connectiong %s to current %s\r\n", conn.RemoteAddr(), conn.LocalAddr())
 	if err != nil {
 		panic(err)
 	}
