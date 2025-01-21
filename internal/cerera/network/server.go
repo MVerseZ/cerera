@@ -102,20 +102,20 @@ func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 
 	remoteAddr := conn.RemoteAddr().String()
 	// Check if the node is already in the known nodes list
-	for _, knownNode := range s.node.knownNodes {
-		if knownNode.url == remoteAddr {
+	for _, preKnownNode := range s.node.preKnownNodes {
+		if preKnownNode.url == remoteAddr {
 			fmt.Printf("Node %s is already known\n", remoteAddr)
 			return "", errors.New("node is already known\n")
 		}
 	}
 
 	// Adding the new node to the list of known nodes
-	newNode := &KnownNode{
-		nodeID: len(s.node.knownNodes) + 1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
+	newNode := &PreKnownNode{
+		nodeID: len(s.node.knownNodes) + 3, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
 		url:    remoteAddr,
 		pubkey: nil, // Here you can add logic to get the public key if available
 	}
-	s.node.knownNodes = append(s.node.knownNodes, newNode)
+	s.node.preKnownNodes = append(s.node.preKnownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
 	gigea.SetStatus(2)
 	fmt.Println("Running in full mode")

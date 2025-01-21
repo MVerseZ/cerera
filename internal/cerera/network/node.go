@@ -26,17 +26,25 @@ type KnownNode struct {
 	pubkey *ecdsa.PublicKey
 }
 
+type PreKnownNode struct {
+	nodeID int
+	url    string
+	// pubkey *rsa.PublicKey
+	pubkey *ecdsa.PublicKey
+}
+
 type Node struct {
-	NodeID      int
-	knownNodes  []*KnownNode
-	clientNode  *KnownNode
-	sequenceID  int
-	View        int
-	msgQueue    chan []byte
-	keypair     Keypair
-	msgLog      *MsgLog
-	requestPool map[string]*RequestMsg
-	mutex       sync.Mutex
+	NodeID        int
+	preKnownNodes []*PreKnownNode
+	knownNodes    []*KnownNode
+	clientNode    *KnownNode
+	sequenceID    int
+	View          int
+	msgQueue      chan []byte
+	keypair       Keypair
+	msgLog        *MsgLog
+	requestPool   map[string]*RequestMsg
+	mutex         sync.Mutex
 }
 
 type Keypair struct {
@@ -59,6 +67,7 @@ func NewNode(nodeID int, cfg *config.Config) *Node {
 	}
 	return &Node{
 		nodeID,
+		make([]*PreKnownNode, 0),
 		make([]*KnownNode, 0), // first there is no known nodes.
 		nil,                   // known node
 		0,
@@ -113,7 +122,8 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 	time.Sleep(1 * time.Second)
 
 	// var vlt = storage.GetVault()
-	// fmt.Printf("%s\r\n", len(node.knownNodes))
+	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
 
 	// msg := vlt.Size()
 
@@ -133,7 +143,7 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		fmt.Printf("%v\n", err)
 	}
 
-	logBroadcastMsg(hJoin, reqmsg)
+	// logBroadcastMsg(hJoin, reqmsg)
 	node.broadcast(ComposeMsg(hJoin, reqmsg, sig))
 }
 
@@ -433,7 +443,9 @@ func (node *Node) findVerifiedCommitMsgCount(digest string) (int, error) {
 
 func (node *Node) broadcast(data []byte) {
 	for _, knownNode := range node.knownNodes {
+		// fmt.Printf("Compare known node ID %d, with local ID %d\r\n", knownNode.nodeID, node.NodeID)
 		if knownNode.nodeID != node.NodeID {
+			// fmt.Printf("Send to %s, with ID %d\r\n", knownNode.url, knownNode.nodeID)
 			err := send(data, knownNode.url)
 			if err != nil {
 				fmt.Printf("%v", err)
