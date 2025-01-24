@@ -23,23 +23,15 @@ type KnownNode struct {
 	nodeID int
 	url    string
 	// pubkey *rsa.PublicKey
-	pubkey     *ecdsa.PublicKey
-	connection net.Conn
-}
-
-type PreKnownNode struct {
-	nodeID int
-	url    string
-	// pubkey *rsa.PublicKey
-	pubkey     *ecdsa.PublicKey
-	connection net.Conn
-}
-
-type PreKnownNode struct {
-	nodeID int
-	url    string
-	// pubkey *rsa.PublicKey
 	pubkey *ecdsa.PublicKey
+}
+
+type PreKnownNode struct {
+	nodeID int
+	url    string
+	// pubkey *rsa.PublicKey
+	pubkey     *ecdsa.PublicKey
+	connection net.Conn
 }
 
 type Node struct {
@@ -114,6 +106,8 @@ func (node *Node) handleMsg() {
 		switch header {
 		case hJoin:
 			node.handleJoin(payload, sign)
+		case hSync:
+			node.handleSync(payload, sign)
 		case hRequest:
 			node.handleRequest(payload, sign)
 		case hPrePrepare:
@@ -188,6 +182,14 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 	// fmt.Println(string(types.EncodePublicKeyToByte(remotePubKey)))
 	fmt.Println(isSigned)
 	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
+}
+
+func (node *Node) handleSync(payload []byte, sig []byte) {
+	fmt.Println("Sync message received")
+	time.Sleep(1 * time.Second)
+
+	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {
@@ -489,8 +491,7 @@ func (node *Node) broadcast(data []byte) {
 		// fmt.Printf("Compare known node ID %d, with local ID %d\r\n", knownNode.nodeID, node.NodeID)
 		if knownNode.nodeID != node.NodeID {
 			fmt.Printf("Send to %s, with ID %d\r\n", knownNode.url, knownNode.nodeID)
-			// err := send(data, knownNode.url)
-			err := sendToAllKnownNodes(node.knownNodes, data)
+			err := send(data, knownNode.url)
 			if err != nil {
 				fmt.Printf("%v", err)
 			}
@@ -514,16 +515,6 @@ func (node *Node) signMessage(msg interface{}) ([]byte, error) {
 		return nil, err
 	}
 	return sig, nil
-}
-
-func sendToAllKnownNodes(nodes []*KnownNode, data []byte) error {
-	for _, node := range nodes {
-		_, err := io.Copy(node.connection, bytes.NewReader(data))
-		if err != nil {
-			return fmt.Errorf("error while send to %s, %v", node.url, err)
-		}
-	}
-	return nil
 }
 
 func send(data []byte, url string) error {
