@@ -12,7 +12,7 @@ import (
 )
 
 const DefaultP2pPort = int(6116)
-const DefaultRpcPort = int(1337)
+const DefaultRpcPort = int(1339)
 
 var ChainId = big.NewInt(133707331)
 
@@ -87,7 +87,7 @@ func GenerageConfig() *Config {
 			},
 			VERSION: "ALPHA",
 			VER:     1,
-			Gossip:  "127.0.0.1:8079",
+			Gossip:  "0.0.0.0:8091",
 		}
 		cfg.WriteConfigToFile()
 	} else {

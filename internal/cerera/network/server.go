@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var urlName = "127.0.0.1:%d"
+var urlName = "0.0.0.0:%d"
 var transportServer *Server
 
 func GetTransport() *Server {
@@ -61,16 +61,16 @@ func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 		make([]*websocket.Conn, 0),
 	}
 
-	err = transportServer.JoinSwarm(cfg.Gossip)
-	if err != nil {
-		// panic(err)
-		fmt.Printf("gigea.network.error! %s\r\n", err)
-		gigea.SetStatus(1)
-		fmt.Println("Running in local mode")
-	} else {
-		gigea.SetStatus(2)
-		fmt.Println("Running in full mode")
-	}
+	// err = transportServer.JoinSwarm(cfg.Gossip)
+	// if err != nil {
+	// 	// panic(err)
+	// 	fmt.Printf("gigea.network.error! %s\r\n", err)
+	// 	gigea.SetStatus(1)
+	// 	fmt.Println("Running in local mode")
+	// } else {
+	// 	gigea.SetStatus(2)
+	// 	fmt.Println("Running in full mode")
+	// }
 
 	// fmt.Println(server.node)
 	return transportServer
@@ -90,7 +90,7 @@ func (s *Server) Start() {
 		if err != nil {
 			panic(err)
 		}
-		s.addPreKnownNode(conn)
+		s.addKnownNode(conn)
 		go s.handleConnection(conn)
 
 	}
@@ -99,6 +99,33 @@ func (s *Server) Start() {
 func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 	s.node.mutex.Lock()
 	defer s.node.mutex.Unlock()
+
+	remoteAddr := conn.RemoteAddr().String()
+	// Check if the node is already in the known nodes list
+	for _, preKnownNode := range s.node.preKnownNodes {
+		if preKnownNode.url == remoteAddr {
+			fmt.Printf("Node %s is already known\n", remoteAddr)
+			return "", errors.New("node is already known\n")
+		}
+	}
+
+	// Adding the new node to the list of known nodes
+	newNode := &PreKnownNode{
+		nodeID: -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
+		url:    remoteAddr,
+		pubkey: nil, // Here you can add logic to get the public key if available
+	}
+	s.node.preKnownNodes = append(s.node.preKnownNodes, newNode)
+	fmt.Printf("Added new pre known node: %s\n", remoteAddr)
+	gigea.SetStatus(2)
+	fmt.Println("Running in full mode")
+	return s.url, nil
+}
+
+func (s *Server) addKnownNode(conn net.Conn) (string, error) {
+	s.node.mutex.Lock()
+	defer s.node.mutex.Unlock()
+	defer conn.Close()
 
 	remoteAddr := conn.RemoteAddr().String()
 	// Check if the node is already in the known nodes list
@@ -111,23 +138,30 @@ func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 
 	// Adding the new node to the list of known nodes
 	newNode := &KnownNode{
-		nodeID: len(s.node.knownNodes) + 1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
-		url:    remoteAddr,
-		pubkey: nil, // Here you can add logic to get the public key if available
+		nodeID:     -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
+		url:        remoteAddr,
+		pubkey:     nil, // Here you can add logic to get the public key if available
+		connection: conn,
 	}
 	s.node.knownNodes = append(s.node.knownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
 	gigea.SetStatus(2)
-	fmt.Println("Running in full mode")
 	return s.url, nil
+}
+
+func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
+	s.node.mutex.Lock()
+	defer s.node.mutex.Unlock()
+	conn.Close()
+	return "", nil
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
 	req, err := io.ReadAll(conn)
-	fmt.Println(conn.LocalAddr())
-	fmt.Println(conn.RemoteAddr())
+	fmt.Printf("connectiong %s to current %s\r\n", conn.RemoteAddr(), conn.LocalAddr())
 	if err != nil {
-		panic(err)
+		// s.removeKnownNode(conn)
+		fmt.Errorf("Connection closed: %s", err)
 	}
 	s.node.msgQueue <- req
 }
