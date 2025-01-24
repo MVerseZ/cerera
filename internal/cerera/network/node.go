@@ -23,16 +23,7 @@ type KnownNode struct {
 	nodeID int
 	url    string
 	// pubkey *rsa.PublicKey
-	pubkey     *ecdsa.PublicKey
-	connection net.Conn
-}
-
-type PreKnownNode struct {
-	nodeID int
-	url    string
-	// pubkey *rsa.PublicKey
-	pubkey     *ecdsa.PublicKey
-	connection net.Conn
+	pubkey *ecdsa.PublicKey
 }
 
 type PreKnownNode struct {
@@ -489,8 +480,7 @@ func (node *Node) broadcast(data []byte) {
 		// fmt.Printf("Compare known node ID %d, with local ID %d\r\n", knownNode.nodeID, node.NodeID)
 		if knownNode.nodeID != node.NodeID {
 			fmt.Printf("Send to %s, with ID %d\r\n", knownNode.url, knownNode.nodeID)
-			// err := send(data, knownNode.url)
-			err := sendToAllKnownNodes(node.knownNodes, data)
+			err := send(data, knownNode.url)
 			if err != nil {
 				fmt.Printf("%v", err)
 			}
@@ -514,16 +504,6 @@ func (node *Node) signMessage(msg interface{}) ([]byte, error) {
 		return nil, err
 	}
 	return sig, nil
-}
-
-func sendToAllKnownNodes(nodes []*KnownNode, data []byte) error {
-	for _, node := range nodes {
-		_, err := io.Copy(node.connection, bytes.NewReader(data))
-		if err != nil {
-			return fmt.Errorf("error while send to %s, %v", node.url, err)
-		}
-	}
-	return nil
 }
 
 func send(data []byte, url string) error {
