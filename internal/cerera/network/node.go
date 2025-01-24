@@ -30,7 +30,8 @@ type PreKnownNode struct {
 	nodeID int
 	url    string
 	// pubkey *rsa.PublicKey
-	pubkey *ecdsa.PublicKey
+	pubkey     *ecdsa.PublicKey
+	connection net.Conn
 }
 
 type Node struct {
@@ -105,6 +106,8 @@ func (node *Node) handleMsg() {
 		switch header {
 		case hJoin:
 			node.handleJoin(payload, sign)
+		case hSync:
+			node.handleSync(payload, sign)
 		case hRequest:
 			node.handleRequest(payload, sign)
 		case hPrePrepare:
@@ -179,6 +182,14 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 	// fmt.Println(string(types.EncodePublicKeyToByte(remotePubKey)))
 	fmt.Println(isSigned)
 	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
+}
+
+func (node *Node) handleSync(payload []byte, sig []byte) {
+	fmt.Println("Sync message received")
+	time.Sleep(1 * time.Second)
+
+	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {
