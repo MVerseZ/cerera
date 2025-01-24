@@ -31,6 +31,14 @@ type PreKnownNode struct {
 	nodeID int
 	url    string
 	// pubkey *rsa.PublicKey
+	pubkey     *ecdsa.PublicKey
+	connection net.Conn
+}
+
+type PreKnownNode struct {
+	nodeID int
+	url    string
+	// pubkey *rsa.PublicKey
 	pubkey *ecdsa.PublicKey
 }
 
@@ -160,11 +168,18 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		return
 	}
 
-	remotePubKey, err := types.DecodeByteToPublicKey([]byte(joinMsg.CRequest.Message))
+	remotePubKey, err := types.PublicKeyFromString(joinMsg.CRequest.Message)
+	// remotePubKey, err := types.DecodeByteToPublicKey([]byte(joinMsg.CRequest.Message))
 	if err != nil {
 		fmt.Printf("error happened while decode:%v", err)
 		panic(err)
 	}
+	pks, err := types.PublicKeyToString(remotePubKey)
+	if err != nil {
+		fmt.Printf("error happened while key to string conv:%v", err)
+		panic(err)
+	}
+	fmt.Println(pks)
 	isSigned, err := verifySignatrue(joinMsg, sig, remotePubKey)
 	if err != nil {
 		fmt.Printf("error happened while verify sig:%v", err)

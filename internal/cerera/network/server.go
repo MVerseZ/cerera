@@ -125,7 +125,6 @@ func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
 func (s *Server) addKnownNode(conn net.Conn) (string, error) {
 	s.node.mutex.Lock()
 	defer s.node.mutex.Unlock()
-	defer conn.Close()
 
 	remoteAddr := conn.RemoteAddr().String()
 	// Check if the node is already in the known nodes list
@@ -146,7 +145,14 @@ func (s *Server) addKnownNode(conn net.Conn) (string, error) {
 	s.node.knownNodes = append(s.node.knownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
 	gigea.SetStatus(2)
-	return s.url, nil
+	return newNode.url, nil
+}
+
+func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
+	s.node.mutex.Lock()
+	defer s.node.mutex.Unlock()
+	conn.Close()
+	return "", nil
 }
 
 func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
@@ -205,7 +211,7 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		if err != nil {
 			return fmt.Errorf("%s is not online", gossipAddr)
 		}
-		defer conn.Close()
+		// defer conn.Close()
 
 		_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
 		if err != nil {
