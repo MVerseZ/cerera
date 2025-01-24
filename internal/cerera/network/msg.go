@@ -31,6 +31,7 @@ type JoinMsg struct {
 	Timestamp int     `json:"timestamp"`
 	ClientID  int     `json:"clientID"`
 	CRequest  Request `json:"request"`
+	RAddr     string  `json:"address"`
 }
 
 func (msg JoinMsg) String() string {

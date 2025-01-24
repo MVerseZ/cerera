@@ -161,7 +161,6 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		fmt.Printf("error happened while JSON unmarshal:%v", err)
 		return
 	}
-
 	remotePubKey, err := types.PublicKeyFromString(joinMsg.CRequest.Message)
 	// remotePubKey, err := types.DecodeByteToPublicKey([]byte(joinMsg.CRequest.Message))
 	if err != nil {
@@ -174,6 +173,17 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		panic(err)
 	}
 	fmt.Println(pks)
+	fmt.Printf("Remote address for join: %s\r\n", joinMsg.RAddr)
+
+	var newKnownNode = &KnownNode{
+		joinMsg.ClientID,
+		joinMsg.RAddr,
+		remotePubKey,
+	}
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+	node.knownNodes = append(node.knownNodes, newKnownNode)
+
 	isSigned, err := verifySignatrue(joinMsg, sig, remotePubKey)
 	if err != nil {
 		fmt.Printf("error happened while verify sig:%v", err)
