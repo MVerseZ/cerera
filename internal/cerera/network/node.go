@@ -200,6 +200,27 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 
 	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
 	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
+
+	pbk := node.keypair.pubkey
+	b := types.EncodePublicKeyToByte(pbk)
+	var msg = string(b)
+	fmt.Printf("Send key: %s\r\n", msg)
+
+	req := Request{
+		msg,
+		hex.EncodeToString(generateDigest(msg)),
+	}
+	reqmsg := &SyncMsg{
+		"sync",
+		int(time.Now().Unix()),
+		node.NodeID,
+		req,
+	}
+	sig, err := signMessage(reqmsg, node.keypair.privkey)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
+	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {

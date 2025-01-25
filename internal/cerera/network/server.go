@@ -90,9 +90,8 @@ func (s *Server) Start() {
 		if err != nil {
 			panic(err)
 		}
-		s.addKnownNode(conn)
+		// s.addKnownNode(conn)
 		go s.handleConnection(conn)
-
 	}
 }
 
@@ -137,10 +136,9 @@ func (s *Server) addKnownNode(conn net.Conn) (string, error) {
 
 	// Adding the new node to the list of known nodes
 	newNode := &KnownNode{
-		nodeID:     -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
-		url:        remoteAddr,
-		pubkey:     nil, // Here you can add logic to get the public key if available
-		connection: conn,
+		nodeID: -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
+		url:    remoteAddr,
+		pubkey: nil, // Here you can add logic to get the public key if available
 	}
 	s.node.knownNodes = append(s.node.knownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
@@ -155,16 +153,10 @@ func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
 	return "", nil
 }
 
-func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
-	s.node.mutex.Lock()
-	defer s.node.mutex.Unlock()
-	conn.Close()
-	return "", nil
-}
-
 func (s *Server) handleConnection(conn net.Conn) {
 	req, err := io.ReadAll(conn)
 	fmt.Printf("connectiong %s to current %s\r\n", conn.RemoteAddr(), conn.LocalAddr())
+	defer conn.Close()
 	if err != nil {
 		// s.removeKnownNode(conn)
 		fmt.Errorf("Connection closed: %s", err)
@@ -190,6 +182,7 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 			int(time.Now().Unix()),
 			s.node.NodeID,
 			req,
+			s.url,
 		}
 		sig, err := signMessage(reqmsg, s.node.keypair.privkey)
 		if err != nil {
@@ -211,7 +204,7 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		if err != nil {
 			return fmt.Errorf("%s is not online", gossipAddr)
 		}
-		// defer conn.Close()
+		defer conn.Close()
 
 		_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
 		if err != nil {
