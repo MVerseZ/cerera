@@ -181,9 +181,12 @@ func SplitMsg(bmsg []byte) (HeaderMsg, []byte, []byte) {
 		payload = bmsg[headerLength:]
 		signature = []byte{}
 	case hJoin:
-		li := strings.LastIndex(string(bmsg), "}}") + 2
-		payload = bmsg[headerLength:li]
-		signature = bmsg[li:]
+		payload = bmsg[headerLength : len(bmsg)-71] //256
+		signature = bmsg[len(bmsg)-71:]
+
+		// li := strings.LastIndex(string(bmsg), "}}") + 2
+		// payload = bmsg[headerLength:li]
+		// signature = bmsg[li:]
 
 		fmt.Printf("Join msg:%s\r\n", bmsg)
 		fmt.Printf("Join msg payload:%s\r\n", payload)

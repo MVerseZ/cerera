@@ -90,8 +90,8 @@ func (s *Server) Start() {
 		if err != nil {
 			panic(err)
 		}
+		// s.addKnownNode(conn)
 		go s.handleConnection(conn)
-
 	}
 }
 
@@ -156,6 +156,7 @@ func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
 func (s *Server) handleConnection(conn net.Conn) {
 	req, err := io.ReadAll(conn)
 	fmt.Printf("connectiong %s to current %s\r\n", conn.RemoteAddr(), conn.LocalAddr())
+	defer conn.Close()
 	if err != nil {
 		// s.removeKnownNode(conn)
 		fmt.Errorf("Connection closed: %s", err)
