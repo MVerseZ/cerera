@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 const headerLength = 12
@@ -12,6 +13,7 @@ type HeaderMsg string
 
 const (
 	hJoin       HeaderMsg = "Join"
+	hSync       HeaderMsg = "Sync"
 	hRequest    HeaderMsg = "Request"
 	hPrePrepare HeaderMsg = "PrePrepare"
 	hPrepare    HeaderMsg = "Prepare"
@@ -29,9 +31,23 @@ type JoinMsg struct {
 	Timestamp int     `json:"timestamp"`
 	ClientID  int     `json:"clientID"`
 	CRequest  Request `json:"request"`
+	RAddr     string  `json:"address"`
 }
 
 func (msg JoinMsg) String() string {
+	bmsg, _ := json.MarshalIndent(msg, "", "	")
+	return string(bmsg) + "\n"
+}
+
+// <SYNC, address>
+type SyncMsg struct {
+	Operation string  `json:"operation"`
+	Timestamp int     `json:"timestamp"`
+	ClientID  int     `json:"clientID"`
+	CRequest  Request `json:"request"`
+}
+
+func (msg SyncMsg) String() string {
 	bmsg, _ := json.MarshalIndent(msg, "", "	")
 	return string(bmsg) + "\n"
 }
@@ -138,6 +154,7 @@ func ComposeMsg(header HeaderMsg, payload interface{}, sig []byte) []byte {
 	res := make([]byte, headerLength+len(bpayload)+len(sig))
 	copy(res[:headerLength], b)
 	copy(res[headerLength:], bpayload)
+	fmt.Printf("SIG_LEN: %d\r\n", len(sig))
 	if len(sig) > 0 {
 		copy(res[headerLength+len(bpayload):], sig)
 	}
@@ -164,11 +181,24 @@ func SplitMsg(bmsg []byte) (HeaderMsg, []byte, []byte) {
 		payload = bmsg[headerLength:]
 		signature = []byte{}
 	case hJoin:
-		payload = bmsg[headerLength : len(bmsg)-71]
+		payload = bmsg[headerLength : len(bmsg)-71] //256
 		signature = bmsg[len(bmsg)-71:]
 
+		// li := strings.LastIndex(string(bmsg), "}}") + 2
+		// payload = bmsg[headerLength:li]
+		// signature = bmsg[li:]
+
 		fmt.Printf("Join msg:%s\r\n", bmsg)
-		fmt.Printf("Join msg:%s\r\n", bmsg[len(bmsg)-71:])
+		fmt.Printf("Join msg payload:%s\r\n", payload)
+		fmt.Printf("Join msg sig 1:%s\r\n", signature)
+	case hSync:
+		li := strings.LastIndex(string(bmsg), "}}") + 2
+		payload = bmsg[headerLength:li]
+		signature = bmsg[li:]
+
+		fmt.Printf("Sync msg:%s\r\n", bmsg)
+		fmt.Printf("Sync msg payload:%s\r\n", payload)
+		fmt.Printf("Sync msg sig 1:%s\r\n", signature)
 	}
 	return header, payload, signature
 }

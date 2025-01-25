@@ -16,7 +16,7 @@ import (
 
 // Header represents a block header in the blockchain.
 type Header struct {
-	Ctx        int           `json:"ctx" gencodec:"required"`
+	Ctx        int32         `json:"ctx" gencodec:"required"`
 	Difficulty *big.Int      `json:"difficulty"       gencodec:"required"`
 	Extra      []byte        `json:"extraData"        gencodec:"required"`
 	GasLimit   uint64        `json:"gasLimit"         gencodec:"required"`
@@ -122,6 +122,16 @@ func CopyHeader(h *Header) *Header {
 	cpy.Index = h.Index
 	cpy.V = h.V
 	return &cpy
+}
+
+func CalculateSize(b Block) int {
+	var txSize = 0
+	if len(b.Transactions) > 0 {
+		for _, tx := range b.Transactions {
+			txSize += int(unsafe.Sizeof(tx))
+		}
+	}
+	return txSize + int(unsafe.Sizeof(b))
 }
 
 func GenerateGenesis(nodeAddress types.Address) *Block {

@@ -12,7 +12,7 @@ import (
 )
 
 const DefaultP2pPort = int(6116)
-const DefaultRpcPort = int(1337)
+const DefaultRpcPort = int(1339)
 
 var ChainId = big.NewInt(133707331)
 
@@ -55,6 +55,7 @@ type Config struct {
 	AUTOGEN bool   // auto generating blocks
 	VERSION string // version field
 	VER     int    // other version field
+	Gossip  string
 }
 
 func GenerageConfig() *Config {
@@ -86,6 +87,7 @@ func GenerageConfig() *Config {
 			},
 			VERSION: "ALPHA",
 			VER:     1,
+			Gossip:  "0.0.0.0:8079",
 		}
 		cfg.WriteConfigToFile()
 	} else {

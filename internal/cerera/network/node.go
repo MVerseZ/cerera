@@ -26,17 +26,26 @@ type KnownNode struct {
 	pubkey *ecdsa.PublicKey
 }
 
+type PreKnownNode struct {
+	nodeID int
+	url    string
+	// pubkey *rsa.PublicKey
+	pubkey     *ecdsa.PublicKey
+	connection net.Conn
+}
+
 type Node struct {
-	NodeID      int
-	knownNodes  []*KnownNode
-	clientNode  *KnownNode
-	sequenceID  int
-	View        int
-	msgQueue    chan []byte
-	keypair     Keypair
-	msgLog      *MsgLog
-	requestPool map[string]*RequestMsg
-	mutex       sync.Mutex
+	NodeID        int
+	preKnownNodes []*PreKnownNode
+	knownNodes    []*KnownNode
+	clientNode    *KnownNode
+	sequenceID    int
+	View          int
+	msgQueue      chan []byte
+	keypair       Keypair
+	msgLog        *MsgLog
+	requestPool   map[string]*RequestMsg
+	mutex         sync.Mutex
 }
 
 type Keypair struct {
@@ -59,6 +68,7 @@ func NewNode(nodeID int, cfg *config.Config) *Node {
 	}
 	return &Node{
 		nodeID,
+		make([]*PreKnownNode, 0),
 		make([]*KnownNode, 0), // first there is no known nodes.
 		nil,                   // known node
 		0,
@@ -96,6 +106,8 @@ func (node *Node) handleMsg() {
 		switch header {
 		case hJoin:
 			node.handleJoin(payload, sign)
+		case hSync:
+			node.handleSync(payload, sign)
 		case hRequest:
 			node.handleRequest(payload, sign)
 		case hPrePrepare:
@@ -109,8 +121,106 @@ func (node *Node) handleMsg() {
 }
 
 func (node *Node) handleJoin(payload []byte, sig []byte) {
-	fmt.Println("Join")
+	fmt.Println("Join message received")
+	time.Sleep(1 * time.Second)
 
+	// var vlt = storage.GetVault()
+	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
+
+	// msg := vlt.Size()
+
+	pbk := node.keypair.pubkey
+	b := types.EncodePublicKeyToByte(pbk)
+	var msg = string(b)
+	fmt.Printf("Send key: %s\r\n", msg)
+
+	req := Request{
+		msg,
+		hex.EncodeToString(generateDigest(msg)),
+	}
+	reqmsg := &SyncMsg{
+		"sync",
+		int(time.Now().Unix()),
+		node.NodeID,
+		req,
+	}
+	sig, err := signMessage(reqmsg, node.keypair.privkey)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
+
+	// logBroadcastMsg(hJoin, reqmsg)
+	// fmt.Println(node.preKnownNodes[0].nodeID)
+	// fmt.Println(node.preKnownNodes[0].pubkey)
+	// fmt.Println(node.preKnownNodes[0].url)
+
+	var joinMsg JoinMsg
+	err = json.Unmarshal(payload, &joinMsg)
+	if err != nil {
+		fmt.Printf("error happened while JSON unmarshal:%v", err)
+		return
+	}
+	remotePubKey, err := types.PublicKeyFromString(joinMsg.CRequest.Message)
+	// remotePubKey, err := types.DecodeByteToPublicKey([]byte(joinMsg.CRequest.Message))
+	if err != nil {
+		fmt.Printf("error happened while decode:%v", err)
+		panic(err)
+	}
+	pks, err := types.PublicKeyToString(remotePubKey)
+	if err != nil {
+		fmt.Printf("error happened while key to string conv:%v", err)
+		panic(err)
+	}
+	fmt.Println(pks)
+	fmt.Printf("Remote address for join: %s\r\n", joinMsg.RAddr)
+
+	var newKnownNode = &KnownNode{
+		joinMsg.ClientID,
+		joinMsg.RAddr,
+		remotePubKey,
+	}
+	node.mutex.Lock()
+	defer node.mutex.Unlock()
+	node.knownNodes = append(node.knownNodes, newKnownNode)
+
+	isSigned, err := verifySignatrue(joinMsg, sig, remotePubKey)
+	if err != nil {
+		fmt.Printf("error happened while verify sig:%v", err)
+		panic(err)
+	}
+	// fmt.Println(string(types.EncodePublicKeyToByte(remotePubKey)))
+	fmt.Println(isSigned)
+	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
+}
+
+func (node *Node) handleSync(payload []byte, sig []byte) {
+	fmt.Println("Sync message received")
+	time.Sleep(1 * time.Second)
+
+	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
+
+	pbk := node.keypair.pubkey
+	b := types.EncodePublicKeyToByte(pbk)
+	var msg = string(b)
+	fmt.Printf("Send key: %s\r\n", msg)
+
+	req := Request{
+		msg,
+		hex.EncodeToString(generateDigest(msg)),
+	}
+	reqmsg := &SyncMsg{
+		"sync",
+		int(time.Now().Unix()),
+		node.NodeID,
+		req,
+	}
+	sig, err := signMessage(reqmsg, node.keypair.privkey)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
+	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
 }
 
 func (node *Node) handleRequest(payload []byte, sig []byte) {
@@ -409,7 +519,9 @@ func (node *Node) findVerifiedCommitMsgCount(digest string) (int, error) {
 
 func (node *Node) broadcast(data []byte) {
 	for _, knownNode := range node.knownNodes {
+		// fmt.Printf("Compare known node ID %d, with local ID %d\r\n", knownNode.nodeID, node.NodeID)
 		if knownNode.nodeID != node.NodeID {
+			fmt.Printf("Send to %s, with ID %d\r\n", knownNode.url, knownNode.nodeID)
 			err := send(data, knownNode.url)
 			if err != nil {
 				fmt.Printf("%v", err)

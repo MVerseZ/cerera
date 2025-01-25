@@ -40,23 +40,6 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 		enc.R = (*Big)(r)
 		enc.S = (*Big)(s)
 		enc.V = (*Big)(v)
-	case *GSTransaction:
-		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		enc.Gas = (*common.Uint64)(&itx.Gas)
-		enc.GasPrice = (*common.Big)(itx.GasPrice)
-		enc.Value = (*common.Big)(itx.Value)
-		enc.Data = (*common.Bytes)(&itx.Data)
-		enc.To = tx.To()
-		enc.Dna = (*common.Bytes)(&itx.Dna)
-		enc.Time = (time.Time)(tx.GetTime())
-		enc.Type = 4
-		enc.Hash = tx.Hash()
-		enc.Payload = (*common.Bytes)(&itx.Payload)
-		var r, s, v = tx.RawSignatureValues()
-		enc.R = (*Big)(r)
-		enc.S = (*Big)(s)
-		enc.V = (*Big)(v)
-		panic("NOT IMPLEMENTED YET")
 	default:
 		fmt.Printf("%T\r\n", itx)
 	}

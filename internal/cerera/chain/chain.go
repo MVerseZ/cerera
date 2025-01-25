@@ -6,7 +6,6 @@ import (
 	"log"
 	"math/big"
 	"time"
-	"unsafe"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
@@ -15,6 +14,7 @@ import (
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/cerera/internal/gigea/gigea"
 )
 
 type BlockChainStatus struct {
@@ -45,7 +45,7 @@ type Chain struct {
 
 var (
 	bch        Chain
-	BLOCKTIMER = time.Duration(1 * time.Minute)
+	BLOCKTIMER = time.Duration(30 * time.Second)
 )
 
 func GetBlockChain() *Chain {
@@ -64,23 +64,28 @@ func InitBlockChain(cfg *config.Config) Chain {
 		Size:      0,
 	}
 
+	var err error
+
 	genesisBlock := block.Genesis()
 	dataBlocks := make([]block.Block, 0)
+	var list []trie.Content
 
 	if cfg.Chain.Path == "EMPTY" {
-		var list []trie.Content
-		list = append(list, genesisBlock)
-		t, _ = trie.NewTree(list)
-		// init with genesis empty cfg
-		InitChainVault(genesisBlock)
-		dataBlocks = append(dataBlocks, genesisBlock)
 		cfg.UpdateChainPath("./chain.dat")
-		stats.Latest = genesisBlock.Hash()
-	} else {
+		list = append(list, genesisBlock)
+		stats.Total += 1
+		stats.ChainWork += genesisBlock.Head.Size
+		InitChainVault(genesisBlock)
+	}
+
+	switch stat := gigea.C.Status; stat {
+	case 1:
+		// local mode
 		var readBlock, err = SyncVault()
 		if err != nil {
 			panic(err)
 		}
+
 		dataBlocks = append(dataBlocks, readBlock...)
 		// validate added blocks
 		lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
@@ -89,20 +94,25 @@ func InitBlockChain(cfg *config.Config) Chain {
 		}
 		dataBlocks = dataBlocks[:lastCorrect]
 
-		var list []trie.Content
-		for _, v := range dataBlocks {
-			list = append(list, v)
-			stats.Total += 1
-			stats.ChainWork += v.Head.Size
-			// 		bc.info.Total = bc.info.Total + 1
-			// bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-		}
-		t, err = trie.NewTree(list)
-		if err != nil {
-			fmt.Printf("error trie validating: %s\r\n", err)
-		}
-		t.VerifyTree()
+	case 2:
+		// network mode
+		panic("gigea.blockchain.status")
 	}
+
+	for _, v := range dataBlocks {
+		list = append(list, v)
+		stats.Total += 1
+		stats.ChainWork += v.Head.Size
+		stats.Latest = v.Hash()
+		// 		bc.info.Total = bc.info.Total + 1
+		// bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+	}
+	t, err = trie.NewTree(list)
+	if err != nil {
+		fmt.Printf("error trie validating: %s\r\n", err)
+	}
+
+	t.VerifyTree()
 
 	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	bch = Chain{
@@ -174,7 +184,7 @@ func (bc *Chain) BlockGenerator() {
 		case <-bc.blockTicker.C:
 			var latest = bc.GetLatestBlock()
 			if bc.autoGen {
-				bc.G(latest)
+				bc.TryAutoGen(latest)
 			}
 		case <-bc.maintainTicker.C:
 			continue
@@ -182,7 +192,7 @@ func (bc *Chain) BlockGenerator() {
 	}
 }
 
-func (bc *Chain) G(latest *block.Block) {
+func (bc *Chain) TryAutoGen(latest *block.Block) {
 	var vld = validator.Get()
 	var pool = pool.Get()
 
@@ -215,9 +225,11 @@ func (bc *Chain) G(latest *block.Block) {
 
 	newBlock.Nonce = latest.Nonce
 
-	var finalSize = unsafe.Sizeof(newBlock)
-	newBlock.Head.Size = int(finalSize)
+	var finalSize = block.CalculateSize(*newBlock)
+	newBlock.Head.Size = finalSize
 	newBlock.Head.GasUsed += uint64(finalSize)
+
+	// var nodeFees = int(finalSize)
 
 	// bc.DataChannel <- newBlock.ToBytes()
 
