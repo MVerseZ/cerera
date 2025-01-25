@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var urlName = "0.0.0.0:%d"
+var urlName = "127.0.0.1:%d"
 var transportServer *Server
 
 func GetTransport() *Server {
@@ -90,7 +90,6 @@ func (s *Server) Start() {
 		if err != nil {
 			panic(err)
 		}
-		s.addKnownNode(conn)
 		go s.handleConnection(conn)
 
 	}
@@ -137,22 +136,14 @@ func (s *Server) addKnownNode(conn net.Conn) (string, error) {
 
 	// Adding the new node to the list of known nodes
 	newNode := &KnownNode{
-		nodeID:     -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
-		url:        remoteAddr,
-		pubkey:     nil, // Here you can add logic to get the public key if available
-		connection: conn,
+		nodeID: -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
+		url:    remoteAddr,
+		pubkey: nil, // Here you can add logic to get the public key if available
 	}
 	s.node.knownNodes = append(s.node.knownNodes, newNode)
 	fmt.Printf("Added new known node: %s\n", remoteAddr)
 	gigea.SetStatus(2)
 	return newNode.url, nil
-}
-
-func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
-	s.node.mutex.Lock()
-	defer s.node.mutex.Unlock()
-	conn.Close()
-	return "", nil
 }
 
 func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
@@ -190,6 +181,7 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 			int(time.Now().Unix()),
 			s.node.NodeID,
 			req,
+			s.url,
 		}
 		sig, err := signMessage(reqmsg, s.node.keypair.privkey)
 		if err != nil {
@@ -211,7 +203,16 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		if err != nil {
 			return fmt.Errorf("%s is not online", gossipAddr)
 		}
-		// defer conn.Close()
+		defer conn.Close()
+
+		s.node.mutex.Lock()
+		defer s.node.mutex.Unlock()
+		var newKnownNode = &KnownNode{
+			1,
+			gossipAddr,
+			nil,
+		}
+		s.node.knownNodes = append(s.node.knownNodes, newKnownNode)
 
 		_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
 		if err != nil {

@@ -154,6 +154,7 @@ func ComposeMsg(header HeaderMsg, payload interface{}, sig []byte) []byte {
 	res := make([]byte, headerLength+len(bpayload)+len(sig))
 	copy(res[:headerLength], b)
 	copy(res[headerLength:], bpayload)
+	fmt.Printf("SIG_LEN: %d\r\n", len(sig))
 	if len(sig) > 0 {
 		copy(res[headerLength+len(bpayload):], sig)
 	}
