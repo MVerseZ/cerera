@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/gigea/gigea"
 )
 
@@ -32,7 +31,7 @@ type Chain struct {
 	currentBlock   *block.Block
 	// rootHash       common.Hash
 
-	// mu sync.Mutex
+	mu   sync.Mutex
 	info BlockChainStatus
 	data []block.Block
 	t    *trie.MerkleTree
@@ -93,6 +92,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 			log.Printf("ERROR BLOCK! %s\r\n", errorBlock)
 		}
 		dataBlocks = dataBlocks[:lastCorrect]
+		fmt.Printf("Start chain from %d block\r\n", lastCorrect)
 
 	case 2:
 		// network mode
@@ -129,7 +129,8 @@ func InitBlockChain(cfg *config.Config) Chain {
 		DataChannel:    make(chan []byte),
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
-	go bch.BlockGenerator()
+	// go bch.BlockGenerator()
+	go bch.Resume()
 	return bch
 }
 
@@ -193,8 +194,8 @@ func (bc *Chain) BlockGenerator() {
 }
 
 func (bc *Chain) TryAutoGen(latest *block.Block) {
-	var vld = validator.Get()
-	var pool = pool.Get()
+	// var vld = validator.Get()
+	// var pool = pool.Get()
 
 	head := &block.Header{
 		Ctx:        latest.Header().Ctx,
@@ -213,15 +214,15 @@ func (bc *Chain) TryAutoGen(latest *block.Block) {
 	head.V = latest.Head.V
 	newBlock := block.NewBlockWithHeader(head)
 	// TODO refactor
-	if len(pool.Prepared) > 0 {
-		for _, tx := range pool.Prepared {
-			if vld.ValidateTransaction(tx, tx.From()) {
-				newBlock.Transactions = append(newBlock.Transactions, *tx)
-				newBlock.Head.GasUsed += tx.Gas()
-				// newBlock.SetTransaction(tx)
-			}
-		}
-	}
+	// if len(pool.Prepared) > 0 {
+	// 	for _, tx := range pool.Prepared {
+	// 		if vld.ValidateTransaction(tx, tx.From()) {
+	// 			newBlock.Transactions = append(newBlock.Transactions, *tx)
+	// 			newBlock.Head.GasUsed += tx.Gas()
+	// 			// newBlock.SetTransaction(tx)
+	// 		}
+	// 	}
+	// }
 
 	newBlock.Nonce = latest.Nonce
 
@@ -233,30 +234,30 @@ func (bc *Chain) TryAutoGen(latest *block.Block) {
 
 	// bc.DataChannel <- newBlock.ToBytes()
 
-	if vld.ValidateBlock(*newBlock) {
-		bc.t.Add(newBlock)
-		var t, err = bc.t.VerifyTree()
-		if err != nil || !t {
-			log.Printf("Verifying trie error: %s\r\n", err)
-		} else {
-			bc.info.Latest = newBlock.Hash()
-			bc.info.Total = bc.info.Total + 1
-			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-			bc.currentBlock = newBlock
-			err := SaveToVault(*newBlock)
-			if err == nil {
-				var rewardAddress = newBlock.Head.Node
-				fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
-				bc.data = append(bc.data, *newBlock)
-				vld.Reward(rewardAddress)
-			}
-		}
-		// clear array with included txs
-		pool.Prepared = nil
-	} else {
-		fmt.Printf("Block unconfirmed: %s\r\n", newBlock.Hash())
-		return
-	}
+	// if vld.ValidateBlock(*newBlock) {
+	// 	bc.t.Add(newBlock)
+	// 	var t, err = bc.t.VerifyTree()
+	// 	if err != nil || !t {
+	// 		log.Printf("Verifying trie error: %s\r\n", err)
+	// 	} else {
+	// 		bc.info.Latest = newBlock.Hash()
+	// 		bc.info.Total = bc.info.Total + 1
+	// 		bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+	// 		bc.currentBlock = newBlock
+	// 		err := SaveToVault(*newBlock)
+	// 		if err == nil {
+	// 			var rewardAddress = newBlock.Head.Node
+	// 			fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
+	// 			bc.data = append(bc.data, *newBlock)
+	// 			vld.Reward(rewardAddress)
+	// 		}
+	// 	}
+	// 	// clear array with included txs
+	// 	pool.Prepared = nil
+	// } else {
+	fmt.Printf("Block unconfirmed: %s\r\n", newBlock.Hash())
+	return
+	// }
 }
 
 // change block generation time
@@ -289,38 +290,53 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 }
 
 func (bc *Chain) Idle() {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
 	bc.autoGen = false
 }
 
 func (bc *Chain) Resume() {
+	bc.mu.Lock()
 	bc.autoGen = true
+	bc.mu.Unlock()
+	for {
+		select {
+		case <-bc.blockTicker.C:
+			var latest = bc.GetLatestBlock()
+			if bc.autoGen {
+				bc.TryAutoGen(latest)
+			}
+		case <-bc.maintainTicker.C:
+			continue
+		}
+	}
 }
 
 // return lenght of array
 func ValidateBlocks(blocks []block.Block) (int, error) {
-	var vld = validator.Get()
+	// var vld = validator.Get()
 
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
 	}
 
-	for i, blk := range blocks {
-		// check version chain
-		if vld.GetVersion() != blocks[i].Head.V {
-			return i, errors.New("wrong chain version")
-		}
-		if blocks[i].Head.GasUsed > blocks[i].Head.GasLimit {
-			return i, errors.New("wrong gas data in block")
-		}
-		// Проверка целостности цепочки блоков
-		if i > 0 {
-			prevBlock := blocks[i-1]
-			//log.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
-			if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
-				return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
-			}
-		}
-	}
+	// for i, blk := range blocks {
+	// 	// check version chain
+	// 	if vld.GetVersion() != blocks[i].Head.V {
+	// 		return i, errors.New("wrong chain version")
+	// 	}
+	// 	if blocks[i].Head.GasUsed > blocks[i].Head.GasLimit {
+	// 		return i, errors.New("wrong gas data in block")
+	// 	}
+	// 	// Проверка целостности цепочки блоков
+	// 	if i > 0 {
+	// 		prevBlock := blocks[i-1]
+	// 		//log.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
+	// 		if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
+	// 			return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
+	// 		}
+	// 	}
+	// }
 
 	return len(blocks), nil
 }

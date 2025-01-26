@@ -188,17 +188,17 @@ func SplitMsg(bmsg []byte) (HeaderMsg, []byte, []byte) {
 		// payload = bmsg[headerLength:li]
 		// signature = bmsg[li:]
 
-		fmt.Printf("Join msg:%s\r\n", bmsg)
-		fmt.Printf("Join msg payload:%s\r\n", payload)
-		fmt.Printf("Join msg sig 1:%s\r\n", signature)
+		// fmt.Printf("Join msg:%s\r\n", bmsg)
+		// fmt.Printf("Join msg payload:%s\r\n", payload)
+		// fmt.Printf("Join msg sig 1:%s\r\n", signature)
 	case hSync:
 		li := strings.LastIndex(string(bmsg), "}}") + 2
 		payload = bmsg[headerLength:li]
 		signature = bmsg[li:]
 
-		fmt.Printf("Sync msg:%s\r\n", bmsg)
-		fmt.Printf("Sync msg payload:%s\r\n", payload)
-		fmt.Printf("Sync msg sig 1:%s\r\n", signature)
+		// fmt.Printf("Sync msg:%s\r\n", bmsg)
+		// fmt.Printf("Sync msg payload:%s\r\n", payload)
+		// fmt.Printf("Sync msg sig 1:%s\r\n", signature)
 	}
 	return header, payload, signature
 }

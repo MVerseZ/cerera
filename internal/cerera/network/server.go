@@ -31,6 +31,7 @@ type Server struct {
 	node        *Node
 	url         string
 	wsListeners []*websocket.Conn
+	retryCount  int
 }
 
 func nodeIdToPort(nodeId int) int {
@@ -59,18 +60,18 @@ func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
 		NewNode(nodeId, cfg),
 		fmt.Sprintf(urlName, nodeIdToPort(nodeId)),
 		make([]*websocket.Conn, 0),
+		0,
 	}
 
-	// err = transportServer.JoinSwarm(cfg.Gossip)
-	// if err != nil {
-	// 	// panic(err)
-	// 	fmt.Printf("gigea.network.error! %s\r\n", err)
-	// 	gigea.SetStatus(1)
-	// 	fmt.Println("Running in local mode")
-	// } else {
-	// 	gigea.SetStatus(2)
-	// 	fmt.Println("Running in full mode")
-	// }
+	err = transportServer.JoinSwarm(cfg.Gossip)
+	if err != nil {
+		// panic(err)
+		gigea.SetStatus(1)
+		fmt.Println("Running in local mode")
+	} else {
+		gigea.SetStatus(2)
+		fmt.Println("Running in full mode")
+	}
 
 	// fmt.Println(server.node)
 	return transportServer
@@ -155,7 +156,7 @@ func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
 
 func (s *Server) handleConnection(conn net.Conn) {
 	req, err := io.ReadAll(conn)
-	fmt.Printf("connectiong %s to current %s\r\n", conn.RemoteAddr(), conn.LocalAddr())
+	// fmt.Printf("handle new connection to %s\r\n", conn.LocalAddr())
 	defer conn.Close()
 	if err != nil {
 		// s.removeKnownNode(conn)
@@ -199,25 +200,33 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		if err != nil {
 			return fmt.Errorf("error while parse address  %s", gossipAddr)
 		}
-		conn, err := net.DialTCP("tcp", laddr, raddr)
-		// conn, err := net.Dial("tcp", gossipAddr)
-		if err != nil {
+		fmt.Printf("Try to connect %s\r\n", gossipAddr)
+		for s.retryCount < 5 {
+			conn, err := net.DialTCP("tcp", laddr, raddr)
+			// conn, err := net.Dial("tcp", gossipAddr)
+			if err != nil {
+				s.retryCount += 1
+				time.Sleep(300 * time.Millisecond)
+				continue
+			}
+			defer conn.Close()
+
+			s.node.mutex.Lock()
+			defer s.node.mutex.Unlock()
+			var newKnownNode = &KnownNode{
+				1,
+				gossipAddr,
+				nil,
+			}
+			s.node.knownNodes = append(s.node.knownNodes, newKnownNode)
+
+			_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
+			if err != nil {
+				return fmt.Errorf("%v", err)
+			}
+		}
+		if s.retryCount >= 5 {
 			return fmt.Errorf("%s is not online", gossipAddr)
-		}
-		defer conn.Close()
-
-		s.node.mutex.Lock()
-		defer s.node.mutex.Unlock()
-		var newKnownNode = &KnownNode{
-			1,
-			gossipAddr,
-			nil,
-		}
-		s.node.knownNodes = append(s.node.knownNodes, newKnownNode)
-
-		_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
-		if err != nil {
-			return fmt.Errorf("%v", err)
 		}
 		return nil
 	} else {

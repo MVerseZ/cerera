@@ -12,7 +12,7 @@ import (
 )
 
 const DefaultP2pPort = int(6116)
-const DefaultRpcPort = int(1339)
+const DefaultRpcPort = int(1337)
 
 var ChainId = big.NewInt(133707331)
 
