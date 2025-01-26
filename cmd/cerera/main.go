@@ -41,7 +41,7 @@ type cerera struct {
 func main() {
 	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
-	port := flag.Int("p", 1, "p2p port for connections")
+	port := flag.Int("p", 11, "p2p port for connections")
 	// gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")

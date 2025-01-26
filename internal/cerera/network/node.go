@@ -201,6 +201,38 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
 	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
 
+	var request SyncMsg
+	err := json.Unmarshal(payload, &request)
+
+	if err != nil {
+		fmt.Printf("error happened:%v", err)
+		return
+	}
+
+	// logHandleMsg(hRequest, request, request.ClientID)
+	// verify request's digest
+	vdig := verifyDigest(request.CRequest.Message, request.CRequest.Digest)
+	if vdig == false {
+		fmt.Printf("verifyDigest failed\n")
+		return
+	}
+	// //verigy request's signature
+	// remotePubKey, err := types.PublicKeyFromString(request.CRequest.Message)
+	// if err != nil {
+	// 	fmt.Printf("error happened while decode:%v", err)
+	// 	panic(err)
+	// }
+	// // pks, err := types.PublicKeyToString(remotePubKey)
+	// // if err != nil {
+	// // 	fmt.Printf("error happened while key to string conv:%v", err)
+	// // 	panic(err)
+	// // }
+	// _, err = verifySignatrue(request, sig, remotePubKey)
+	// if err != nil {
+	// 	fmt.Printf("verify signature failed:%v\n", err)
+	// 	return
+	// }
+
 	pbk := node.keypair.pubkey
 	b := types.EncodePublicKeyToByte(pbk)
 	var msg = string(b)
@@ -216,7 +248,7 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 		node.NodeID,
 		req,
 	}
-	sig, err := signMessage(reqmsg, node.keypair.privkey)
+	sig, err = signMessage(reqmsg, node.keypair.privkey)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}

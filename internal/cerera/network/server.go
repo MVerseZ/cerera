@@ -171,7 +171,7 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 		if err != nil {
 			fmt.Printf("%v\n", err)
 		}
-		fmt.Printf("Send key: %s\r\n", msg)
+		// fmt.Printf("Send key: %s\r\n", msg)
 
 		req := Request{
 			msg,

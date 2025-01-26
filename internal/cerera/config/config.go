@@ -87,7 +87,7 @@ func GenerageConfig() *Config {
 			},
 			VERSION: "ALPHA",
 			VER:     1,
-			Gossip:  "0.0.0.0:8079",
+			Gossip:  "127.0.0.1:8091",
 		}
 		cfg.WriteConfigToFile()
 	} else {
