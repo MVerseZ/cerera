@@ -125,15 +125,15 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 	time.Sleep(1 * time.Second)
 
 	// var vlt = storage.GetVault()
-	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
-	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
+	// fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	// fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
 
 	// msg := vlt.Size()
 
 	pbk := node.keypair.pubkey
 	b := types.EncodePublicKeyToByte(pbk)
 	var msg = string(b)
-	fmt.Printf("Send key: %s\r\n", msg)
+	// fmt.Printf("Send key: %s\r\n", msg)
 
 	req := Request{
 		msg,
@@ -150,11 +150,6 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		fmt.Printf("%v\n", err)
 	}
 
-	// logBroadcastMsg(hJoin, reqmsg)
-	// fmt.Println(node.preKnownNodes[0].nodeID)
-	// fmt.Println(node.preKnownNodes[0].pubkey)
-	// fmt.Println(node.preKnownNodes[0].url)
-
 	var joinMsg JoinMsg
 	err = json.Unmarshal(payload, &joinMsg)
 	if err != nil {
@@ -162,18 +157,11 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 		return
 	}
 	remotePubKey, err := types.PublicKeyFromString(joinMsg.CRequest.Message)
-	// remotePubKey, err := types.DecodeByteToPublicKey([]byte(joinMsg.CRequest.Message))
 	if err != nil {
 		fmt.Printf("error happened while decode:%v", err)
 		panic(err)
 	}
-	pks, err := types.PublicKeyToString(remotePubKey)
-	if err != nil {
-		fmt.Printf("error happened while key to string conv:%v", err)
-		panic(err)
-	}
-	fmt.Println(pks)
-	fmt.Printf("Remote address for join: %s\r\n", joinMsg.RAddr)
+	fmt.Printf("Remote address for broadcast: %s\r\n", joinMsg.RAddr)
 
 	var newKnownNode = &KnownNode{
 		joinMsg.ClientID,
@@ -183,23 +171,22 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 	node.knownNodes = append(node.knownNodes, newKnownNode)
-
-	isSigned, err := verifySignatrue(joinMsg, sig, remotePubKey)
-	if err != nil {
-		fmt.Printf("error happened while verify sig:%v", err)
-		panic(err)
-	}
-	// fmt.Println(string(types.EncodePublicKeyToByte(remotePubKey)))
-	fmt.Println(isSigned)
 	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
 }
 
 func (node *Node) handleSync(payload []byte, sig []byte) {
-	fmt.Println("Sync message received")
+	// fmt.Println("Sync message received")
 	time.Sleep(1 * time.Second)
 
-	fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
-	fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
+	// fmt.Printf("preknown nodes: %d\r\n", len(node.preKnownNodes))
+	// fmt.Printf("known nodes: %d\r\n", len(node.knownNodes))
+	var syncMsg SyncMsg
+	err := json.Unmarshal(payload, &syncMsg)
+	if err != nil {
+		fmt.Printf("error happened while JSON unmarshal:%v", err)
+		return
+	}
+	// logHandleMsg(hJoin, syncMsg.CRequest, syncMsg.ClientID)
 
 	var request SyncMsg
 	err := json.Unmarshal(payload, &request)
@@ -234,9 +221,11 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 	// }
 
 	pbk := node.keypair.pubkey
-	b := types.EncodePublicKeyToByte(pbk)
-	var msg = string(b)
-	fmt.Printf("Send key: %s\r\n", msg)
+	msg, err := types.PublicKeyToString(pbk)
+	if err != nil {
+		panic(err)
+	}
+	// fmt.Printf("Send key: %s\r\n", msg)
 
 	req := Request{
 		msg,
@@ -252,6 +241,7 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}
+	// logBroadcastMsg(hSync, reqmsg)
 	node.broadcast(ComposeMsg(hSync, reqmsg, sig))
 }
 

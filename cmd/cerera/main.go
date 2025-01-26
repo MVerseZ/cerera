@@ -69,20 +69,17 @@ func main() {
 	gigea.InitStatus()
 
 	n := network.NewServer(ctx, cfg, *port)
-	err = n.JoinSwarm(cfg.Gossip)
-	if err != nil {
-		fmt.Printf("%s\r\n", err)
-	}
 	n.SetUpHttp(ctx, *cfg)
 	go n.Start()
 
+	coinbase.SetCoinbase()
 	// validator.NewValidator(ctx, *cfg)
 	// storage.NewD5Vault(cfg)
-	// chain.InitBlockChain(cfg)
+	chain.InitBlockChain(cfg)
 
 	c := cerera{
 		// g:  validator.NewValidator(ctx, *cfg),
-		// bc: chain.InitBlockChain(cfg), // chain use validator, init it before, not a clean way
+		bc: chain.InitBlockChain(cfg), //,, chain use validator, init it before, not a clean way
 		// h: host,
 		// p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		// v:      storage.NewD5Vault(cfg),
@@ -90,8 +87,6 @@ func main() {
 	}
 
 	// c.v.Prepare()
-
-	coinbase.SetCoinbase()
 
 	<-ctx.Done()
 	c.proc.Stop()
