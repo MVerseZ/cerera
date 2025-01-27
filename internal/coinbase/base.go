@@ -70,3 +70,7 @@ func Faucet(faucetValue int) *big.Int {
 	Coinbase.balance = big.NewInt(0).Sub(Coinbase.balance, faucetVal_BigInt)
 	return faucetVal_BigInt
 }
+
+func CreateCoinBaseTransation(nonce uint64, addr types.Address) types.GTransaction {
+	return *types.NewTransaction(nonce, addr, blockReward, 100, big.NewInt(100), []byte("OP_REW"))
+}

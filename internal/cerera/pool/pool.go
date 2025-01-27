@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -8,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/gigea/gigea"
 
 	"github.com/cerera/internal/cerera/types"
 )
@@ -50,7 +52,7 @@ func SendTransaction(tx types.GTransaction) (common.Hash, error) {
 	return tx.Hash(), nil
 }
 
-func InitPool(minGas uint64, maxSize int) *Pool {
+func InitPool(minGas uint64, maxSize int) {
 
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
@@ -68,7 +70,7 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%d\r\n\tMAX_SIZE:%d\r\n", p.minGas, p.maxSize)
 
 	go p.PoolServiceLoop()
-	return &p
+	// return &p
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
@@ -94,13 +96,15 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	var usage uintptr
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
-	for _, k := range p.Prepared {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, k := range p.memPool {
 		var txSize = k.Size()
 		txPoolSize += int(txSize)
 		var txBts = unsafe.Sizeof(k)
 		usage += txBts
 		hashes = append(hashes, k.Hash())
-		cp = append(cp, *k)
+		cp = append(cp, k)
 	}
 	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
 	var result = MemPoolInfo{
@@ -155,7 +159,7 @@ func (p *Pool) PoolServiceLoop() {
 			}
 			for _, tx := range p.memPool {
 				var r, s, v = tx.RawSignatureValues()
-				fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
+				// fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
 				// if tx signed - add it to block
 				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
 					p.Prepared = append(p.Prepared, &tx)
@@ -172,10 +176,28 @@ func (p *Pool) PoolServiceLoop() {
 			fmt.Printf("Funnel data arrive\r\n")
 			for _, tx := range txs {
 				p.AddRawTransaction(tx)
+				gigea.E.TxFunnel <- tx
+			}
+		case newBlock := <-gigea.E.BlockPipe:
+			fmt.Println("POOL")
+			for _, tx := range newBlock.Transactions {
+				fmt.Println(tx.Hash())
+				delete(p.memPool, tx.Hash())
 			}
 		}
 	}
 	errc <- nil
+}
+
+func (p *Pool) RemoveFromPool(txHash common.Hash) error {
+
+	tx, ok := p.memPool[txHash]
+	if !ok {
+		return errors.New("no in mempool")
+	}
+	fmt.Printf("Deleted: %s\r\n", tx.Hash())
+	delete(p.memPool, txHash)
+	return nil
 }
 
 // func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) (common.Hash, error) {

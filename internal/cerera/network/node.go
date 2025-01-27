@@ -189,7 +189,7 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 	// logHandleMsg(hJoin, syncMsg.CRequest, syncMsg.ClientID)
 
 	var request SyncMsg
-	err := json.Unmarshal(payload, &request)
+	err = json.Unmarshal(payload, &request)
 
 	if err != nil {
 		fmt.Printf("error happened:%v", err)

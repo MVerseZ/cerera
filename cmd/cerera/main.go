@@ -66,7 +66,7 @@ func main() {
 	//## No multithreading.
 	// start steps
 
-	gigea.InitStatus()
+	gigea.Init(cfg.NetCfg.ADDR)
 
 	n := network.NewServer(ctx, cfg, *port)
 	n.SetUpHttp(ctx, *cfg)
@@ -76,10 +76,11 @@ func main() {
 	// validator.NewValidator(ctx, *cfg)
 	// storage.NewD5Vault(cfg)
 	chain.InitBlockChain(cfg)
+	pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
 
 	c := cerera{
 		// g:  validator.NewValidator(ctx, *cfg),
-		bc: chain.InitBlockChain(cfg), //,, chain use validator, init it before, not a clean way
+		// bc: chain.InitBlockChain(cfg), //? chain use validator, init it before, not a clean way
 		// h: host,
 		// p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
 		// v:      storage.NewD5Vault(cfg),

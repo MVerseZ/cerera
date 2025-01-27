@@ -3,7 +3,6 @@ package types
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -155,29 +154,6 @@ func crvHash(x interface{}) (h common.Hash) {
 	}
 	hw.Write(h[:0])
 	hw.Sum(h[:0])
-	return h
-}
-
-func crvTxHash(t TxData) (h common.Hash) {
-	hw, _ := blake2b.New256(nil)
-
-	tNonce := make([]byte, 16)
-	tGas := make([]byte, 16)
-	binary.LittleEndian.PutUint64(tNonce, t.nonce())
-	binary.LittleEndian.PutUint64(tGas, t.gas())
-
-	hw.Write(h[:0])
-	hw.Write(t.data())
-	hw.Write(t.dna())
-	hw.Write(t.value().Bytes())
-	hw.Write(tNonce)
-	hw.Write(t.to()[:])
-	hw.Write(t.gasPrice().Bytes())
-	hw.Write(tGas)
-
-	dateBytes, _ := t.time().MarshalBinary()
-	hw.Write(dateBytes)
-	h.SetBytes(hw.Sum(nil))
 	return h
 }
 

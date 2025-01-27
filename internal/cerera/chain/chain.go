@@ -11,6 +11,7 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/gigea/gigea"
@@ -50,7 +51,7 @@ var (
 func GetBlockChain() *Chain {
 	return &bch
 }
-func InitBlockChain(cfg *config.Config) Chain {
+func InitBlockChain(cfg *config.Config) { //Chain {
 	var (
 		t         *trie.MerkleTree
 		chainWork = 0
@@ -65,7 +66,7 @@ func InitBlockChain(cfg *config.Config) Chain {
 
 	var err error
 
-	genesisBlock := block.Genesis()
+	genesisBlock := block.Genesis(cfg.Chain.ChainID)
 	dataBlocks := make([]block.Block, 0)
 	var list []trie.Content
 
@@ -130,8 +131,8 @@ func InitBlockChain(cfg *config.Config) Chain {
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	// go bch.BlockGenerator()
-	go bch.Resume()
-	return bch
+	go bch.Maintain()
+	// return bch
 }
 
 func (bc *Chain) GetInfo() interface{} {
@@ -147,11 +148,11 @@ func (bc *Chain) GetInfo() interface{} {
 	return bc.info
 }
 
-func (bc Chain) GetLatestBlock() *block.Block {
+func (bc *Chain) GetLatestBlock() *block.Block {
 	return bc.currentBlock
 }
 
-func (bc Chain) GetBlockHash(number int) common.Hash {
+func (bc *Chain) GetBlockHash(number int) common.Hash {
 	for _, b := range bc.data {
 		if b.Header().Number.Cmp(big.NewInt(int64(number))) == 0 {
 			return b.Hash()
@@ -160,7 +161,7 @@ func (bc Chain) GetBlockHash(number int) common.Hash {
 	return common.EmptyHash()
 }
 
-func (bc Chain) GetBlock(blockHash common.Hash) *block.Block {
+func (bc *Chain) GetBlock(blockHash common.Hash) *block.Block {
 	for _, b := range bc.data {
 		if b.Hash().Compare(blockHash) == 0 {
 			return &b
@@ -169,7 +170,7 @@ func (bc Chain) GetBlock(blockHash common.Hash) *block.Block {
 	return &block.Block{}
 }
 
-func (bc Chain) GetBlockHeader(blockHash string) *block.Header {
+func (bc *Chain) GetBlockHeader(blockHash string) *block.Header {
 	var bHash = common.HexToHash(blockHash)
 	for _, b := range bc.data {
 		if b.Hash().Compare(bHash) == 0 {
@@ -179,35 +180,80 @@ func (bc Chain) GetBlockHeader(blockHash string) *block.Header {
 	return &block.Header{}
 }
 
-func (bc *Chain) BlockGenerator() {
-	for {
-		select {
-		case <-bc.blockTicker.C:
+// func (bc *Chain) BlockGenerator() {
+// 	for {
+// 		select {
+// 		case <-bc.blockTicker.C:
+// 			var latest = bc.GetLatestBlock()
+// 			if bc.autoGen {
+// 				bc.TryAutoGen(latest)
+// 			}
+// 		case <-bc.maintainTicker.C:
+// 			continue
+// 		}
+// 	}
+// }
+
+func (bc *Chain) Maintain() {
+	var p = pool.Get()
+	var errc chan error
+	for errc == nil {
+		if bc.autoGen {
 			var latest = bc.GetLatestBlock()
-			if bc.autoGen {
-				bc.TryAutoGen(latest)
+			go bc.TryAutoGen(latest)
+		}
+		select {
+		case newBlock := <-gigea.E.BlockPipe:
+			fmt.Printf("Approved block!! : %s\r\n", newBlock.Hash())
+			for _, tx := range newBlock.Transactions {
+				// fmt.Printf("Tx: %s\r\n", tx.Hash())
+				p.RemoveFromPool(tx.Hash())
 			}
+			// if vld.ValidateBlock(*newBlock) {
+			// 	bc.t.Add(newBlock)
+			// 	var t, err = bc.t.VerifyTree()
+			// }
+			// if err != nil || !t {
+			// 	log.Printf("Verifying trie error: %s\r\n", err)
+			// } else {
+			bc.info.Latest = newBlock.Hash()
+			bc.info.Total = bc.info.Total + 1
+			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+			bc.currentBlock = &newBlock
+			// 	err := SaveToVault(*newBlock)
+			// 	if err == nil {
+			// 		var rewardAddress = newBlock.Head.Node
+			// 		fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
+			bc.data = append(bc.data, newBlock)
+
+		// 		vld.Reward(rewardAddress)
+		// 	}
+		// }
+
 		case <-bc.maintainTicker.C:
 			continue
 		}
 	}
+	errc <- nil
 }
 
 func (bc *Chain) TryAutoGen(latest *block.Block) {
 	// var vld = validator.Get()
 	// var pool = pool.Get()
 
+	time.Sleep(60 * time.Second)
+	fmt.Println("MINE")
+
 	head := &block.Header{
 		Ctx:        latest.Header().Ctx,
-		Difficulty: latest.Header().Difficulty,
+		Difficulty: big.NewInt(1),
 		Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
 		Height:     latest.Header().Height + 1,
 		Index:      latest.Header().Index + 1,
 		Timestamp:  uint64(time.Now().UnixMilli()),
-		Number:     big.NewInt(0).Add(latest.Header().Number, big.NewInt(1)),
+		Number:     bc.chainId,
 		PrevHash:   bc.info.Latest,
 		Node:       bc.currentAddress,
-		Root:       latest.Header().Root,
 		GasLimit:   latest.Head.GasLimit, // todo get gas limit dynamically
 	}
 	// cpy version, should store elsewhere
@@ -255,8 +301,9 @@ func (bc *Chain) TryAutoGen(latest *block.Block) {
 	// 	// clear array with included txs
 	// 	pool.Prepared = nil
 	// } else {
+	gigea.E.BlockFunnel <- newBlock
 	fmt.Printf("Block unconfirmed: %s\r\n", newBlock.Hash())
-	return
+	// return
 	// }
 }
 
@@ -302,9 +349,10 @@ func (bc *Chain) Resume() {
 	for {
 		select {
 		case <-bc.blockTicker.C:
-			var latest = bc.GetLatestBlock()
+			// var latest = bc.GetLatestBlock()
 			if bc.autoGen {
-				bc.TryAutoGen(latest)
+				// bc.TryAutoGen(latest)
+				gigea.E.Mine()
 			}
 		case <-bc.maintainTicker.C:
 			continue

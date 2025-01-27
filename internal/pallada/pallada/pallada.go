@@ -11,6 +11,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/internal/gigea/gigea"
 )
 
 var pld Pallada
@@ -166,7 +167,7 @@ func Execute(method string, params []interface{}) interface{} {
 		if len(params) < 3 {
 			pld.Data = "Wrong count of params"
 		} else {
-			kStr, ok0 := params[0].(string)
+			_, ok0 := params[0].(string)
 			addrStr, ok1 := params[1].(string)
 			count, ok2 := params[2].(float64)
 			gas, ok3 := params[3].(float64)
@@ -177,19 +178,26 @@ func Execute(method string, params []interface{}) interface{} {
 			} else {
 				var addrTo = types.HexToAddress(addrStr)
 				var gasInt = int(gas)
-				var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)
-				if vldtr.ValidateRawTransaction(tx) {
-					resTx, err := vldtr.SignRawTransactionWithKey(tx, kStr)
-					if err != nil {
-						pld.Data = "Error while signing!"
-						return 0xf
-					}
-					// p.AddRawTransaction(tx)
-					p.Funnel <- []*types.GTransaction{resTx}
-					pld.Data = resTx.Hash()
-				} else {
-					pld.Data = types.EmptyCodeHash
+				tx, err := types.CreateTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
+				if err != nil {
+					pld.Data = "Error while create transaction!"
+					return 0xf
 				}
+				p.Funnel <- []*types.GTransaction{tx}
+				pld.Data = tx.Hash()
+				// // var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)
+				// if vldtr.ValidateRawTransaction(tx) {
+				// 	resTx, err := vldtr.SignRawTransactionWithKey(tx, kStr)
+				// 	if err != nil {
+				// 		pld.Data = "Error while signing!"
+				// 		return 0xf
+				// 	}
+				// 	// p.AddRawTransaction(tx)
+				// 	p.Funnel <- []*types.GTransaction{resTx}
+				// 	pld.Data = resTx.Hash()
+				// } else {
+				// 	pld.Data = types.EmptyCodeHash
+				// }
 			}
 		}
 	case "info", "cerera.getVersion":

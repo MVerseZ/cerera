@@ -206,7 +206,8 @@ func (s *Server) JoinSwarm(gossipAddr string) error {
 			// conn, err := net.Dial("tcp", gossipAddr)
 			if err != nil {
 				s.retryCount += 1
-				time.Sleep(300 * time.Millisecond)
+				time.Sleep(10 * time.Millisecond)
+				fmt.Printf("Attempt #%d\r\n", s.retryCount)
 				continue
 			}
 			defer conn.Close()

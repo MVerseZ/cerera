@@ -66,7 +66,7 @@ func GenerageConfig() *Config {
 			TlsFlag: false,
 			POOL: PoolConfig{
 				MinGas:  3,
-				MaxSize: 1000,
+				MaxSize: 1000000,
 			},
 			Vault: VaultConfig{
 				MEM:  true,
