@@ -16,25 +16,25 @@ import (
 
 // MerkleTree is the container for the tree. It holds a pointer to the root of the tree,
 // a list of pointers to the leaf nodes, and the merkle root.
-type MerkleTree struct {
-	Root         *Node
+type TxMerkleTree struct {
+	Root         *TxTreeNode
 	merkleRoot   []byte
-	Leafs        []*Node
+	Leafs        []*TxTreeNode
 	hashStrategy func() hash.Hash
 	sort         bool
 }
 
 // Node represents a node, root, or leaf in the tree. It stores pointers to its immediate
 // relationships, a hash, the content stored if it is a leaf, and other metadata.
-type Node struct {
-	Tree   *MerkleTree
-	Parent *Node
-	Left   *Node
-	Right  *Node
+type TxTreeNode struct {
+	Tree   *TxMerkleTree
+	Parent *TxTreeNode
+	Left   *TxTreeNode
+	Right  *TxTreeNode
 	leaf   bool
 	dup    bool
 	Hash   []byte
-	C      types.Content
+	tx     types.GTransaction
 	sort   bool
 }
 
@@ -55,9 +55,9 @@ func sortAppend(sort bool, a, b []byte) []byte {
 
 // verifyNode walks down the tree until hitting a leaf, calculating the hash at each level
 // and returning the resulting hash of Node n.
-func (n *Node) verifyNode(sort bool) ([]byte, error) {
+func (n *TxTreeNode) verifyNode(sort bool) ([]byte, error) {
 	if n.leaf {
-		return n.C.CalculateHash()
+		return n.tx.Hash().Bytes(), nil
 	}
 	rightBytes, err := n.Right.verifyNode(sort)
 	if err != nil {
@@ -78,9 +78,9 @@ func (n *Node) verifyNode(sort bool) ([]byte, error) {
 }
 
 // calculateNodeHash is a helper function that calculates the hash of the node.
-func (n *Node) calculateNodeHash(sort bool) ([]byte, error) {
+func (n *TxTreeNode) calculateNodeHash(sort bool) ([]byte, error) {
 	if n.leaf {
-		return n.C.CalculateHash()
+		return n.tx.Hash().Bytes(), nil
 	}
 
 	h := n.Tree.hashStrategy()
@@ -92,9 +92,9 @@ func (n *Node) calculateNodeHash(sort bool) ([]byte, error) {
 }
 
 // NewTree creates a new Merkle Tree using the content cs.
-func NewTree(cs []types.Content) (*MerkleTree, error) {
+func NewTree(cs []types.GTransaction) (*TxMerkleTree, error) {
 	var defaultHashStrategy = sha256.New
-	t := &MerkleTree{
+	t := &TxMerkleTree{
 		hashStrategy: defaultHashStrategy,
 		sort:         false,
 	}
@@ -111,8 +111,8 @@ func NewTree(cs []types.Content) (*MerkleTree, error) {
 // NewTreeWithHashStrategy creates a new Merkle Tree using the content cs using the provided hash
 // strategy. Note that the hash type used in the type that implements the Content interface must
 // match the hash type provided to the tree.
-func NewTreeWithHashStrategy(cs []types.Content, hashStrategy func() hash.Hash) (*MerkleTree, error) {
-	t := &MerkleTree{
+func NewTreeWithHashStrategy(cs []types.GTransaction, hashStrategy func() hash.Hash) (*TxMerkleTree, error) {
+	t := &TxMerkleTree{
 		hashStrategy: hashStrategy,
 		sort:         false,
 	}
@@ -129,8 +129,8 @@ func NewTreeWithHashStrategy(cs []types.Content, hashStrategy func() hash.Hash) 
 // NewTreeWithHashStrategySorted just like NewTreeWithHashStrategy
 // but sorts the siblings before hashing, mostly to follow the OpenZepplin Merkle implementation
 // https://github.com/OpenZeppelin/openzeppelin-contracts-ethereum-package/blob/master/contracts/cryptography/MerkleProof.sol
-func NewTreeWithHashStrategySorted(cs []types.Content, hashStrategy func() hash.Hash, sort bool) (*MerkleTree, error) {
-	t := &MerkleTree{
+func NewTreeWithHashStrategySorted(cs []types.GTransaction, hashStrategy func() hash.Hash, sort bool) (*TxMerkleTree, error) {
+	t := &TxMerkleTree{
 		hashStrategy: hashStrategy,
 		sort:         sort,
 	}
@@ -145,9 +145,9 @@ func NewTreeWithHashStrategySorted(cs []types.Content, hashStrategy func() hash.
 }
 
 // GetMerklePath: Get Merkle path and indexes(left leaf or right leaf)
-func (m *MerkleTree) GetMerklePath(content types.Content) ([][]byte, []int64, error) {
+func (m *TxMerkleTree) GetMerklePath(content types.GTransaction) ([][]byte, []int64, error) {
 	for _, current := range m.Leafs {
-		ok, err := current.C.Equals(content)
+		ok, err := current.tx.Equals(content)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -176,28 +176,28 @@ func (m *MerkleTree) GetMerklePath(content types.Content) ([][]byte, []int64, er
 // buildWithContent is a helper function that for a given set of Contents, generates a
 // corresponding tree and returns the root node, a list of leaf nodes, and a possible error.
 // Returns an error if cs contains no Contents.
-func buildWithContent(cs []types.Content, t *MerkleTree) (*Node, []*Node, error) {
+func buildWithContent(cs []types.GTransaction, t *TxMerkleTree) (*TxTreeNode, []*TxTreeNode, error) {
 	if len(cs) == 0 {
 		return nil, nil, errors.New("error: cannot construct tree with no content")
 	}
-	var leafs []*Node
+	var leafs []*TxTreeNode
 	for _, c := range cs {
 		hash, err := c.CalculateHash()
 		if err != nil {
 			return nil, nil, err
 		}
 
-		leafs = append(leafs, &Node{
+		leafs = append(leafs, &TxTreeNode{
 			Hash: hash,
-			C:    c,
+			tx:   c,
 			leaf: true,
 			Tree: t,
 		})
 	}
 	if len(leafs)%2 == 1 {
-		duplicate := &Node{
+		duplicate := &TxTreeNode{
 			Hash: leafs[len(leafs)-1].Hash,
-			C:    leafs[len(leafs)-1].C,
+			tx:   leafs[len(leafs)-1].tx,
 			leaf: true,
 			dup:  true,
 			Tree: t,
@@ -214,8 +214,8 @@ func buildWithContent(cs []types.Content, t *MerkleTree) (*Node, []*Node, error)
 
 // buildIntermediate is a helper function that for a given list of leaf nodes, constructs
 // the intermediate and root levels of the tree. Returns the resulting root node of the tree.
-func buildIntermediate(nl []*Node, t *MerkleTree) (*Node, error) {
-	var nodes []*Node
+func buildIntermediate(nl []*TxTreeNode, t *TxMerkleTree) (*TxTreeNode, error) {
+	var nodes []*TxTreeNode
 	for i := 0; i < len(nl); i += 2 {
 		h := t.hashStrategy()
 		var left, right int = i, i + 1
@@ -226,7 +226,7 @@ func buildIntermediate(nl []*Node, t *MerkleTree) (*Node, error) {
 		if _, err := h.Write(chash); err != nil {
 			return nil, err
 		}
-		n := &Node{
+		n := &TxTreeNode{
 			Left:  nl[left],
 			Right: nl[right],
 			Hash:  h.Sum(nil),
@@ -243,16 +243,16 @@ func buildIntermediate(nl []*Node, t *MerkleTree) (*Node, error) {
 }
 
 // MerkleRoot returns the unverified Merkle Root (hash of the root node) of the tree.
-func (m *MerkleTree) MerkleRoot() []byte {
+func (m *TxMerkleTree) MerkleRoot() []byte {
 	return m.merkleRoot
 }
 
 // RebuildTree is a helper function that will rebuild the tree reusing only the content that
 // it holds in the leaves.
-func (m *MerkleTree) RebuildTree() error {
-	var cs []types.Content
+func (m *TxMerkleTree) RebuildTree() error {
+	var cs []types.GTransaction
 	for _, c := range m.Leafs {
-		cs = append(cs, c.C)
+		cs = append(cs, c.tx)
 	}
 	root, leafs, err := buildWithContent(cs, m)
 	if err != nil {
@@ -267,7 +267,7 @@ func (m *MerkleTree) RebuildTree() error {
 // RebuildTreeWith replaces the content of the tree and does a complete rebuild; while the root of
 // the tree will be replaced the MerkleTree completely survives this operation. Returns an error if the
 // list of content cs contains no entries.
-func (m *MerkleTree) RebuildTreeWith(cs []types.Content) error {
+func (m *TxMerkleTree) RebuildTreeWith(cs []types.GTransaction) error {
 	root, leafs, err := buildWithContent(cs, m)
 	if err != nil {
 		return err
@@ -280,7 +280,7 @@ func (m *MerkleTree) RebuildTreeWith(cs []types.Content) error {
 
 // VerifyTree verify tree validates the hashes at each level of the tree and returns true if the
 // resulting hash at the root of the tree matches the resulting root hash; returns false otherwise.
-func (m *MerkleTree) VerifyTree() (bool, error) {
+func (m *TxMerkleTree) VerifyTree() (bool, error) {
 	calculatedMerkleRoot, err := m.Root.verifyNode(m.sort)
 	if err != nil {
 		return false, err
@@ -295,9 +295,9 @@ func (m *MerkleTree) VerifyTree() (bool, error) {
 // VerifyContent indicates whether a given content is in the tree and the hashes are valid for that content.
 // Returns true if the expected Merkle Root is equivalent to the Merkle root calculated on the critical path
 // for a given content. Returns true if valid and false otherwise.
-func (m *MerkleTree) VerifyContent(content types.Content) (bool, error) {
+func (m *TxMerkleTree) VerifyContent(content types.GTransaction) (bool, error) {
 	for _, l := range m.Leafs {
-		ok, err := l.C.Equals(content)
+		ok, err := l.tx.Equals(content)
 		if err != nil {
 			return false, err
 		}
@@ -331,13 +331,13 @@ func (m *MerkleTree) VerifyContent(content types.Content) (bool, error) {
 }
 
 // String returns a string representation of the node.
-func (n *Node) String() string {
-	return fmt.Sprintf("%t %t %v %s", n.leaf, n.dup, n.Hash, n.C)
+func (n *TxTreeNode) String() string {
+	return fmt.Sprintf("%t %t %v %s", n.leaf, n.dup, n.Hash, n.tx.Hash())
 }
 
 // String returns a string representation of the tree. Only leaf nodes are included
 // in the output.
-func (m *MerkleTree) String() string {
+func (m *TxMerkleTree) String() string {
 	s := ""
 	for _, l := range m.Leafs {
 		s += fmt.Sprint(l)

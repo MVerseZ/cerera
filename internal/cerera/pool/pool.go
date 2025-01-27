@@ -3,7 +3,6 @@ package pool
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 	"unsafe"
@@ -52,7 +51,7 @@ func SendTransaction(tx types.GTransaction) (common.Hash, error) {
 	return tx.Hash(), nil
 }
 
-func InitPool(minGas uint64, maxSize int) {
+func InitPool(minGas uint64, maxSize int) *Pool {
 
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
@@ -70,17 +69,21 @@ func InitPool(minGas uint64, maxSize int) {
 	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%d\r\n\tMAX_SIZE:%d\r\n", p.minGas, p.maxSize)
 
 	go p.PoolServiceLoop()
-	// return &p
+	return &p
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
-	fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
-	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-		p.memPool[tx.Hash()] = *tx
-		// p.memPool = append(p.memPool, *tx)
-		// network.BroadcastTx(tx)
+	// fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
+	var sLock = p.mu.TryLock()
+	if sLock {
+		if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+			p.memPool[tx.Hash()] = *tx
+			// p.memPool = append(p.memPool, *tx)
+			// network.BroadcastTx(tx)
+		}
 	}
-	fmt.Println(len(p.memPool))
+	p.mu.Unlock()
+	// fmt.Println(len(p.memPool))
 }
 
 func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
@@ -96,8 +99,8 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	var usage uintptr
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
 	for _, k := range p.memPool {
 		var txSize = k.Size()
 		txPoolSize += int(txSize)
@@ -153,27 +156,27 @@ func (p *Pool) PoolServiceLoop() {
 		select {
 		case <-p.maintainTicker.C:
 			// fmt.Printf("Pool maintain loop\r\n")
-			p.mu.Lock()
-			if p.Prepared == nil {
-				p.Prepared = make([]*types.GTransaction, 0)
-			}
-			for _, tx := range p.memPool {
-				var r, s, v = tx.RawSignatureValues()
-				// fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
-				// if tx signed - add it to block
-				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
-					p.Prepared = append(p.Prepared, &tx)
-				}
-				for _, preparedTx := range p.Prepared {
-					delete(p.memPool, preparedTx.Hash())
-				}
-			}
-			p.mu.Unlock()
+			// p.mu.Lock()
+			// if p.Prepared == nil {
+			// 	p.Prepared = make([]*types.GTransaction, 0)
+			// }
+			// for _, tx := range p.memPool {
+			// 	var r, s, v = tx.RawSignatureValues()
+			// 	// fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
+			// 	// if tx signed - add it to block
+			// 	if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
+			// 		p.Prepared = append(p.Prepared, &tx)
+			// 	}
+			// 	for _, preparedTx := range p.Prepared {
+			// 		delete(p.memPool, preparedTx.Hash())
+			// 	}
+			// }
+			// p.mu.Unlock()
 			// fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
 			// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
 			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
 		case txs := <-p.Funnel:
-			fmt.Printf("Funnel data arrive\r\n")
+			// fmt.Printf("Funnel data arrive\r\n")
 			for _, tx := range txs {
 				p.AddRawTransaction(tx)
 				gigea.E.TxFunnel <- tx

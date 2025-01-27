@@ -41,6 +41,7 @@ type Chain struct {
 	maintainTicker *time.Ticker
 	blockTicker    *time.Ticker
 	DataChannel    chan []byte
+	Size           int
 }
 
 var (
@@ -128,6 +129,7 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 		currentAddress: cfg.NetCfg.ADDR,
 		t:              t,
 		DataChannel:    make(chan []byte),
+		Size:           genesisBlock.Header().Size,
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	// go bch.BlockGenerator()
@@ -136,12 +138,11 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 }
 
 func (bc *Chain) GetInfo() interface{} {
-	var bcs, err = GetChainSourceSize()
-	if err != nil {
-		bc.info.Size = -1
-	} else {
-		bc.info.Size = bcs
+	var totalSize = 0
+	for _, b := range bc.data {
+		totalSize += b.Header().Size
 	}
+	bc.info.Size = int64(totalSize)
 	bc.info.Total = len(bc.data)
 	bc.info.Latest = bc.data[len(bc.data)-1].Hash()
 
@@ -224,6 +225,7 @@ func (bc *Chain) Maintain() {
 			// 	if err == nil {
 			// 		var rewardAddress = newBlock.Head.Node
 			// 		fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
+			bc.Size += newBlock.Header().Size
 			bc.data = append(bc.data, newBlock)
 
 		// 		vld.Reward(rewardAddress)

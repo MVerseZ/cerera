@@ -20,8 +20,8 @@ type Engine struct {
 	BlockPipe    chan block.Block
 	Transaions   TxTree
 	Owner        types.Address
-	Transactions *MerkleTree
-	List         []types.Content
+	Transactions *TxMerkleTree
+	List         []types.GTransaction
 }
 
 func (e *Engine) Start(lAddr types.Address) {
@@ -30,7 +30,7 @@ func (e *Engine) Start(lAddr types.Address) {
 	e.TxFunnel = make(chan *types.GTransaction)
 	e.BlockPipe = make(chan block.Block)
 
-	e.List = make([]types.Content, 0)
+	e.List = make([]types.GTransaction, 0)
 
 	e.Owner = lAddr
 	// var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
@@ -77,6 +77,7 @@ func (e *Engine) Validate(b *block.Block) {
 	var err error
 	if len(e.List) == 0 {
 		var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
+		fmt.Printf("Coinbase tx hash: %s\r\n", firstTx.Hash())
 		e.List = append(e.List, firstTx)
 	}
 	e.Transactions, err = NewTree(e.List)
@@ -87,10 +88,12 @@ func (e *Engine) Validate(b *block.Block) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Root hash: %s\r\n", common.BytesToHash(e.Transactions.Root.Hash))
+	fmt.Printf("Root hash: %s\r\n", e.Transactions.Root.tx.Hash())
 	if txsStatus {
 		b.Head.Root = common.Hash(e.Transactions.Root.Hash)
 		for _, l := range e.Transactions.Leafs {
-			var tx = l.C.(types.GTransaction)
+			var tx = l.tx
 			if !l.dup {
 				b.Head.Size += int(tx.Size())
 				b.Transactions = append(b.Transactions, tx)

@@ -86,3 +86,27 @@ func TestEquals(t *testing.T) {
 	fmt.Println(sbHash)
 	fmt.Println(tx.Hash())
 }
+
+func TestSize(t *testing.T) {
+	var toAddr = HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea24807B491717081c42F2575F09B6bc60206")
+	var tx = NewTransaction(
+		1337,
+		toAddr,
+		big.NewInt(100000000),
+		250000,
+		big.NewInt(1111),
+		[]byte("TEST_TX"),
+	)
+	var bhash, err = tx.CalculateHash()
+	if err != nil {
+		t.Errorf("Error while transaction.CalculateHash call %s\r\n", err)
+	}
+	var sbHash = common.BytesToHash(bhash)
+	if sbHash.Compare(tx.Hash()) != 0 {
+		t.Errorf("Difference between transaction.CalculateHash and transaction.Hash\r\n\t %s - %s\r\n", tx.Hash(), sbHash)
+	}
+	if tx.Size() != 393 {
+		t.Errorf("diff sizes")
+	}
+	fmt.Println(tx.Size())
+}
