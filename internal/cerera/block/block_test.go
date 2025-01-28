@@ -95,7 +95,7 @@ func createTestBlock() *Block {
 	b := &Block{
 		Nonce:        12345,
 		Head:         header,
-		Transactions: []types.GTransaction{*tx1, *tx2},
+		Transactions: []*types.GTransaction{tx1, tx2},
 	}
 	return b
 }
@@ -180,7 +180,7 @@ func TestEmptyBlockSerialize(t *testing.T) {
 func TestFilledBlockSerialize(t *testing.T) {
 	header := createTestHeader()
 	block := NewBlockWithHeader(header)
-	block.Transactions = append(block.Transactions, *prepareSignedTx())
+	block.Transactions = append(block.Transactions, prepareSignedTx())
 	blockBytes := block.ToBytes()
 	parsedBlock, err := FromBytes(blockBytes)
 	if err != nil {
@@ -207,7 +207,7 @@ func TestHashFunctions(t *testing.T) {
 
 	header := createTestHeader()
 	blockWithTx := NewBlockWithHeader(header)
-	blockWithTx.Transactions = append(blockWithTx.Transactions, *prepareSignedTx())
+	blockWithTx.Transactions = append(blockWithTx.Transactions, prepareSignedTx())
 	expectedHash = hashForTestBlock(blockWithTx)
 	if blockWithTx.Hash() != expectedHash {
 		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", expectedHash, block.Hash())

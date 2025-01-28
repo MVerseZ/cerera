@@ -194,11 +194,11 @@ func (p *Pool) PoolServiceLoop() {
 
 func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 
-	tx, ok := p.memPool[txHash]
+	_, ok := p.memPool[txHash]
 	if !ok {
 		return errors.New("no in mempool")
 	}
-	fmt.Printf("Deleted: %s\r\n", tx.Hash())
+	// fmt.Printf("Deleted: %s\r\n", tx.Hash())
 	delete(p.memPool, txHash)
 	return nil
 }

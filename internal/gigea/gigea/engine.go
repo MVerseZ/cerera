@@ -96,7 +96,7 @@ func (e *Engine) Validate(b *block.Block) {
 			var tx = l.tx
 			if !l.dup {
 				b.Head.Size += int(tx.Size())
-				b.Transactions = append(b.Transactions, tx)
+				b.Transactions = append(b.Transactions, &tx)
 			}
 		}
 	}
@@ -127,7 +127,7 @@ func (e *Engine) Listen() {
 	for errc == nil {
 		select {
 		case tx := <-e.TxFunnel:
-			e.Pack(*tx)
+			e.Pack(tx)
 			// e.Transaions.
 			// fmt.Println(tx.Hash())
 		case b := <-e.BlockFunnel:
@@ -138,14 +138,14 @@ func (e *Engine) Listen() {
 	errc <- nil
 }
 
-func (e *Engine) Pack(tx types.GTransaction) {
+func (e *Engine) Pack(tx *types.GTransaction) {
 	var err error
 	// fmt.Printf("Rebuild with hash: %s\r\n", tx.Hash())
 	if len(e.List) == 0 {
 		var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
 		e.List = append(e.List, firstTx)
 	}
-	e.List = append(e.List, tx)
+	e.List = append(e.List, *tx)
 	e.Transactions, err = NewTree(e.List)
 	if err != nil {
 		panic(err)

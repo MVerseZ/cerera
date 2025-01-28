@@ -220,9 +220,9 @@ func (tx *GTransaction) Size() uint64 {
 	txEncData, _ := tx.MarshalJSON()
 	size := uint64(len(txEncData))
 
-	if tx.Type() != LegacyTxType {
-		size += 1 // type byte
-	}
+	// if tx.Type() != LegacyTxType {
+	// size += 1 // type byte
+	// }
 	tx.size.Store(size)
 	return size
 }
@@ -285,16 +285,16 @@ func crvTxHash(t TxData) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
 	// hw, _ := blake2b.New256(nil)
 
-	// tNonce := make([]byte, 16)
+	tNonce := make([]byte, 8)
 	tGas := make([]byte, 16)
-	// binary.LittleEndian.PutUint64(tNonce, t.nonce())
+	binary.LittleEndian.PutUint64(tNonce, t.nonce())
 	binary.LittleEndian.PutUint64(tGas, t.gas())
 
 	hw.Write(h[:0])
 	hw.Write(t.data())
 	hw.Write(t.dna())
 	hw.Write(t.value().Bytes())
-	// hw.Write(tNonce)
+	hw.Write(tNonce)
 	hw.Write(t.to()[:])
 	hw.Write(t.gasPrice().Bytes())
 	hw.Write(tGas)

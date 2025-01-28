@@ -1,6 +1,9 @@
 // Copyright 2017 Cameron Bergoon
 // Licensed under the MIT License, see LICENCE file for details.
 
+// Modified 2025 gnupunk
+// Licensed under the GNU GPL v3
+
 package gigea
 
 import (
@@ -11,6 +14,7 @@ import (
 	"hash"
 	"math/big"
 
+	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/types"
 )
 
@@ -204,7 +208,7 @@ func buildWithContent(cs []types.GTransaction, t *TxMerkleTree) (*TxTreeNode, []
 		}
 		leafs = append(leafs, duplicate)
 	}
-	root, err := buildIntermediate(leafs, t)
+	var root, err = buildIntermediate(leafs, t)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -295,7 +299,7 @@ func (m *TxMerkleTree) VerifyTree() (bool, error) {
 // VerifyContent indicates whether a given content is in the tree and the hashes are valid for that content.
 // Returns true if the expected Merkle Root is equivalent to the Merkle root calculated on the critical path
 // for a given content. Returns true if valid and false otherwise.
-func (m *TxMerkleTree) VerifyContent(content types.GTransaction) (bool, error) {
+func (m *TxMerkleTree) VerifyContent(content *types.GTransaction) (bool, error) {
 	for _, l := range m.Leafs {
 		ok, err := l.tx.Equals(content)
 		if err != nil {
@@ -333,6 +337,15 @@ func (m *TxMerkleTree) VerifyContent(content types.GTransaction) (bool, error) {
 // String returns a string representation of the node.
 func (n *TxTreeNode) String() string {
 	return fmt.Sprintf("%t %t %v %s", n.leaf, n.dup, n.Hash, n.tx.Hash())
+}
+
+// full print hashes struct
+func (n *TxTreeNode) PrintTree(prefix string) {
+	if n != nil {
+		fmt.Printf("%sHash: %s\n", prefix, common.BytesToHash(n.Hash)) // Преобразуем байты в строку для вывода
+		n.Left.PrintTree(prefix + "  ")
+		n.Right.PrintTree(prefix + "  ")
+	}
 }
 
 // String returns a string representation of the tree. Only leaf nodes are included

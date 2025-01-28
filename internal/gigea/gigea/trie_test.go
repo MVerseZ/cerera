@@ -1,7 +1,6 @@
 package gigea
 
 import (
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -16,16 +15,15 @@ var toAddr = types.HexToAddress("0xc9C5c06E29500000000000000000000557D0B284521d7
 var toAddr2 = types.HexToAddress("0xc9C5c06E29500000000000000000000557D0B284521d71A7fCA1e1C3F289849989E80B0B8100000000000000000000ff")
 
 func TestCreate(t *testing.T) {
-	var cbto = types.HexToAddress("0xfffffffffff00000000000000000000557D0B284521d71A7fCA1e1C3F289849989E80B0B810000000000000000000000")
 	var cbtx = coinbase.CreateCoinBaseTransation(1, cbto)
 
 	var content = make([]types.GTransaction, 0)
 	content = append(content, cbtx)
 
-	for range 10 {
+	for ii := range 11 {
 		var txVal = 10.0
 		var tx = types.NewTransaction(
-			1,
+			uint64(ii),
 			toAddr,
 			types.FloatToBigInt(txVal),
 			1000,
@@ -35,14 +33,14 @@ func TestCreate(t *testing.T) {
 		content = append(content, *tx)
 	}
 
-	var lastTx = types.NewTransaction(
-		1,
-		toAddr2,
-		big.NewInt(11111),
-		1000,
-		big.NewInt(1000),
-		[]byte("Message last"),
-	)
+	// var lastTx = types.NewTransaction(
+	// 	1,
+	// 	toAddr2,
+	// 	big.NewInt(11111),
+	// 	1000,
+	// 	big.NewInt(1000),
+	// 	[]byte("Message last"),
+	// )
 
 	trie, err := NewTreeWithHashStrategySorted(content, sha3.NewLegacyKeccak256, true)
 	if err != nil {
@@ -59,11 +57,19 @@ func TestCreate(t *testing.T) {
 		t.Errorf("diff root hash with coinbase tx! Expected: %s actual: %s\r\n", rootHash, cbtx.Hash())
 	}
 
-	// check first tx value transfer
-	fmt.Println(trie.Root.tx)
+	// fmt.Println(">>>>>>>")
+	// for _, v := range content {
+	// 	fmt.Println(v.Hash())
+	// }
+	// fmt.Println(">>>>>>>")
+	// trie.Root.PrintTree("--")
+	// fmt.Println(">>>>>>>")
 
-	// check tx path
-	_, _, err = trie.GetMerklePath(*lastTx)
+	// check existing
+	aa, bb, err := trie.GetMerklePath(content[4])
+	if len(aa) <= 0 && len(bb) <= 0 {
+		t.Errorf("not in trie!, %s\r\n", content[4].Hash())
+	}
 	if err != nil {
 		t.Errorf("error! %s\r\n", err)
 	}
