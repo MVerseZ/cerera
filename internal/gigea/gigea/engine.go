@@ -89,7 +89,7 @@ func (e *Engine) Validate(b *block.Block) {
 		panic(err)
 	}
 	fmt.Printf("Root hash: %s\r\n", common.BytesToHash(e.Transactions.Root.Hash))
-	fmt.Printf("Root hash: %s\r\n", e.Transactions.Root.tx.Hash())
+	// fmt.Printf("Root hash: %s\r\n", e.Transactions.Root.tx.Hash())
 	if txsStatus {
 		b.Head.Root = common.Hash(e.Transactions.Root.Hash)
 		for _, l := range e.Transactions.Leafs {

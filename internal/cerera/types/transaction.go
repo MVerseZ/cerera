@@ -283,6 +283,7 @@ func (gtxs *GTransactions) Size() int {
 
 func crvTxHash(t TxData) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
+	// hw, _ := blake2b.New256(nil)
 
 	// tNonce := make([]byte, 16)
 	tGas := make([]byte, 16)
