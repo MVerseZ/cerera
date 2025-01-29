@@ -181,12 +181,12 @@ func (p *Pool) PoolServiceLoop() {
 				p.AddRawTransaction(tx)
 				gigea.E.TxFunnel <- tx
 			}
-		case newBlock := <-gigea.E.BlockPipe:
-			fmt.Println("POOL")
-			for _, tx := range newBlock.Transactions {
-				fmt.Println(tx.Hash())
-				delete(p.memPool, tx.Hash())
-			}
+			// case newBlock := <-gigea.E.BlockPipe:
+			// 	fmt.Println("POOL")
+			// 	for _, tx := range newBlock.Transactions {
+			// 		fmt.Println(tx.Hash())
+			// 		delete(p.memPool, tx.Hash())
+			// 	}
 		}
 	}
 	errc <- nil

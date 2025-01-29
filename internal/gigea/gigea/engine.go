@@ -96,6 +96,7 @@ func (e *Engine) Validate(b *block.Block) {
 			var tx = l.tx
 			if !l.dup {
 				b.Head.Size += int(tx.Size())
+				b.Head.GasUsed += tx.Gas()
 				b.Transactions = append(b.Transactions, &tx)
 			}
 		}

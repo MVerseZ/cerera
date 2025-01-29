@@ -155,11 +155,20 @@ func (bc *Chain) GetLatestBlock() *block.Block {
 
 func (bc *Chain) GetBlockHash(number int) common.Hash {
 	for _, b := range bc.data {
-		if b.Header().Number.Cmp(big.NewInt(int64(number))) == 0 {
+		if b.Header().Index == uint64(number) {
 			return b.Hash()
 		}
 	}
 	return common.EmptyHash()
+}
+
+func (bc *Chain) GetBlockByNumber(number int) *block.Block {
+	for _, b := range bc.data {
+		if b.Header().Index == uint64(number) {
+			return &b
+		}
+	}
+	return &block.Block{}
 }
 
 func (bc *Chain) GetBlock(blockHash common.Hash) *block.Block {
@@ -197,6 +206,7 @@ func (bc *Chain) GetBlockHeader(blockHash string) *block.Header {
 
 func (bc *Chain) Maintain() {
 	var p = pool.Get()
+	// var v = validator.Get()
 	var errc chan error
 	for errc == nil {
 		if bc.autoGen {
@@ -217,10 +227,12 @@ func (bc *Chain) Maintain() {
 			// if err != nil || !t {
 			// 	log.Printf("Verifying trie error: %s\r\n", err)
 			// } else {
+
 			bc.info.Latest = newBlock.Hash()
 			bc.info.Total = bc.info.Total + 1
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 			bc.currentBlock = &newBlock
+
 			// 	err := SaveToVault(*newBlock)
 			// 	if err == nil {
 			// 		var rewardAddress = newBlock.Head.Node
@@ -242,13 +254,13 @@ func (bc *Chain) Maintain() {
 func (bc *Chain) TryAutoGen(latest *block.Block) {
 	// var vld = validator.Get()
 	// var pool = pool.Get()
+	time.Sleep(10 * time.Second)
 
-	time.Sleep(60 * time.Second)
 	fmt.Println("MINE")
 
 	head := &block.Header{
 		Ctx:        latest.Header().Ctx,
-		Difficulty: big.NewInt(1),
+		Difficulty: latest.Head.Difficulty,
 		Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
 		Height:     latest.Header().Height + 1,
 		Index:      latest.Header().Index + 1,

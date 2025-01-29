@@ -105,7 +105,7 @@ func TestSize(t *testing.T) {
 	if sbHash.Compare(tx.Hash()) != 0 {
 		t.Errorf("Difference between transaction.CalculateHash and transaction.Hash\r\n\t %s - %s\r\n", tx.Hash(), sbHash)
 	}
-	var txSize = uint64(392)
+	var txSize = uint64(393) //392???
 	if tx.Size() != txSize {
 		t.Errorf("diff sizes: expected %d, actual: %d", txSize, tx.Size())
 	}

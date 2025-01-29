@@ -188,3 +188,7 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
 	return true
 }
+
+func (Validator *DDDDDValidator) ExecuteTransaction(tx *types.GTransaction) {
+
+}

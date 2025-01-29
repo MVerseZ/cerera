@@ -114,7 +114,7 @@ func Execute(method string, params []interface{}) interface{} {
 			pld.Data = "Error"
 			return 0xf
 		}
-		pld.Data = bc.GetBlockHash(int(number))
+		pld.Data = bc.GetBlockByNumber(int(number))
 	case "get_block", "cerera.getBlock":
 		// get block by hash
 		blockHashStr, ok := params[0].(string)
