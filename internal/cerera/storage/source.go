@@ -106,7 +106,6 @@ func SaveToVault(account []byte) error {
 	}
 
 	return nil
-
 }
 
 // UpdateVault updates an account in the vault file.

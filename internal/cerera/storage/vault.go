@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"crypto/ecdsa"
-	"crypto/x509"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -13,29 +11,32 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
-	"github.com/cerera/internal/gigea/gigea"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
 
 type Vault interface {
-	CoinBase() *ecdsa.PrivateKey
-	Create(name string, pass string) (string, string, *types.Address, error)
+	Create(name string, pass string) (string, string, string, *types.Address, error)
 	Clear() error
 	Prepare()
+	Restore(mnemonic string, pass string) (string, string, error)
 	Put(address types.Address, acc types.StateAccount)
 	Get(types.Address) types.StateAccount
+	GetCount() int
 	GetAll() interface{}
 	GetKey(signKey string) []byte
+	GetOwner() types.StateAccount
 	Size() int64
+	Sync(saBytes []byte)
 	//
 }
 
 type D5Vault struct {
-	accounts *AccountsTrie
-	coinBase types.StateAccount
-	path     string
-	rootHash common.Hash
+	accounts  *AccountsTrie
+	initiator types.StateAccount
+	path      string
+	rootHash  common.Hash
+	inMem     bool
 }
 
 var vlt D5Vault
@@ -51,14 +52,15 @@ func GetVault() *D5Vault {
 	return &vlt
 }
 
-// NewD5Vault initializes and returns a new D5Vault instance.
+// NewD5Vault initializes and returns a new vault instance.
 func NewD5Vault(cfg *config.Config) Vault {
 	gob.Register(types.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
 	vlt = D5Vault{
 		accounts: GetAccountsTrie(),
-		rootHash: common.BytesToHash(rootHashAddress.Bytes()),
+		rootHash: common.BytesToHash(coinbase.GetCoinbaseAddress().Bytes()),
+		inMem:    cfg.IN_MEM,
 	}
 
 	entropy, _ := bip39.NewEntropy(256)
@@ -68,49 +70,54 @@ func NewD5Vault(cfg *config.Config) Vault {
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
 
+	fmt.Printf("Init vault with %s\r\n", rootHashAddress)
+
 	rootSA := types.StateAccount{
 		Address:  rootHashAddress,
 		Name:     rootHashAddress.String(),
 		Nonce:    1,
-		Balance:  types.FloatToBigInt(100.0),
+		Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
 		Root:     vlt.rootHash,
 		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
-		Status:   "OP_ACC_NEW",
-		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
+		Status:   "OP_ACC_NODE",
+		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs:   nil,
 		MPub:     publicKey.B58Serialize(),
 	}
 
-	// vlt.accounts.Append(rootHashAddress, rootSA)
-	// vlt.coinBase = coinbase.CoinBaseStateAccount()
+	vlt.initiator = rootSA
 
-	// fmt.Println(vlt.coinBase.Balance)
-	// fmt.Println(vlt.coinBase.Address)
+	if vlt.inMem {
+		var cbAcc = coinbase.CoinBaseStateAccount()
+		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), cbAcc)
 
-	// ???
-	// vlt.accounts.Append(vlt.coinBase.Address, vlt.coinBase)
+		var faucetAddr = coinbase.FaucetAccount()
+		vlt.accounts.Append(coinbase.GetFaucetAddress(), faucetAddr)
 
-	if _, err := os.Stat("./vault.dat"); errors.Is(err, os.ErrNotExist) || cfg.Vault.PATH == "EMPTY" {
-		// path/to/whatever does not exist
-		if err := InitSecureVault(rootSA); err != nil {
-			panic(err)
+		vlt.accounts.Append(rootSA.Address, rootSA)
+	} else {
+		// TO DO rewrite
+		if _, err := os.Stat("./vault.dat"); errors.Is(err, os.ErrNotExist) || cfg.Vault.PATH == "EMPTY" {
+			// path/to/whatever does not exist
+			if err := InitSecureVault(rootSA); err != nil {
+				panic(err)
+			}
+			cfg.UpdateVaultPath("./vault.dat")
 		}
-		cfg.UpdateVaultPath("./vault.dat")
-	}
 
-	vlt.path = cfg.Vault.PATH
-	//sync with network and fc
-	switch stat := gigea.C.Status; stat {
-	case 1:
-		// local mode
+		vlt.path = cfg.Vault.PATH
+		//sync with fc
 		if err := SyncVault(cfg.Vault.PATH); err != nil {
 			panic(err)
 		}
-	case 2:
-		// network mode
-		fmt.Println("gigea.vault.status")
-		fmt.Println(gigea.C)
-		panic("gigea.vault.status")
+
+		var cbAcc = coinbase.CoinBaseStateAccount()
+		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), cbAcc)
+		SaveToVault(cbAcc.Bytes())
+
+		var faucetAddr = coinbase.FaucetAccount()
+		vlt.accounts.Append(coinbase.GetFaucetAddress(), faucetAddr)
+		SaveToVault(faucetAddr.Bytes())
 	}
 
 	return &vlt
@@ -125,7 +132,7 @@ func (v *D5Vault) Clear() error {
 }
 
 // Create - create an account to store and return it
-func (v *D5Vault) Create(name string, pass string) (string, string, *types.Address, error) {
+func (v *D5Vault) Create(name string, pass string) (string, string, string, *types.Address, error) {
 
 	entropy, _ := bip39.NewEntropy(256)
 	mnemonic, _ := bip39.NewMnemonic(entropy)
@@ -138,7 +145,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 
 	privateKey, err := types.GenerateAccount()
 	if err != nil {
-		return "", "", nil, err
+		return "", "", "", nil, err
 	}
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
@@ -160,7 +167,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		Root:       v.rootHash,
 		CodeHash:   derBytes,
 		Status:     "OP_ACC_NEW",
-		Bloom:      []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
+		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs:     nil,
 		Passphrase: common.BytesToHash([]byte(pass)),
 		Mnemonic:   mnemonic,
@@ -168,18 +175,29 @@ func (v *D5Vault) Create(name string, pass string) (string, string, *types.Addre
 		// MPriv:      masterKey,
 	}
 	v.accounts.Append(address, newAccount)
-
 	// pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
 	// x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
 	// pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
 
-	SaveToVault(newAccount.Bytes())
+	if !vlt.inMem {
+		SaveToVault(newAccount.Bytes())
+	}
 
-	return publicKey.B58Serialize(), mnemonic, &address, nil
+	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
 }
 
+func (v *D5Vault) Restore(mnemonic string, pass string) (string, string, error) {
+	// entropy := bip39.EntropyFromMnemonic(mnemonic)
+	seed := bip39.NewSeed(mnemonic, pass)
+	masterKey, _ := bip32.NewMasterKey(seed)
+	publicKey := masterKey.PublicKey()
+	return masterKey.B58Serialize(), publicKey.B58Serialize(), nil
+}
 func (v *D5Vault) Get(addr types.Address) types.StateAccount {
 	return v.accounts.GetAccount(addr)
+}
+func (v *D5Vault) GetPos(pos int) types.StateAccount {
+	return v.accounts.GetByIndex(int64(pos))
 }
 func (v *D5Vault) GetKey(signKey string) []byte {
 	pubKey, _ := bip32.B58Deserialize(signKey)
@@ -196,12 +214,11 @@ func (v *D5Vault) GetAll() interface{} {
 	// refactor
 	// this function returns all active (register) addressses with balance
 	// [addr1:balance1, addr2:balance2, ..., addrN:balanceN]
-	SyncVault(v.path)
-	res := make(map[types.Address]float64)
-	for addr, v := range v.accounts.accounts {
-		res[addr] = types.BigIntToFloat(v.Balance)
+
+	if !v.inMem {
+		SyncVault(v.path)
 	}
-	return res
+	return v.accounts.GetAll()
 }
 func (v *D5Vault) Put(address types.Address, acc types.StateAccount) {
 	v.accounts.Append(address, acc)
@@ -234,18 +251,22 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	// saDest = v.accounts.GetAccount(to)
 
 	// done
-	UpdateVault(saDest.Bytes())
-	UpdateVault(sa.Bytes())
+	if !v.inMem {
+		UpdateVault(saDest.Bytes())
+		UpdateVault(sa.Bytes())
+	}
 }
 
 // faucet method without creating transaction
 func (v *D5Vault) FaucetBalance(to types.Address, cntval int) error {
 
 	var destSA = v.Get(to)
-	var faucetTo = coinbase.Faucet(cntval)
+	var faucetTo = coinbase.DropFaucet(cntval)
 
 	destSA.Balance.Add(destSA.Balance, faucetTo)
-	UpdateVault(destSA.Bytes())
+	if !v.inMem {
+		UpdateVault(destSA.Bytes())
+	}
 
 	coinbase.TotalValue.Sub(coinbase.TotalValue, types.FloatToBigInt(float64(cntval)))
 
@@ -257,10 +278,15 @@ func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) 
 	return false
 }
 
-func (v *D5Vault) CoinBase() *ecdsa.PrivateKey {
-	privateKey, err := x509.ParseECPrivateKey(v.coinBase.CodeHash)
-	if err != nil {
-		return nil
-	}
-	return privateKey
+func (v *D5Vault) GetCount() int {
+	return v.accounts.Size()
+}
+
+func (v *D5Vault) GetOwner() types.StateAccount {
+	return v.initiator
+}
+
+func (v *D5Vault) Sync(saBytes []byte) {
+	var sa = types.BytesToStateAccount(saBytes)
+	v.accounts.Append(sa.Address, sa)
 }
