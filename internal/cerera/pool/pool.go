@@ -8,7 +8,6 @@ import (
 	"unsafe"
 
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/gigea/gigea"
 
 	"github.com/cerera/internal/cerera/types"
 )
@@ -52,7 +51,6 @@ func SendTransaction(tx types.GTransaction) (common.Hash, error) {
 }
 
 func InitPool(minGas uint64, maxSize int) *Pool {
-
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
 		memPool:        mPool,
@@ -60,7 +58,7 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 		maxSize:        maxSize,
 		minGas:         minGas,
 
-		Prepared: nil,
+		Prepared: make([]*types.GTransaction, 0),
 		Executed: make([]types.GTransaction, 0),
 
 		Funnel: make(chan []*types.GTransaction),
@@ -73,11 +71,13 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
+
 	// fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
 	var sLock = p.mu.TryLock()
 	if sLock {
 		if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
 			p.memPool[tx.Hash()] = *tx
+			p.Prepared = append(p.Prepared, tx)
 			// p.memPool = append(p.memPool, *tx)
 			// network.BroadcastTx(tx)
 		}
@@ -179,7 +179,7 @@ func (p *Pool) PoolServiceLoop() {
 			// fmt.Printf("Funnel data arrive\r\n")
 			for _, tx := range txs {
 				p.AddRawTransaction(tx)
-				gigea.E.TxFunnel <- tx
+				// gigea.E.TxFunnel <- tx
 			}
 			// case newBlock := <-gigea.E.BlockPipe:
 			// 	fmt.Println("POOL")

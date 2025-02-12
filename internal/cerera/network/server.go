@@ -1,241 +1,344 @@
 package network
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"io"
-	"log"
+	"math/big"
 	"net"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
-	"github.com/btcsuite/websocket"
+	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/gigea/gigea"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var urlName = "127.0.0.1:%d"
-var transportServer *Server
-
-func GetTransport() *Server {
-	return transportServer
+type Peer struct {
+	conn net.Conn
 }
 
-type Server struct {
-	node        *Node
-	url         string
-	wsListeners []*websocket.Conn
-	retryCount  int
-}
+var (
+	peers      []*Peer
+	peersMutex sync.Mutex
+	consensus  *block.Block
+	votes      map[common.Hash]int // Карта для хранения голосов
+	votesMutex sync.Mutex
+)
 
-func nodeIdToPort(nodeId int) int {
-	return nodeId + 8090
-}
+var N *Node
 
-func NewServer(ctx context.Context, cfg *config.Config, nodeId int) *Server {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log.Fatalf("Ошибка при получении IP-адресов: %s", err)
-		// fmt.Println("Ошибка при получении IP-адресов:", err)
+func NewServer(cfg *config.Config, flag string, address string) {
+	// Флаги
+	// mode := flag.String("mode", "server", "Режим работы: server или client")
+	// address := flag.String("address", "127.0.0.1:8080", "Адрес для подключения или прослушивания")
+	// flag.Parse()
+	// go SetUpHttp(httpPort)
 
+	N = NewNode(cfg)
+	N.Start()
+
+	switch flag {
+	case "server":
+		go runServer(cfg.NetCfg.ADDR, address)
+	case "client":
+		go runClient(address)
+	default:
+		fmt.Println("Неизвестный режим. Используйте 'server' или 'client'.")
 	}
+}
 
-	log.Println("Ваши IP-адреса:")
-	log.Printf("%d\r\n", len(addrs))
-	// for _, addr := range addrs {
-	// 	if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-	// 		if ipNet.IP.To4() != nil {
-	// 			fmt.Println(ipNet.IP.String())
-	// 		}
-	// 	}
+// Запуск сервера
+func runServer(cAddr types.Address, address string) {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		fmt.Println("Ошибка при запуске сервера:", err)
+		return
+	}
+	defer listener.Close()
+	fmt.Printf("Сервер запущен на %s\n", address)
+
+	// Принимаем входящие соединения
+	acceptConnections(listener)
+
+	// Чтение ввода с консоли для предложения значения
+	// scanner := bufio.NewScanner(os.Stdin)
+	// for scanner.Scan() {
+	// 	proposedValue := scanner.Text()
+	// 	fmt.Printf("Предложено значение: %s\n", proposedValue)
+	// 	var b = block.GenerateGenesis(cAddr)
+	// 	go startConsensus(b)
 	// }
 
-	transportServer = &Server{
-		NewNode(nodeId, cfg),
-		fmt.Sprintf(urlName, nodeIdToPort(nodeId)),
-		make([]*websocket.Conn, 0),
-		0,
-	}
-
-	err = transportServer.JoinSwarm(cfg.Gossip)
-	if err != nil {
-		// panic(err)
-		gigea.SetStatus(1)
-		fmt.Println("Running in local mode")
-	} else {
-		gigea.SetStatus(2)
-		fmt.Println("Running in full mode")
-	}
-
-	// fmt.Println(server.node)
-	return transportServer
-
 }
 
-func (s *Server) Start() {
-	s.node.Start()
-	ln, err := net.Listen("tcp", s.url)
-	if err != nil {
-		panic(err)
+func Broadcast(msg []byte) {
+	for _, peer := range peers {
+		//_, err :=
+		peer.conn.Write(msg)
+		_, err := peer.conn.Write([]byte{'\n'})
+		if err != nil {
+			fmt.Println("Ошибка при отправке bradcast сообщения:", err)
+		}
 	}
-	defer ln.Close()
-	fmt.Printf("node start at %s\n", s.url)
+}
+
+// Принятие входящих соединений
+func acceptConnections(listener net.Listener) {
 	for {
-		conn, err := ln.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
-			panic(err)
+			// fmt.Println("Ошибка при принятии соединения:", err)
+			continue
 		}
-		// s.addKnownNode(conn)
-		go s.handleConnection(conn)
+		fmt.Println("Новое соединение:", conn.RemoteAddr())
+
+		peer := &Peer{conn: conn}
+		peersMutex.Lock()
+		peers = append(peers, peer)
+		peersMutex.Unlock()
+
+		go handlePeer(peer)
 	}
 }
 
-func (s *Server) addPreKnownNode(conn net.Conn) (string, error) {
-	s.node.mutex.Lock()
-	defer s.node.mutex.Unlock()
+// Обработка сообщений от пира
+func handlePeer(peer *Peer) {
+	defer peer.conn.Close()
 
-	remoteAddr := conn.RemoteAddr().String()
-	// Check if the node is already in the known nodes list
-	for _, preKnownNode := range s.node.preKnownNodes {
-		if preKnownNode.url == remoteAddr {
-			fmt.Printf("Node %s is already known\n", remoteAddr)
-			return "", errors.New("node is already known\n")
+	reader := bufio.NewReader(peer.conn)
+	for {
+		message, err := reader.ReadBytes('\n')
+		// message, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Соединение закрыто:", peer.conn.RemoteAddr())
+			removePeer(peer)
+			return
 		}
-	}
 
-	// Adding the new node to the list of known nodes
-	newNode := &PreKnownNode{
-		nodeID: -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
-		url:    remoteAddr,
-		pubkey: nil, // Here you can add logic to get the public key if available
+		// message = strings.TrimSpace(message)
+		// fmt.Printf("Recieve message: %s", message)
+		// header, payload, _ := SplitMsg(message)
+		// fmt.Println(header)
+		// fmt.Println(payload)
+		// var request RequestMsg
+		// err = json.Unmarshal(payload, &request)
+		// if err != nil {
+		// 	fmt.Printf("error happened:%v", err)
+		// 	return
+		// }
+		// fmt.Println(request)
+
+		N.msgQueue <- message
+
+		// b, err := block.FromBytes(message)
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// if strings.HasPrefix(message, "vote:") {
+		// Обработка голоса
+		// value := strings.TrimPrefix(message, "vote:")
+		// fmt.Printf("Получен голос от %s: %s\n", peer.conn.RemoteAddr(), b.Hash())
+		// fmt.Printf("Теперь потдверждений у %s: %d\n", b.Hash(), b.Confirmations)
+		// processVote(b)
+		// } else {
+		// 	fmt.Printf("Сообщение от %s: %s\n", peer.conn.RemoteAddr(), message)
+		// }
 	}
-	s.node.preKnownNodes = append(s.node.preKnownNodes, newNode)
-	fmt.Printf("Added new pre known node: %s\n", remoteAddr)
-	gigea.SetStatus(2)
-	fmt.Println("Running in full mode")
-	return s.url, nil
 }
 
-func (s *Server) addKnownNode(conn net.Conn) (string, error) {
-	s.node.mutex.Lock()
-	defer s.node.mutex.Unlock()
+// Удаление пира
+func removePeer(peer *Peer) {
+	peersMutex.Lock()
+	defer peersMutex.Unlock()
 
-	remoteAddr := conn.RemoteAddr().String()
-	// Check if the node is already in the known nodes list
-	for _, knownNode := range s.node.knownNodes {
-		if knownNode.url == remoteAddr {
-			fmt.Printf("Node %s is already known\n", remoteAddr)
-			return "", errors.New("node is already known\n")
+	for i, p := range peers {
+		if p == peer {
+			peers = append(peers[:i], peers[i+1:]...)
+			break
+		}
+	}
+	fmt.Println("Пир отключен:", peer.conn.RemoteAddr())
+}
+
+// Начало консенсуса
+func startConsensus(proposedValue *block.Block) {
+	peersMutex.Lock()
+	defer peersMutex.Unlock()
+
+	// Инициализация карты голосов vse v bloke (CONF)
+	// remake
+	proposedValue.Confirmations += 1
+	votesMutex.Lock()
+	var votes = make(map[common.Hash]int)
+	votes[proposedValue.Hash()] = 1 // Голос сервера
+	votesMutex.Unlock()
+
+	fmt.Println("Начало голосования за значение:", proposedValue.Hash())
+
+	// Отправка предложения всем пирам
+	for _, peer := range peers {
+		//_, err :=
+		peer.conn.Write(proposedValue.ToBytes())
+		_, err := peer.conn.Write([]byte{'\n'})
+		if err != nil {
+			fmt.Println("Ошибка при отправке предложения:", err)
 		}
 	}
 
-	// Adding the new node to the list of known nodes
-	newNode := &KnownNode{
-		nodeID: -1, // Assuming unique nodeID based on count (you may need a better approach for unique IDs)
-		url:    remoteAddr,
-		pubkey: nil, // Here you can add logic to get the public key if available
-	}
-	s.node.knownNodes = append(s.node.knownNodes, newNode)
-	fmt.Printf("Added new known node: %s\n", remoteAddr)
-	gigea.SetStatus(2)
-	return newNode.url, nil
-}
+	// Ожидание голосов
+	time.Sleep(3 * time.Second) // Упрощенное ожидание
 
-func (s *Server) removeKnownNode(conn net.Conn) (string, error) {
-	s.node.mutex.Lock()
-	defer s.node.mutex.Unlock()
-	conn.Close()
-	return "", nil
-}
+	// Подсчет голосов
+	// votesMutex.Lock()
+	maxVotes := 0
+	// var chosenValue common.Hash
+	// for value, count := range votes {
+	// 	if count > maxVotes {
+	// 		maxVotes = count
+	// 		chosenValue = value
+	// 	}
+	// }
+	// votesMutex.Unlock()
 
-func (s *Server) handleConnection(conn net.Conn) {
-	req, err := io.ReadAll(conn)
-	// fmt.Printf("handle new connection to %s\r\n", conn.LocalAddr())
-	defer conn.Close()
-	if err != nil {
-		// s.removeKnownNode(conn)
-		fmt.Errorf("Connection closed: %s", err)
-	}
-	s.node.msgQueue <- req
-}
-
-func (s *Server) JoinSwarm(gossipAddr string) error {
-	if len(gossipAddr) > 0 {
-		pbk := s.node.keypair.pubkey
-		msg, err := types.PublicKeyToString(pbk)
-		if err != nil {
-			fmt.Printf("%v\n", err)
-		}
-		// fmt.Printf("Send key: %s\r\n", msg)
-
-		req := Request{
-			msg,
-			hex.EncodeToString(generateDigest(msg)),
-		}
-		reqmsg := &JoinMsg{
-			"join",
-			int(time.Now().Unix()),
-			s.node.NodeID,
-			req,
-			s.url,
-		}
-		sig, err := signMessage(reqmsg, s.node.keypair.privkey)
-		if err != nil {
-			fmt.Printf("%v\n", err)
-		}
-		// Dial("ip4:1", "192.0.2.1")
-		fmt.Printf("dial gossip: %s\r\n", gossipAddr)
-
-		laddr, err := net.ResolveTCPAddr("tcp", s.url)
-		if err != nil {
-			return fmt.Errorf("error while parse address %s", s.url)
-		}
-		raddr, err := net.ResolveTCPAddr("tcp", gossipAddr)
-		if err != nil {
-			return fmt.Errorf("error while parse address  %s", gossipAddr)
-		}
-		fmt.Printf("Try to connect %s\r\n", gossipAddr)
-		for s.retryCount < 5 {
-			conn, err := net.DialTCP("tcp", laddr, raddr)
-			// conn, err := net.Dial("tcp", gossipAddr)
-			if err != nil {
-				s.retryCount += 1
-				time.Sleep(10 * time.Millisecond)
-				fmt.Printf("Attempt #%d\r\n", s.retryCount)
-				continue
-			}
-			defer conn.Close()
-
-			s.node.mutex.Lock()
-			defer s.node.mutex.Unlock()
-			var newKnownNode = &KnownNode{
-				1,
-				gossipAddr,
-				nil,
-			}
-			s.node.knownNodes = append(s.node.knownNodes, newKnownNode)
-
-			_, err = io.Copy(conn, bytes.NewReader(ComposeMsg(hJoin, reqmsg, sig)))
-			if err != nil {
-				return fmt.Errorf("%v", err)
-			}
-		}
-		if s.retryCount >= 5 {
-			return fmt.Errorf("%s is not online", gossipAddr)
-		}
-		return nil
+	// Принятие решения
+	if maxVotes > len(peers)/2 {
+		// consensus = chosenValue
+		fmt.Printf("Консенсус достигнут: %s (голосов: %d)\n", consensus.Hash(), maxVotes)
 	} else {
-		return fmt.Errorf("%s", "empty/wrong gossip address!")
+		fmt.Println("Консенсус не достигнут")
 	}
 }
 
-func (s *Server) SetUpHttp(ctx context.Context, cfg config.Config) {
+// Обработка голоса
+func processVote(b *block.Block) {
+	votesMutex.Lock()
+	defer votesMutex.Unlock()
+
+	// Увеличиваем счетчик голосов для данного значения
+	// votes[b.Hash()]++
+}
+
+// Запуск клиента
+func runClient(address string) {
+	var vlt = storage.GetVault()
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		fmt.Println("Ошибка при подключении к серверу:", err)
+		return
+	}
+	defer conn.Close()
+
+	fmt.Println("Подключено к серверу", address)
+
+	peer := &Peer{conn: conn}
+	peersMutex.Lock()
+	peers = append(peers, peer)
+	peersMutex.Unlock()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Горутина для чтения сообщений от сервера
+	go func() {
+		defer wg.Done()
+		reader := bufio.NewReader(conn)
+		for {
+			message, err := reader.ReadBytes('\n')
+
+			// message, err := reader.ReadString('\n')
+			if err != nil {
+				fmt.Println("Соединение с сервером разорвано")
+				return
+			}
+
+			// fmt.Printf("Сообщение от сервера: %s\r\n", message)
+
+			N.msgQueue <- message
+
+			// message = strings.TrimSpace(message)
+			// b, err := block.FromBytes(message)
+			// if err != nil {
+			// 	panic(err)
+			// }
+			// fmt.Printf("Сообщение от сервера: %s, подтверждений %d\n", b.Hash(), b.Confirmations)
+			// b.Confirmations += 1
+			// conn.Write(b.ToBytes())
+			// conn.Write([]byte{'\n'})
+			// fmt.Printf("Отправлено обратно сообщение: %s, подтверждений %d\n", b.Hash(), b.Confirmations)
+
+			// if strings.HasPrefix(message, "propose:") {
+			// 	// Получено предложение для голосования
+
+			// 	value := strings.TrimPrefix(message, "propose:")
+			// 	fmt.Printf("Получено предложение: %s\n", value)
+			// 	if value == "bye" {
+			// 		conn.Write([]byte("OP_NEG" + "\n"))
+			// 	} else {
+			// 		// Голосование (в данном примере всегда соглашаемся)
+			// 		conn.Write([]byte("vote:" + value + "\n"))
+			// 	}
+			// } else {
+			// 	fmt.Printf("Сообщение от сервера: %s\n", message)
+			// }
+		}
+	}()
+
+	// Горутина для отправки сообщений на сервер
+	go func() {
+		defer wg.Done()
+
+		nodeSA := vlt.GetOwner()
+
+		time.Sleep(2 * time.Second)
+		var msg = types.HexToAddress("0xffFffffff00000000000000000000557D0b284521d71a7fca1e1C3F289849989e80B0b8100000000000000000aaaaaaa")
+		var reqHeader = hJoin
+		var handshakeReq = ComposeMsg(
+			reqHeader,
+			&JoinMsg{
+				"join",
+				int(time.Now().Unix()),
+				N.NodeID,
+				Request{
+					msg.String(),
+					hex.EncodeToString(generateDigest(msg)),
+				},
+				nodeSA.Bytes(),
+			},
+			[]byte{},
+		)
+		conn.Write(handshakeReq)
+		conn.Write([]byte("\n"))
+
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			message := scanner.Text()
+			_, err := conn.Write([]byte(message + "\n"))
+			if err != nil {
+				fmt.Println("Ошибка при отправке сообщения:", err)
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+}
+
+func AddressToNodeId(addr types.Address) int {
+	var baddr = addr.Bytes()
+	var bgaddr = big.NewInt(0).SetBytes(baddr)
+	return int(bgaddr.Int64())
+}
+
+func SetUpHttp(port int) {
 	rpcRequestMetric := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "rpc_requests_hits",
@@ -246,24 +349,22 @@ func (s *Server) SetUpHttp(ctx context.Context, cfg config.Config) {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		if cfg.SEC.HTTP.TLS {
-			err := http.ListenAndServeTLS(fmt.Sprintf(":%d", cfg.NetCfg.RPC), "./server.crt", "./server.key", nil)
-			if err != nil {
-				fmt.Println("ListenAndServe: ", err)
-			}
-		} else {
-			if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.NetCfg.RPC), nil); err != nil {
-				fmt.Println("Error starting server:", err)
-			}
+		// if cfg.SEC.HTTP.TLS {
+		// 	err := http.ListenAndServeTLS(fmt.Sprintf(":%d", port), "./server.crt", "./server.key", nil)
+		// 	if err != nil {
+		// 		fmt.Println("ListenAndServe: ", err)
+		// 	}
+		// } else {
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
+			fmt.Println("Error starting server:", err)
 		}
+		// }
 	}()
 
-	// fmt.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
-	log.Printf("Starting http server at port %d\r\n", cfg.NetCfg.RPC)
+	var ctx = context.TODO()
+	defer ctx.Done()
+
+	fmt.Printf("Starting http server at port %d\r\n", port)
 	go http.HandleFunc("/", HandleRequest(ctx))
 	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
-}
-
-func AddWsListener(conn *websocket.Conn) {
-
 }

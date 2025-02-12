@@ -39,12 +39,16 @@ type cerera struct {
 
 // todo run as daemin service
 func main() {
-	listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
-	listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
-	port := flag.Int("p", 11, "p2p port for connections")
+	// listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
+	// listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
+	// port := flag.Int("p", 11, "p2p port for connections")
 	// gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
+	mode := flag.String("mode", "server", "Режим работы: server или client")
+	address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
+	http := flag.Int("http", 8080, "Порт для http сервера")
+	inMemFlag := flag.Bool("mem", true, "Хранение данных память/диск")
 	flag.Parse()
 
 	// init log
@@ -57,25 +61,29 @@ func main() {
 	log.SetOutput(f)
 
 	cfg := config.GenerageConfig()
-	cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
+	// cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
 	cfg.SetNodeKey(*keyPathFlag)
 	cfg.SetAutoGen(true)
+	cfg.SetInMem(*inMemFlag)
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
 
 	//## No multithreading.
 	// start steps
 
+	// inner structs
 	gigea.Init(cfg.NetCfg.ADDR)
+	coinbase.InitOperationData()
 
-	n := network.NewServer(ctx, cfg, *port)
-	n.SetUpHttp(ctx, *cfg)
-	go n.Start()
+	// public structs
+	storage.NewD5Vault(cfg)
 
-	coinbase.SetCoinbase()
+	// i/o structs
+	network.NewServer(cfg, *mode, *address)
+	go network.SetUpHttp(*http)
+
 	// validator.NewValidator(ctx, *cfg)
-	// storage.NewD5Vault(cfg)
-	chain.InitBlockChain(cfg)
+	// chain.InitBlockChain(cfg)
 	pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
 
 	c := cerera{
@@ -86,9 +94,6 @@ func main() {
 		// v:      storage.NewD5Vault(cfg),
 		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
 	}
-
-	// c.v.Prepare()
-
 	<-ctx.Done()
 	c.proc.Stop()
 }

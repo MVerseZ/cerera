@@ -7,6 +7,7 @@ import (
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
 )
@@ -48,29 +49,38 @@ func (e *Engine) Start(lAddr types.Address) {
 	go e.Listen()
 }
 
-func (e *Engine) Mine() {
+func (e *Engine) Mine(latest *block.Block, chainId *big.Int) {
+	for {
+		time.Sleep(5 * time.Second)
+		fmt.Println("MINE")
+		prevH := latest.Header()
+		// newHeader := block.CopyHeader(latest.Head)
+		// latest := chain.GetBlockChain().GetLatestBlock()
+		// prevH := latest.Header()
+		newHeader := &block.Header{
+			Ctx:        prevH.Ctx,
+			Difficulty: latest.Head.Difficulty,
+			Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
+			Height:     prevH.Height + 1,
+			Index:      prevH.Index + 1,
+			Timestamp:  uint64(time.Now().UnixMilli()),
+			Number:     chainId,
+			PrevHash:   latest.Hash(),
+			Node:       e.Owner,
+			GasLimit:   latest.Head.GasLimit, // todo get gas limit dynamically
+		}
+		newHeader.Height += 1
+		newHeader.Index += 1
+		newHeader.PrevHash = latest.Hash()
+		newHeader.V = latest.Head.V
+		newBlock := block.NewBlockWithHeader(newHeader)
 
-	var newDifficulty = big.NewInt(11)
-	var newHeight = 11
-	var newNumber = big.NewInt(11)
-	var prevHash = types.EmptyCodeRootHash
-	var gasLimit = uint64(11)
-	newHeader := &block.Header{
-		Ctx:        int32(C.Nonce),
-		Difficulty: newDifficulty,
-		Extra:      []byte("OP_MINE"),
-		Height:     newHeight,
-		Index:      C.Nonce,
-		Timestamp:  uint64(time.Now().UnixMilli()),
-		Number:     newNumber,
-		PrevHash:   prevHash,
-		Node:       e.Owner,
-		Root:       common.EmptyHash(), //firstTx.Hash(),
-		GasLimit:   gasLimit,           // todo get gas limit dynamically
+		var p = pool.Get()
+		fmt.Println(len(p.Prepared))
+
+		fmt.Printf("mined block hash: %s\r\n", newBlock.Hash())
+		go e.Validate(newBlock)
 	}
-	var b = block.NewBlock(newHeader)
-
-	fmt.Printf("block hash: %s\r\n", b.Hash())
 }
 
 func (e *Engine) Validate(b *block.Block) {
@@ -119,7 +129,7 @@ func (e *Engine) Validate(b *block.Block) {
 	e.List = nil
 
 	// fmt.Printf("Final dif: %d\r\n", b.Head.Difficulty)
-	// fmt.Printf("Final hash: %s\r\n", b.Hash())
+	fmt.Printf("Confirmed hash: %s\r\n", b.Hash())
 	e.BlockPipe <- *b
 }
 

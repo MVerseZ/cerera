@@ -28,6 +28,8 @@ const (
 	LegacyTxType
 )
 
+type TxStatus byte
+
 type GTransactionType struct {
 	Typ   uint8
 	Wrapp byte
@@ -125,6 +127,18 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint6
 	return tx, nil
 }
 
+func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
+	var tx = NewTransaction(
+		nonce,
+		addressTo,
+		FloatToBigInt(count),
+		gas,
+		big.NewInt(0),
+		[]byte(message),
+	)
+	return tx, nil
+}
+
 // WithSignature returns a new transaction with the given signature.
 func (tx *GTransaction) WithSignature(signer Signer, sig []byte) (*GTransaction, error) {
 	// fmt.Printf("try tx with siugnature: %x\r\n", sig)
@@ -157,6 +171,9 @@ func (tx *GTransaction) Hash() common.Hash {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
+	if tx.Type() == AppTxType {
+		h = crvTxHash(tx.inner)
+	}
 	tx.hash.Store(h)
 	return h
 }
@@ -168,6 +185,9 @@ func (tx GTransaction) CalculateHash() ([]byte, error) {
 
 	var h common.Hash
 	if tx.Type() == LegacyTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == AppTxType {
 		h = crvTxHash(tx.inner)
 	}
 	tx.hash.Store(h)

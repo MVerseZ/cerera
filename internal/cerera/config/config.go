@@ -56,6 +56,7 @@ type Config struct {
 	VERSION string // version field
 	VER     int    // other version field
 	Gossip  string
+	IN_MEM  bool // storage inmem?
 }
 
 func GenerageConfig() *Config {
@@ -88,6 +89,7 @@ func GenerageConfig() *Config {
 			VERSION: "ALPHA",
 			VER:     1,
 			Gossip:  "127.0.0.1:8091",
+			IN_MEM:  true,
 		}
 		cfg.WriteConfigToFile()
 	} else {
@@ -181,6 +183,10 @@ func (cfg *Config) WriteConfigToFile() error {
 		panic(err)
 	}
 	return nil
+}
+func (cfg *Config) SetInMem(p bool) {
+	cfg.IN_MEM = p
+	cfg.WriteConfigToFile()
 }
 func ReadConfig(filePath string) (*Config, error) {
 	fileData, err := os.ReadFile(filePath)

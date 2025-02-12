@@ -212,4 +212,11 @@ func TestHashFunctions(t *testing.T) {
 	if blockWithTx.Hash() != expectedHash {
 		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", expectedHash, block.Hash())
 	}
+	block.Confirmations = 1
+	var h1 = block.Hash()
+	block.Confirmations += 1
+	var h2 = block.Hash()
+	if h2 != h1 {
+		t.Errorf("Hash does not match expected value! Expected: %s, given: %s\r\n", h1, h2)
+	}
 }

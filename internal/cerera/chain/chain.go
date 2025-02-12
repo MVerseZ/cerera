@@ -14,6 +14,7 @@ import (
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/gigea/gigea"
 )
 
@@ -52,7 +53,9 @@ var (
 func GetBlockChain() *Chain {
 	return &bch
 }
+
 func InitBlockChain(cfg *config.Config) { //Chain {
+
 	var (
 		t         *trie.MerkleTree
 		chainWork = 0
@@ -71,34 +74,38 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 	dataBlocks := make([]block.Block, 0)
 	var list []trie.Content
 
-	if cfg.Chain.Path == "EMPTY" {
-		cfg.UpdateChainPath("./chain.dat")
-		list = append(list, genesisBlock)
-		stats.Total += 1
-		stats.ChainWork += genesisBlock.Head.Size
-		InitChainVault(genesisBlock)
-	}
-
-	switch stat := gigea.C.Status; stat {
-	case 1:
-		// local mode
-		var readBlock, err = SyncVault()
-		if err != nil {
-			panic(err)
+	if cfg.IN_MEM {
+		dataBlocks = append(dataBlocks, genesisBlock)
+	} else {
+		if cfg.Chain.Path == "EMPTY" {
+			cfg.UpdateChainPath("./chain.dat")
+			list = append(list, genesisBlock)
+			stats.Total += 1
+			stats.ChainWork += genesisBlock.Head.Size
+			InitChainVault(genesisBlock)
 		}
 
-		dataBlocks = append(dataBlocks, readBlock...)
-		// validate added blocks
-		lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
-		if errorBlock != nil {
-			log.Printf("ERROR BLOCK! %s\r\n", errorBlock)
-		}
-		dataBlocks = dataBlocks[:lastCorrect]
-		fmt.Printf("Start chain from %d block\r\n", lastCorrect)
+		switch stat := gigea.C.Status; stat {
+		case 1:
+			// local mode
+			var readBlock, err = SyncVault()
+			if err != nil {
+				panic(err)
+			}
 
-	case 2:
-		// network mode
-		panic("gigea.blockchain.status")
+			dataBlocks = append(dataBlocks, readBlock...)
+			// validate added blocks
+			lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
+			if errorBlock != nil {
+				log.Printf("ERROR BLOCK! %s\r\n", errorBlock)
+			}
+			dataBlocks = dataBlocks[:lastCorrect]
+			fmt.Printf("Start chain from %d block\r\n", lastCorrect)
+
+		case 2:
+			// network mode
+			panic("gigea.blockchain.status")
+		}
 	}
 
 	for _, v := range dataBlocks {
@@ -133,7 +140,8 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	// go bch.BlockGenerator()
-	go bch.Maintain()
+	go bch.Start()
+
 	// return bch
 }
 
@@ -204,54 +212,47 @@ func (bc *Chain) GetBlockHeader(blockHash string) *block.Header {
 // 	}
 // }
 
-func (bc *Chain) Maintain() {
+func (bc *Chain) Start() {
 	var p = pool.Get()
-	// var v = validator.Get()
+	var v = validator.Get()
 	var errc chan error
+	// if bc.autoGen {
+	// 	bc.Mine(bc.GetLatestBlock())
+	// }
 	for errc == nil {
 		if bc.autoGen {
 			var latest = bc.GetLatestBlock()
-			go bc.TryAutoGen(latest)
+			go bc.Mine(latest)
 		}
+
 		select {
 		case newBlock := <-gigea.E.BlockPipe:
 			fmt.Printf("Approved block!! : %s\r\n", newBlock.Hash())
 			for _, tx := range newBlock.Transactions {
 				// fmt.Printf("Tx: %s\r\n", tx.Hash())
 				p.RemoveFromPool(tx.Hash())
+				v.ExecuteTransaction(tx)
 			}
-			// if vld.ValidateBlock(*newBlock) {
-			// 	bc.t.Add(newBlock)
-			// 	var t, err = bc.t.VerifyTree()
-			// }
-			// if err != nil || !t {
-			// 	log.Printf("Verifying trie error: %s\r\n", err)
-			// } else {
+
+			bc.mu.TryLock()
 
 			bc.info.Latest = newBlock.Hash()
 			bc.info.Total = bc.info.Total + 1
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-			bc.currentBlock = &newBlock
-
 			// 	err := SaveToVault(*newBlock)
-			// 	if err == nil {
-			// 		var rewardAddress = newBlock.Head.Node
-			// 		fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
 			bc.Size += newBlock.Header().Size
 			bc.data = append(bc.data, newBlock)
-
-		// 		vld.Reward(rewardAddress)
-		// 	}
-		// }
-
+			bc.currentBlock = &newBlock
+			bc.mu.Unlock()
 		case <-bc.maintainTicker.C:
+			fmt.Println("tick maintain")
 			continue
 		}
 	}
 	errc <- nil
 }
 
-func (bc *Chain) TryAutoGen(latest *block.Block) {
+func (bc *Chain) Mine(latest *block.Block) {
 	// var vld = validator.Get()
 	// var pool = pool.Get()
 	time.Sleep(10 * time.Second)
@@ -364,10 +365,11 @@ func (bc *Chain) Resume() {
 		select {
 		case <-bc.blockTicker.C:
 			// var latest = bc.GetLatestBlock()
-			if bc.autoGen {
-				// bc.TryAutoGen(latest)
-				gigea.E.Mine()
-			}
+			// if bc.autoGen {
+			// bc.TryAutoGen(latest)
+			// gigea.E.Mine()
+			// }
+			continue
 		case <-bc.maintainTicker.C:
 			continue
 		}

@@ -109,5 +109,4 @@ func TestSize(t *testing.T) {
 	if tx.Size() != txSize {
 		t.Errorf("diff sizes: expected %d, actual: %d", txSize, tx.Size())
 	}
-	fmt.Println(tx.Size())
 }
