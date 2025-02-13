@@ -19,7 +19,7 @@ type Vault interface {
 	Create(name string, pass string) (string, string, string, *types.Address, error)
 	Clear() error
 	Prepare()
-	Restore(mnemonic string, pass string) (string, string, error)
+	Restore(mnemonic string, pass string) (types.Address, string, string, error)
 	Put(address types.Address, acc types.StateAccount)
 	Get(types.Address) types.StateAccount
 	GetCount() int
@@ -131,7 +131,10 @@ func (v *D5Vault) Clear() error {
 	return v.accounts.Clear()
 }
 
-// Create - create an account to store and return it
+// Create - create an account to store and return it (B58Serialized)
+//
+//	args: name:string, pass:string
+//	return: master key:string, public key:string, mnemonic phrase:string, address:types.Address, error:error
 func (v *D5Vault) Create(name string, pass string) (string, string, string, *types.Address, error) {
 
 	entropy, _ := bip39.NewEntropy(256)
@@ -186,19 +189,38 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
 }
 
-func (v *D5Vault) Restore(mnemonic string, pass string) (string, string, error) {
+// Restore - restore account by mnemonic phrase, return B58Serialized credentials
+//
+//	args: mnemonic:string, pass:string (see Create, not required)
+//	return: address:types.Address, master key:string, public key:string, error:error
+func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, string, error) {
 	// entropy := bip39.EntropyFromMnemonic(mnemonic)
 	seed := bip39.NewSeed(mnemonic, pass)
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
-	return masterKey.B58Serialize(), publicKey.B58Serialize(), nil
+	return types.EmptyAddress(), masterKey.B58Serialize(), publicKey.B58Serialize(), nil
 }
+
+// Get - get account by address
+//
+//	args: address:types.Address
+//	return: account:types.StateAccount
 func (v *D5Vault) Get(addr types.Address) types.StateAccount {
 	return v.accounts.GetAccount(addr)
 }
-func (v *D5Vault) GetPos(pos int) types.StateAccount {
-	return v.accounts.GetByIndex(int64(pos))
+
+// Get - get account by index
+//
+//	args: index:int64
+//	return: account:types.StateAccount
+func (v *D5Vault) GetPos(pos int64) types.StateAccount {
+	return v.accounts.GetByIndex(pos)
 }
+
+// GetKey - get public key from vault by string representation
+//
+//	args: public key:string
+//	return: bytes representation of public key:[]byte
 func (v *D5Vault) GetKey(signKey string) []byte {
 	pubKey, _ := bip32.B58Deserialize(signKey)
 

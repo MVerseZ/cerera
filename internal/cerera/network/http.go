@@ -84,18 +84,20 @@ func Execute(method string, params []interface{}) interface{} {
 			Result = "Wrong words count!"
 			return 0xf
 		}
-		mk, pk, err := vlt.Restore(mnemonic, pass)
+		addr, mk, pk, err := vlt.Restore(mnemonic, pass)
 		if err != nil {
 			Result = "Error while restore"
 			return 0xf
 		}
 		type res struct {
-			Priv string `json:"priv,omitempty"`
-			Pub  string `json:"pub,omitempty"`
+			Addr types.Address `json:"address,omitempty"`
+			Priv string        `json:"priv,omitempty"`
+			Pub  string        `json:"pub,omitempty"`
 		}
 		Result = &res{
 			Priv: mk,
 			Pub:  pk,
+			Addr: addr,
 		}
 	case "get_minimum_gas_value", "chain.getMinimumGasValue":
 		// get min gas value

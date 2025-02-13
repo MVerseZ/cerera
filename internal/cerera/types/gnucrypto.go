@@ -148,7 +148,6 @@ func GenerateAccount() (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		panic(err)
 	}
-
 	return pk, nil
 }
 
