@@ -22,6 +22,8 @@ const (
 	hReply      HeaderMsg = "Reply"
 	hReplySync  HeaderMsg = "ReplySync"
 	hSyncDone   HeaderMsg = "SyncDone"
+	hTx         HeaderMsg = "OP_TX"
+	hAccOp      HeaderMsg = "OP_ACC"
 )
 
 type Msg interface {
@@ -146,6 +148,30 @@ func (msg SyncDone) String() string {
 	return string(bmsg) + "\n"
 }
 
+// <TX BROADCAST T, C, D>
+type TxMsg struct {
+	Timestamp int                `json:"timestamp"`
+	ClientID  types.Address      `json:"clientID"`
+	Data      types.GTransaction `json:"data"`
+}
+
+func (msg TxMsg) String() string {
+	bmsg, _ := json.MarshalIndent(msg, "", "	")
+	return string(bmsg) + "\n"
+}
+
+// <ACC BROADCAST T, C, D(A)>
+type AccMsg struct {
+	Timestamp int           `json:"timestamp"`
+	ClientID  types.Address `json:"clientID"`
+	Data      []byte        `json:"data"`
+}
+
+func (msg AccMsg) String() string {
+	bmsg, _ := json.MarshalIndent(msg, "", "	")
+	return string(bmsg) + "\n"
+}
+
 type Request struct {
 	Message string `json:"message"`
 	Digest  string `json:"digest"`
@@ -226,6 +252,12 @@ func SplitMsg(bmsg []byte) (HeaderMsg, []byte, []byte) {
 		payload = bmsg[headerLength:]
 		signature = []byte{}
 	case hSyncDone:
+		payload = bmsg[headerLength:]
+		signature = []byte{}
+	case hTx:
+		payload = bmsg[headerLength:]
+		signature = []byte{}
+	case hAccOp:
 		payload = bmsg[headerLength:]
 		signature = []byte{}
 	}

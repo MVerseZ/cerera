@@ -36,7 +36,7 @@ type Validator interface {
 	GasPrice() *big.Int
 	GetVersion() string
 	ExecuteTransaction(tx *types.GTransaction) error
-	Faucet(addrStr string, valFor int) error
+	// Faucet(addrStr string, valFor int) error
 	PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction
 	Reward(node types.Address)
 	SetUp(chainId *big.Int)
@@ -113,13 +113,13 @@ func (v *DDDDDValidator) ExecuteTransaction(tx *types.GTransaction) error {
 	return nil
 }
 
-func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
-	if valFor > 0 {
-		var vault = storage.GetVault()
-		return vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
-	}
-	return errors.New("value < 0")
-}
+// func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
+// 	if valFor > 0 {
+// 		var vault = storage.GetVault()
+// 		return vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
+// 	}
+// 	return errors.New("value < 0")
+// }
 
 func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction {
 	// here we create transaction by input values

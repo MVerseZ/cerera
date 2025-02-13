@@ -59,6 +59,8 @@ func Execute(method string, params []interface{}) interface{} {
 			Result = "Error"
 			return 0xf
 		}
+		// network broadcast
+		N.BroadcastAcc(vlt.Get(*addr))
 		type res struct {
 			Address  *types.Address `json:"address,omitempty"`
 			Priv     string         `json:"priv,omitempty"`
@@ -116,12 +118,11 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 		// var txHash, err = vldtr.Faucet(to, int(count))
-		var err = vldtr.Faucet(to, int(count))
-		if err != nil {
-			Result = err
-			return 0xf
-		}
-		Result = "SUCCESS"
+		var addrTo = types.HexToAddress(to)
+		var coinbaseTx = coinbase.FaucetTransaction(gigea.C.Nonce, addrTo, count)
+		p.Funnel <- []*types.GTransaction{coinbaseTx}
+		go N.BroadcastTx(*coinbaseTx)
+		Result = coinbaseTx
 	case "getblockchaininfo", "cerera.getInfo":
 		// get info of (block)chain
 		Result = bc.GetInfo()
@@ -203,8 +204,8 @@ func Execute(method string, params []interface{}) interface{} {
 					Result = "Error while create transaction!"
 					return 0xf
 				}
+				go N.BroadcastTx(*tx)
 				p.Funnel <- []*types.GTransaction{tx}
-				// node.BroadCastTx(tx)
 				Result = tx.Hash()
 				// // var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)
 				// if vldtr.ValidateRawTransaction(tx) {

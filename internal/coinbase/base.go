@@ -19,7 +19,8 @@ var Faucet coinbaseData
 
 var AddressHex = "0xf0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f"
 var FaucetAddressHex = "0xf0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a"
-var TotalValue = types.FloatToBigInt(21000000000.0)
+var TotalValue = types.FloatToBigInt(699999000000.0)
+var FaucetInitialBalance = types.FloatToBigInt(1000000.0)
 var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
 var blockReward = types.FloatToBigInt(1024.0)
 var InitialNodeBalance = 0.0000
@@ -52,7 +53,7 @@ func InitOperationData() {
 
 	fc := types.StateAccount{
 		Address:  addr,
-		Balance:  big.NewInt(0),
+		Balance:  FaucetInitialBalance,
 		Bloom:    []byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		CodeHash: []byte{},
 		Name:     "COINBASE",
@@ -103,4 +104,16 @@ func FaucetAccount() types.StateAccount {
 
 func GetFaucetAddress() types.Address {
 	return Faucet.address
+}
+
+func FaucetTransaction(nonce uint64, destAddr types.Address, cnt float64) *types.GTransaction {
+	var tx = types.NewTransaction(
+		nonce,
+		destAddr,
+		types.FloatToBigInt(cnt),
+		10000,
+		types.FloatToBigInt(0.343),
+		[]byte("FAUCET_REQ_TX"),
+	)
+	return tx
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
 	"golang.org/x/crypto/blake2b"
@@ -119,6 +120,10 @@ func (node *Node) handleMsg() {
 			node.handleReplySync(payload, sign)
 		case hSyncDone:
 			node.handleSyncDone(payload, sign)
+		case hTx:
+			node.handleInputTx(payload, sign)
+		case hAccOp:
+			node.handleInputAcc(payload, sign)
 			// case hPrePrepare:
 			// 	node.handlePrePrepare(payload, sign)
 			// case hPrepare:
@@ -153,7 +158,7 @@ func (node *Node) handleJoin(payload []byte, sig []byte) {
 
 	var msg = node.sequenceID
 	req := Request{
-		string(msg),
+		string(rune(msg)),
 		hex.EncodeToString(generateDigest(msg)),
 	}
 
@@ -237,18 +242,19 @@ func (node *Node) handleSync(payload []byte, sig []byte) {
 	vlt.Sync(syncMsg.SyncSA)
 	var ssa = vlt.GetOwner()
 	var ssab = ssa.Bytes()
-	// node.syncQueue[sy]
-	reqmsg := &ReplySync{
-		int(time.Now().Unix()),
-		node.NodeID,
-		0x1,
-		ssab,
+	if syncMsg.ClientID == node.NodeID {
+		reqmsg := &ReplySync{
+			int(time.Now().Unix()),
+			node.NodeID,
+			0x1,
+			ssab,
+		}
+		var sas = types.BytesToStateAccount(syncMsg.SyncSA)
+		fmt.Println(sas.Address)
+
+		Broadcast(ComposeMsg(hReplySync, reqmsg, []byte{}))
 	}
-
-	var sas = types.BytesToStateAccount(syncMsg.SyncSA)
-	fmt.Println(sas.Address)
-
-	Broadcast(ComposeMsg(hReplySync, reqmsg, []byte{}))
+	// node.syncQueue[sy]
 
 	// logHandleMsg(hJoin, syncMsg.CRequest, syncMsg.ClientID)
 
@@ -344,7 +350,7 @@ func (node *Node) handleReplySync(payload []byte, sig []byte) {
 	if node.syncQueue[replySync.ClientID] > 0 {
 		var msg = node.sequenceID
 		req := Request{
-			string(msg),
+			string(rune(msg)),
 			hex.EncodeToString(generateDigest(msg)),
 		}
 		reqmsg := &SyncMsg{
@@ -354,7 +360,7 @@ func (node *Node) handleReplySync(payload []byte, sig []byte) {
 			req,
 			acc.Bytes(),
 		}
-		fmt.Println(acc.Address)
+		fmt.Println(replySync.ClientID)
 		Broadcast(ComposeMsg(hSync, reqmsg, []byte{}))
 	} else {
 		reqmsg := &SyncDone{
@@ -421,6 +427,28 @@ func (node *Node) handleRequest(payload []byte, sig []byte) {
 	node.mutex.Unlock()
 	logBroadcastMsg(hPrePrepare, prePrepareMsg)
 	node.broadcast(msg)
+}
+
+func (node *Node) handleInputAcc(payload []byte, sig []byte) {
+	var accMsg AccMsg
+	err := json.Unmarshal(payload, &accMsg)
+	if err != nil {
+		fmt.Printf("error happened while JSON unmarshal:%v", err)
+		return
+	}
+	var vlt = storage.GetVault()
+	vlt.Sync(accMsg.Data)
+}
+
+func (node *Node) handleInputTx(payload []byte, sig []byte) {
+	var txMsg TxMsg
+	err := json.Unmarshal(payload, &txMsg)
+	if err != nil {
+		fmt.Printf("error happened while JSON unmarshal:%v", err)
+		return
+	}
+	var p = pool.Get()
+	p.Funnel <- []*types.GTransaction{&txMsg.Data}
 }
 
 // func (node *Node) handlePrePrepare(payload []byte, sig []byte) {
@@ -680,8 +708,23 @@ func (node *Node) broadcast(data []byte) {
 
 }
 
-func (node *Node) BroadCastTx(tx *types.GTransaction) {
+func (node *Node) BroadcastAcc(acc types.StateAccount) {
+	accBytes := acc.Bytes()
+	msg := &AccMsg{
+		int(time.Now().Unix()),
+		node.NodeID,
+		accBytes,
+	}
+	Broadcast(ComposeMsg(hAccOp, msg, []byte{}))
+}
 
+func (node *Node) BroadcastTx(tx types.GTransaction) {
+	msg := &TxMsg{
+		int(time.Now().Unix()),
+		node.NodeID,
+		tx,
+	}
+	Broadcast(ComposeMsg(hTx, msg, []byte{}))
 }
 
 func (node *Node) findNodePubkey(nodeId types.Address) *ecdsa.PublicKey {
