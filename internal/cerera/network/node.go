@@ -344,7 +344,7 @@ func (node *Node) handleReplySync(payload []byte, sig []byte) {
 	}
 
 	var vlt = storage.GetVault()
-	var acc = vlt.GetPos(node.syncQueue[replySync.ClientID])
+	var acc = vlt.GetPos(int64(node.syncQueue[replySync.ClientID]))
 
 	node.syncQueue[replySync.ClientID] -= 1
 	if node.syncQueue[replySync.ClientID] > 0 {

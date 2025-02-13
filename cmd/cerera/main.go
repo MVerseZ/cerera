@@ -10,9 +10,11 @@ import (
 	"syscall"
 
 	"github.com/cerera/internal/cerera/chain"
+	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
+	"github.com/cerera/internal/cerera/randomx"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
@@ -67,6 +69,21 @@ func main() {
 	cfg.SetInMem(*inMemFlag)
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
+
+	var flags = []randomx.Flag{randomx.FlagDefault}
+	var myCache, _ = randomx.AllocCache(flags...)
+	var seed = []byte("SEED")
+	randomx.InitCache(myCache, seed)
+	var dataset, _ = randomx.AllocDataset(flags...)
+	var xvm, _ = randomx.CreateVM(myCache, dataset, flags...)
+	var res = randomx.CalculateHash(xvm, []byte("TEST INPUT DATA"))
+	fmt.Println(common.BytesToHash(res))
+	fmt.Println(res)
+	var res2 = randomx.CalculateHashNext(xvm, res)
+	fmt.Println(common.BytesToHash(res2))
+	fmt.Println(res2)
+	res = res2
+	randomx.DestroyVM(xvm)
 
 	//## No multithreading.
 	// start steps
