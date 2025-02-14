@@ -17,6 +17,14 @@ import (
 	"github.com/cerera/internal/cerera/types"
 )
 
+var (
+	EmptyCoinbase = &decError{"empty hex string"}
+)
+
+type decError struct{ msg string }
+
+func (err decError) Error() string { return err.msg }
+
 var v Validator
 
 func Get() Validator {
@@ -27,7 +35,8 @@ type Validator interface {
 	CheckAddress(addr types.Address) bool
 	GasPrice() *big.Int
 	GetVersion() string
-	Faucet(addrStr string, valFor int) error
+	ExecuteTransaction(tx *types.GTransaction) error
+	// Faucet(addrStr string, valFor int) error
 	PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction
 	Reward(node types.Address)
 	SetUp(chainId *big.Int)
@@ -75,13 +84,42 @@ func (v *DDDDDValidator) GasPrice() *big.Int {
 	return v.minGasPrice
 }
 
-func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
-	if valFor > 0 {
-		var vault = storage.GetVault()
-		return vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
+func (v *DDDDDValidator) ExecuteTransaction(tx *types.GTransaction) error {
+	// if send to address not generated - > send only to input
+	var localVault = storage.GetVault()
+	var gas = tx.Gas()
+	var val = tx.Value()
+	var out = coinbase.GetCoinbaseBalance()
+	var delta = big.NewInt(0).Sub(out, val)
+	if delta.Cmp(big.NewInt(0)) < 0 {
+		return EmptyCoinbase
+	} else {
+		fmt.Printf(
+			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%d\r\n\t  current balance=%d\r\n",
+			tx.Hash(),
+			gas,
+			val,
+			out,
+		)
+		if tx.Type() == types.LegacyTxType {
+			localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
+		}
+
+		if tx.Type() == types.AppTxType {
+			localVault.UpdateBalance(coinbase.GetCoinbaseAddress(), *tx.To(), val, tx.Hash())
+		}
+
 	}
-	return errors.New("value < 0")
+	return nil
 }
+
+// func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
+// 	if valFor > 0 {
+// 		var vault = storage.GetVault()
+// 		return vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
+// 	}
+// 	return errors.New("value < 0")
+// }
 
 func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction {
 	// here we create transaction by input values

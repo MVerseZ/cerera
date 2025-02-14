@@ -10,7 +10,6 @@ import (
 
 	"github.com/btcsuite/websocket"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/pallada/pallada"
 )
 
 func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDDDDPoa, m prometheus.Counter) http.HandlerFunc {
@@ -44,13 +43,10 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			return
 		}
 
-		// var result =
-		// poa.Execute(request.Method, request.Params)
-		// fmt.Printf("Result byte is:%x\r\n", result)
-		pallada.Execute(request.Method, request.Params)
+		// Execute(request.Method, request.Params)
 
 		var response = types.Response{
-			Result: pallada.GetData(),
+			Result: Execute(request.Method, request.Params),
 		}
 
 		response.JSONRPC = "2.0"
@@ -123,8 +119,8 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 }
 
 func BroadCastWs(data []byte) {
-	var wst = GetTransport()
-	for i := 0; i < len(wst.wsListeners); i++ {
-		wst.wsListeners[i].WriteJSON(data)
-	}
+	// var wst = GetTransport()
+	// for i := 0; i < len(wst.wsListeners); i++ {
+	// 	wst.wsListeners[i].WriteJSON(data)
+	// }
 }

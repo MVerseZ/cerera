@@ -8,7 +8,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 )
 
-func Genesis() Block {
+func Genesis(chainId *big.Int) Block {
 	var genesisHeader = &Header{
 		Ctx:        17,
 		Difficulty: big.NewInt(11111111111),
@@ -17,7 +17,7 @@ func Genesis() Block {
 		Timestamp:  uint64(time.Now().UnixMilli()),
 		GasLimit:   250000,
 		GasUsed:    249999,
-		Number:     big.NewInt(0),
+		Number:     chainId,
 		Node:       types.EmptyAddress(),
 		Size:       0,
 		V:          "ALPHA-0.0.1",
@@ -26,10 +26,10 @@ func Genesis() Block {
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
 	var genesisBlock = Block{
 		Head:  genesisHeader,
-		Nonce: 11,
+		Nonce: 5377,
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
-	genesisBlock.Transactions = []types.GTransaction{}
+	genesisBlock.Transactions = []*types.GTransaction{}
 	//make([]common.Hash, 0)
 	var finalSize = unsafe.Sizeof(genesisBlock)
 	genesisBlock.Head.Size = int(finalSize)

@@ -1,8 +1,8 @@
 package pool
 
 import (
+	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 	"unsafe"
@@ -51,7 +51,6 @@ func SendTransaction(tx types.GTransaction) (common.Hash, error) {
 }
 
 func InitPool(minGas uint64, maxSize int) *Pool {
-
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
 		memPool:        mPool,
@@ -59,7 +58,7 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 		maxSize:        maxSize,
 		minGas:         minGas,
 
-		Prepared: nil,
+		Prepared: make([]*types.GTransaction, 0),
 		Executed: make([]types.GTransaction, 0),
 
 		Funnel: make(chan []*types.GTransaction),
@@ -72,13 +71,19 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
-	fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
-	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-		p.memPool[tx.Hash()] = *tx
-		// p.memPool = append(p.memPool, *tx)
-		// network.BroadcastTx(tx)
+
+	// fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
+	var sLock = p.mu.TryLock()
+	if sLock {
+		if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+			p.memPool[tx.Hash()] = *tx
+			p.Prepared = append(p.Prepared, tx)
+			// p.memPool = append(p.memPool, *tx)
+			// network.BroadcastTx(tx)
+		}
 	}
-	fmt.Println(len(p.memPool))
+	p.mu.Unlock()
+	// fmt.Println(len(p.memPool))
 }
 
 func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
@@ -94,13 +99,15 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	var usage uintptr
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
-	for _, k := range p.Prepared {
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
+	for _, k := range p.memPool {
 		var txSize = k.Size()
 		txPoolSize += int(txSize)
 		var txBts = unsafe.Sizeof(k)
 		usage += txBts
 		hashes = append(hashes, k.Hash())
-		cp = append(cp, *k)
+		cp = append(cp, k)
 	}
 	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
 	var result = MemPoolInfo{
@@ -149,33 +156,51 @@ func (p *Pool) PoolServiceLoop() {
 		select {
 		case <-p.maintainTicker.C:
 			// fmt.Printf("Pool maintain loop\r\n")
-			p.mu.Lock()
-			if p.Prepared == nil {
-				p.Prepared = make([]*types.GTransaction, 0)
-			}
-			for _, tx := range p.memPool {
-				var r, s, v = tx.RawSignatureValues()
-				fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
-				// if tx signed - add it to block
-				if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
-					p.Prepared = append(p.Prepared, &tx)
-				}
-				for _, preparedTx := range p.Prepared {
-					delete(p.memPool, preparedTx.Hash())
-				}
-			}
-			p.mu.Unlock()
+			// p.mu.Lock()
+			// if p.Prepared == nil {
+			// 	p.Prepared = make([]*types.GTransaction, 0)
+			// }
+			// for _, tx := range p.memPool {
+			// 	var r, s, v = tx.RawSignatureValues()
+			// 	// fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
+			// 	// if tx signed - add it to block
+			// 	if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
+			// 		p.Prepared = append(p.Prepared, &tx)
+			// 	}
+			// 	for _, preparedTx := range p.Prepared {
+			// 		delete(p.memPool, preparedTx.Hash())
+			// 	}
+			// }
+			// p.mu.Unlock()
 			// fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
 			// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
 			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
 		case txs := <-p.Funnel:
-			fmt.Printf("Funnel data arrive\r\n")
+			// fmt.Printf("Funnel data arrive\r\n")
 			for _, tx := range txs {
 				p.AddRawTransaction(tx)
+				// gigea.E.TxFunnel <- tx
 			}
+			// case newBlock := <-gigea.E.BlockPipe:
+			// 	fmt.Println("POOL")
+			// 	for _, tx := range newBlock.Transactions {
+			// 		fmt.Println(tx.Hash())
+			// 		delete(p.memPool, tx.Hash())
+			// 	}
 		}
 	}
 	errc <- nil
+}
+
+func (p *Pool) RemoveFromPool(txHash common.Hash) error {
+
+	_, ok := p.memPool[txHash]
+	if !ok {
+		return errors.New("no in mempool")
+	}
+	// fmt.Printf("Deleted: %s\r\n", tx.Hash())
+	delete(p.memPool, txHash)
+	return nil
 }
 
 // func (p *Pool) SignRawTransaction(txHash common.Hash, signer types.Signer, signKey string) (common.Hash, error) {

@@ -32,16 +32,33 @@ type Header struct {
 	V          string        `json:"version"        gencodec:"required"`
 }
 
+func (h *Header) Bytes() []byte {
+	var b = make([]byte, 0)
+	b = append(b, h.Difficulty.Bytes()...)
+	b = append(b, h.Extra...)
+	b = append(b, byte(h.GasLimit))
+	b = append(b, byte(h.GasUsed))
+	b = append(b, byte(h.Index))
+	b = append(b, h.Number.Bytes()...)
+	b = append(b, h.PrevHash.Bytes()...)
+	b = append(b, h.Root.Bytes()...)
+	b = append(b, byte(h.Size))
+	b = append(b, byte(h.Timestamp))
+	b = append(b, []byte(h.V)...)
+	return b
+}
+
 type Block struct {
-	Nonce        int                  `json:"nonce" gencodec:"required"`
-	Head         *Header              `json:"header" gencodec:"required"`
-	Transactions []types.GTransaction `json:"transactions," gencodec:"required"`
+	Nonce         int                   `json:"nonce" gencodec:"required"`
+	Head          *Header               `json:"header" gencodec:"required"`
+	Transactions  []*types.GTransaction `json:"transactions," gencodec:"required"`
+	Confirmations int                   `json:"confirmations," gencodec:"required"`
 }
 
 type UnconfirmedBlock struct {
-	Nonce        int                  `json:"nonce" gencodec:"required"`
-	Head         *Header              `json:"header" gencodec:"required"`
-	Transactions []types.GTransaction //`json:"transactions" gencodec:"required"`
+	Nonce        int                   `json:"nonce" gencodec:"required"`
+	Head         *Header               `json:"header" gencodec:"required"`
+	Transactions []*types.GTransaction //`json:"transactions" gencodec:"required"`
 }
 
 func (b Block) CalculateHash() ([]byte, error) {
@@ -66,7 +83,7 @@ type BlockReader interface {
 func NewBlock(header *Header) *Block {
 	b := &Block{
 		Head:         CopyHeader(header),
-		Transactions: make([]types.GTransaction, 0),
+		Transactions: make([]*types.GTransaction, 0),
 	}
 	return b
 }
@@ -74,7 +91,7 @@ func NewBlock(header *Header) *Block {
 func NewBlockWithHeader(header *Header) *Block {
 	return &Block{
 		Head:         CopyHeader(header),
-		Transactions: make([]types.GTransaction, 0),
+		Transactions: make([]*types.GTransaction, 0),
 	}
 }
 
@@ -154,7 +171,7 @@ func GenerateGenesis(nodeAddress types.Address) *Block {
 		Nonce: 11,
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
-	genesisBlock.Transactions = []types.GTransaction{}
+	genesisBlock.Transactions = []*types.GTransaction{}
 	//make([]common.Hash, 0)
 	var finalSize = unsafe.Sizeof(genesisBlock)
 	genesisBlock.Head.Size = int(finalSize)
@@ -205,7 +222,10 @@ func CrvBlockHash(block Block) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
 
 	var data = make([]byte, 0)
-	data = append(data, block.ToBytes()...)
+	for _, v := range block.Transactions {
+		data = append(data, v.Hash().Bytes()...)
+	}
+	data = append(data, block.Head.Bytes()...)
 	hw.Write(data)
 
 	h.SetBytes(hw.Sum(nil))
