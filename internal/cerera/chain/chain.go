@@ -12,6 +12,7 @@ import (
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
+	"github.com/cerera/internal/cerera/randomx"
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
@@ -122,6 +123,21 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 	}
 
 	t.VerifyTree()
+
+	var flags = []randomx.Flag{randomx.FlagDefault}
+	var myCache, _ = randomx.AllocCache(flags...)
+	var seed = []byte("SEED")
+	randomx.InitCache(myCache, seed)
+	var dataset, _ = randomx.AllocDataset(flags...)
+	var xvm, _ = randomx.CreateVM(myCache, dataset, flags...)
+	var res = randomx.CalculateHash(xvm, []byte("TEST INPUT DATA"))
+	fmt.Println(common.BytesToHash(res))
+	fmt.Println(res)
+	var res2 = randomx.CalculateHashNext(xvm, res)
+	fmt.Println(common.BytesToHash(res2))
+	fmt.Println(res2)
+	res = res2
+	randomx.DestroyVM(xvm)
 
 	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	bch = Chain{
