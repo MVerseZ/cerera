@@ -11,6 +11,8 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/miner"
+	"github.com/cerera/internal/cerera/net"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
@@ -45,9 +47,12 @@ func main() {
 	// gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
-	mode := flag.String("mode", "server", "Режим работы: server или client")
+
+	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
 	address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
 	http := flag.Int("http", 8080, "Порт для http сервера")
+	mine := flag.Bool("miner", false, "Флаг для добычи новых блоков")
+
 	inMemFlag := flag.Bool("mem", true, "Хранение данных память/диск")
 	flag.Parse()
 
@@ -79,8 +84,17 @@ func main() {
 	storage.NewD5Vault(cfg)
 
 	// i/o structs
-	network.NewServer(cfg, *mode, *address)
-	go network.SetUpHttp(*http)
+	if *mode == "p2p" {
+		net.NewServer()
+	} else {
+		network.NewServer(cfg, *mode, *address)
+		go network.SetUpHttp(*http)
+	}
+
+	miner.Init()
+	if *mine {
+		miner.Run()
+	}
 
 	// validator.NewValidator(ctx, *cfg)
 	chain.InitBlockChain(cfg)

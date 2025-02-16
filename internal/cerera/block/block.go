@@ -2,6 +2,7 @@ package block
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,29 +18,30 @@ import (
 // Header represents a block header in the blockchain.
 type Header struct {
 	Ctx        int32         `json:"ctx" gencodec:"required"`
-	Difficulty *big.Int      `json:"difficulty"       gencodec:"required"`
+	Difficulty uint64        `json:"difficulty"       gencodec:"required"`
 	Extra      []byte        `json:"extraData"        gencodec:"required"`
 	GasLimit   uint64        `json:"gasLimit"         gencodec:"required"`
 	GasUsed    uint64        `json:"gasUsed"          gencodec:"required"`
 	Height     int           `json:"height" gencodec:"required"`
 	Index      uint64        `json:"index" gencodec:"required"`
 	Node       types.Address `json:"node" gencodec:"required"`
-	Number     *big.Int      `json:"number"           gencodec:"required"`
+	ChainId    *big.Int      `json:"chainId"           gencodec:"required"`
 	PrevHash   common.Hash   `json:"prevHash" gencodec:"required"`
 	Root       common.Hash   `json:"stateRoot"        gencodec:"required"`
 	Size       int           `json:"size" gencodec:"required"`
 	Timestamp  uint64        `json:"timestamp"        gencodec:"required"`
 	V          string        `json:"version"        gencodec:"required"`
+	Nonce      uint64        `json:"nonce"        gencodec:"required"`
 }
 
 func (h *Header) Bytes() []byte {
 	var b = make([]byte, 0)
-	b = append(b, h.Difficulty.Bytes()...)
+	b = append(b, byte(h.Difficulty))
 	b = append(b, h.Extra...)
 	b = append(b, byte(h.GasLimit))
 	b = append(b, byte(h.GasUsed))
 	b = append(b, byte(h.Index))
-	b = append(b, h.Number.Bytes()...)
+	b = append(b, h.ChainId.Bytes()...)
 	b = append(b, h.PrevHash.Bytes()...)
 	b = append(b, h.Root.Bytes()...)
 	b = append(b, byte(h.Size))
@@ -49,10 +51,10 @@ func (h *Header) Bytes() []byte {
 }
 
 type Block struct {
-	Nonce         int                   `json:"nonce" gencodec:"required"`
 	Head          *Header               `json:"header" gencodec:"required"`
 	Transactions  []*types.GTransaction `json:"transactions," gencodec:"required"`
 	Confirmations int                   `json:"confirmations," gencodec:"required"`
+	Hash          common.Hash           `json:"hash," gencodec:"required"`
 }
 
 type UnconfirmedBlock struct {
@@ -74,7 +76,8 @@ func (b Block) Equals(other trie.Content) (bool, error) {
 	if !ok {
 		return false, errors.New("value is not of type Block")
 	}
-	return b.Head.Number.Cmp(otherTC.Head.Number) == 0, nil
+	return b.Head.ChainId.Cmp(otherTC.Head.ChainId) == 0 &&
+		b.Head.Height == b.Head.Height, nil
 }
 
 type BlockReader interface {
@@ -101,10 +104,10 @@ func (b *Block) Header() *Header { return CopyHeader(b.Head) }
 func (b *Block) EqHead(other *Header) bool {
 	return b.Head.Ctx == other.Ctx &&
 		b.Head.Height == other.Height &&
-		b.Head.Difficulty.Cmp(other.Difficulty) == 0 &&
+		b.Head.Difficulty == other.Difficulty &&
 		b.Head.GasUsed == other.GasUsed &&
 		b.Head.GasLimit == other.GasLimit &&
-		b.Head.Number.Cmp(other.Number) == 0 &&
+		b.Head.ChainId.Cmp(other.ChainId) == 0 &&
 		len(b.Head.Extra) == len(other.Extra) &&
 		b.Head.Root == other.Root &&
 		b.Head.PrevHash == other.PrevHash &&
@@ -115,15 +118,13 @@ func (b *Block) EqHead(other *Header) bool {
 
 func CopyHeader(h *Header) *Header {
 	cpy := *h
-	if cpy.Difficulty = new(big.Int); h.Difficulty != nil {
-		cpy.Difficulty.Set(h.Difficulty)
-	}
+	cpy.Difficulty = h.Difficulty
 	if len(h.Extra) > 0 {
 		cpy.Extra = make([]byte, len(h.Extra))
 		copy(cpy.Extra, h.Extra)
 	}
-	if cpy.Number = new(big.Int); h.Number != nil {
-		cpy.Number.Set(h.Number)
+	if cpy.ChainId = new(big.Int); h.ChainId != nil {
+		cpy.ChainId.Set(h.ChainId)
 	}
 	cpy.Root = h.Root
 	cpy.Ctx = h.Ctx
@@ -154,21 +155,21 @@ func CalculateSize(b Block) int {
 func GenerateGenesis(nodeAddress types.Address) *Block {
 	var genesisHeader = &Header{
 		Ctx:        17,
-		Difficulty: big.NewInt(11111111111),
+		Difficulty: 11111111111,
 		Extra:      []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
 		Height:     0,
 		GasLimit:   250000,
 		GasUsed:    1,
-		Number:     big.NewInt(0),
+		ChainId:    big.NewInt(0),
 		Node:       nodeAddress,
 		Size:       0,
 		V:          "ALPHA-0.0.1",
+		Nonce:      1,
 	}
 
 	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
 	var genesisBlock = &Block{
-		Head:  genesisHeader,
-		Nonce: 11,
+		Head: genesisHeader,
 	}
 	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
 	genesisBlock.Transactions = []*types.GTransaction{}
@@ -185,6 +186,12 @@ func (b *Block) ToBytes() []byte {
 		return nil
 	}
 	return jsonBytes
+}
+
+func (b *Block) GetNonceBytes() []byte {
+	bts := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bts, uint64(b.Header().Nonce))
+	return bts
 }
 
 func FromBytes(b []byte) (*Block, error) {
@@ -235,16 +242,15 @@ func CrvBlockHash(block Block) (h common.Hash) {
 func CrvHeaderHash(header Header) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
 	hw.Write(header.Extra)
-	hw.Write(header.Difficulty.Bytes())
 	h.SetBytes(hw.Sum(nil))
 	return h
 }
 
 // HASH METHODS
-func (b *Block) Hash() common.Hash {
-	return CrvBlockHash(*b)
+func (b *Block) GetHash() common.Hash {
+	return b.Hash
 }
 
-func (h *Header) Hash() common.Hash {
-	return CrvHeaderHash(*h)
-}
+// func (h *Header) Hash() common.Hash {
+// 	return CrvHeaderHash(*h)
+// }

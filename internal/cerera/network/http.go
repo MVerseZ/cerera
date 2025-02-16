@@ -130,7 +130,7 @@ func Execute(method string, params []interface{}) interface{} {
 		Result = bc.GetInfo()
 	case "getblockcount", "cerera.getBlockCount":
 		// get latest block of chain
-		Result = bc.GetLatestBlock().Header().Number
+		Result = bc.GetLatestBlock().Header().Height
 	case "getblockhash", "cerera.getBlockHash":
 		number, ok := params[0].(float64)
 		if !ok {
@@ -265,7 +265,7 @@ func Execute(method string, params []interface{}) interface{} {
 	case "cerera.consensus.ready":
 		bc.Resume()
 		// guest use latest block for sync
-		Result = bc.GetLatestBlock().Hash()
+		// Result = bc.GetLatestBlock().Hash()
 	case "cerera.consensus.block":
 
 	default:
