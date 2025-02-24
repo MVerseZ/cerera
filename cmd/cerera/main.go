@@ -43,7 +43,8 @@ type cerera struct {
 func main() {
 	// listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
 	// listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
-	// port := flag.Int("p", 11, "p2p port for connections")
+	addr := flag.String("addr", "", "p2p address for connection")
+	// port := flag.Int("p", 10101, "p2p port for connection")
 	// gossipAddress := flag.String("g", "", "gossip address")
 	keyPathFlag := flag.String("key", "", "path to pem key")
 	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
@@ -85,18 +86,19 @@ func main() {
 
 	// i/o structs
 	if *mode == "p2p" {
-		net.NewServer()
+		go net.StartNode(*addr, cfg.NetCfg.ADDR)
 	} else {
 		network.NewServer(cfg, *mode, *address)
-		go network.SetUpHttp(*http)
 	}
+	go network.SetUpHttp(*http)
+	fmt.Println(*mine)
 
 	miner.Init()
 	if *mine {
 		miner.Run()
 	}
 
-	// validator.NewValidator(ctx, *cfg)
+	validator.NewValidator(ctx, *cfg)
 	chain.InitBlockChain(cfg)
 	pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
 

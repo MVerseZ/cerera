@@ -223,9 +223,9 @@ func (bc *Chain) Start() {
 	var p = pool.Get()
 	var v = validator.Get()
 	var errc chan error
-	// if bc.autoGen {
-	// 	bc.Mine(bc.GetLatestBlock())
-	// }
+	if bc.autoGen {
+		miner.Start(bc.GetLatestBlock(), bc.chainId, bc.Difficulty)
+	}
 	// if bc.autoGen {
 	// 	var latest = bc.GetLatestBlock()
 	// 	go bc.Mine(latest)

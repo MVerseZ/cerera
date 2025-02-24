@@ -60,7 +60,7 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 		// network broadcast
-		N.BroadcastAcc(vlt.Get(*addr))
+		// N.BroadcastAcc(vlt.Get(*addr))
 		type res struct {
 			Address  *types.Address `json:"address,omitempty"`
 			Priv     string         `json:"priv,omitempty"`
@@ -206,7 +206,7 @@ func Execute(method string, params []interface{}) interface{} {
 					Result = "Error while create transaction!"
 					return 0xf
 				}
-				go N.BroadcastTx(*tx)
+				// go N.BroadcastTx(*tx)
 				p.Funnel <- []*types.GTransaction{tx}
 				Result = tx.Hash()
 				// // var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)

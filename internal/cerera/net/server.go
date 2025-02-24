@@ -3,149 +3,164 @@ package net
 import (
 	"context"
 	"fmt"
-	"log"
+	"sync"
 	"time"
 
+	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
-	kaddht "github.com/libp2p/go-libp2p-kad-dht"
-	dhtopts "github.com/libp2p/go-libp2p-kad-dht/opts"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
-	"github.com/multiformats/go-multiaddr"
+	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
-const (
-	protocolID   = "/cerera-dht-p2p/1.0"
-	rendezvous   = "cerera-libp2p-dht"
-	pingInterval = time.Minute * 1
-)
+const protocolID = "/cerera-p2p/1.0.0"
 
-type discoveryNotifee struct {
-	h host.Host
+type Node struct {
+	host.Host
+	types.Address
 }
 
-// interface to be called when new  peer is found
-func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	fmt.Printf("Discovered peer: %s\n", pi.ID)
-	n.h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.PermanentAddrTTL)
-	if err := n.h.Connect(context.Background(), pi); err != nil {
-		fmt.Printf("Error connecting to peer %s: %v\n", pi.ID, err)
-	}
+func NewNode(h host.Host, addr types.Address) *Node {
+	node := &Node{h, addr}
+	return node
 }
 
-func NewServer() {
+var topicName = "Cerera_topic"
 
-	// 14.02.2025 - USE LIBP2P, KISS
+func StartNode(addr string, laddr types.Address) *Node {
+	ctx := context.Background()
+	// Creates a new RSA key pair for this host.
+	// prvKey, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, rand.Reader)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// 0.0.0.0 will listen on any interface device.
+	// sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port))
 
-	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
-		libp2p.NATPortMap(),
-		libp2p.EnableRelay(),
-	)
+	// h, err := libp2p.New(
+	// 	// Use the keypair we generated
+	// 	libp2p.Identity(prvKey),
+	// 	libp2p.ListenAddrs(sourceMultiAddr),
+	// )
+	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"))
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer h.Close()
 
-	dht, err := kaddht.New(
-		ctx,
-		h,
-		dhtopts.Client(false),
-		dht.ProtocolPrefix(protocolID),
-	)
+	fullAddr := getHostAddress(h)
+	fmt.Printf("I am %s\n", fullAddr)
+	fmt.Printf("Host ID is %s\n", h.ID())
+
+	go discoverPeers(ctx, h)
+
+	ps, err := pubsub.NewGossipSub(ctx, h)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-
-	// Bootstrap DHT
-	if err = dht.Bootstrap(ctx); err != nil {
-		log.Fatal(err)
+	topic, err := ps.Join(topicName)
+	if err != nil {
+		panic(err)
 	}
+	go streamStateTo(ctx, topic)
 
-	bootstrapPeers := []string{
-		"/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
-		"/ip4/104.131.131.82/udp/4001/quic/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
+	sub, err := topic.Subscribe()
+	if err != nil {
+		panic(err)
 	}
+	printMessagesFrom(ctx, sub)
 
-	for _, addr := range bootstrapPeers {
-		ma, err := multiaddr.NewMultiaddr(addr)
+	return NewNode(h, laddr)
+}
+
+func getHostAddress(ha host.Host) string {
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID()))
+	addr := ha.Addrs()[0]
+	return addr.Encapsulate(hostAddr).String()
+}
+func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
+	// Start a DHT, for use in peer discovery. We can't just make a new DHT
+	// client because we want each peer to maintain its own local copy of the
+	// DHT, so that the bootstrapping node of the DHT can go down without
+	// inhibiting future peer discovery.
+	kademliaDHT, err := dht.New(ctx, h)
+	if err != nil {
+		panic(err)
+	}
+	if err = kademliaDHT.Bootstrap(ctx); err != nil {
+		panic(err)
+	}
+	var wg sync.WaitGroup
+	for _, peerAddr := range dht.DefaultBootstrapPeers {
+		peerinfo, _ := peer.AddrInfoFromP2pAddr(peerAddr)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := h.Connect(ctx, *peerinfo); err != nil {
+				fmt.Println("Bootstrap warning:", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	return kademliaDHT
+}
+
+func discoverPeers(ctx context.Context, h host.Host) {
+	kademliaDHT := initDHT(ctx, h)
+	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
+	dutil.Advertise(ctx, routingDiscovery, topicName)
+
+	// Look for others who have announced and attempt to connect to them
+	anyConnected := false
+	for !anyConnected {
+		fmt.Println("Searching for peers...")
+		peerChan, err := routingDiscovery.FindPeers(ctx, topicName)
 		if err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
-
-		pi, err := peer.AddrInfoFromP2pAddr(ma)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.PermanentAddrTTL)
-		if err := h.Connect(ctx, *pi); err != nil {
-			fmt.Printf("Error connecting to bootstrap node %s: %v\n", pi.ID, err)
-		} else {
-			fmt.Printf("Connected to bootstrap node %s\n", pi.ID)
+		for peer := range peerChan {
+			if peer.ID == h.ID() {
+				continue // No self connection
+			}
+			err := h.Connect(ctx, peer)
+			if err != nil {
+				// fmt.Printf("Failed connecting to %s, error: %s\n", peer.ID, err)
+			} else {
+				fmt.Println("Connected to:", peer.ID)
+				anyConnected = true
+			}
 		}
 	}
+	fmt.Println("Peer discovery complete")
+}
 
-	// Настройка mDNS для локального обнаружения
-	mdnsService := mdns.NewMdnsService(
-		h,
-		rendezvous,
-		&discoveryNotifee{h: h},
-	)
-	if err := mdnsService.Start(); err != nil {
-		log.Fatal(err)
+func streamStateTo(ctx context.Context, topic *pubsub.Topic) {
+	// reader := bufio.NewReader(os.Stdin)
+	for {
+		// s, err := reader.ReadString('\n')
+		// if err != nil {
+		// 	panic(err)
+		// }
+		var msg = "PING"
+		if err := topic.Publish(ctx, []byte(msg)); err != nil {
+			fmt.Println("### Publish error:", err)
+		}
+		time.Sleep(5 * time.Second)
 	}
+}
 
-	h.SetStreamHandler(protocolID, func(s network.Stream) {
-		defer s.Close()
-		fmt.Printf("New stream from %s\n", s.Conn().RemotePeer())
-
-		buf := make([]byte, 1024)
-		n, err := s.Read(buf)
+func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription) {
+	for {
+		m, err := sub.Next(ctx)
 		if err != nil {
-			fmt.Printf("Error reading: %v\n", err)
-			return
+			panic(err)
 		}
-
-		fmt.Printf("Received: %s\n", string(buf[:n]))
-	})
-
-	fmt.Println("Node ID:", h.ID())
-	fmt.Println("Addresses:")
-	for _, addr := range h.Addrs() {
-		fmt.Println(" ", addr)
+		fmt.Println(m.ReceivedFrom, ": ", string(m.Message.Data))
 	}
-
-	// DHT write
-	go func() {
-		time.Sleep(10 * time.Second) // wait 4 bootstrap
-		key := "example-key"
-		value := []byte("example-value")
-
-		fmt.Printf("Storing %s => %s in DHT\n", key, value)
-		if err := dht.PutValue(ctx, key, value); err != nil {
-			fmt.Printf("Failed to store value: %v\n", err)
-		}
-	}()
-
-	// read DHT
-	go func() {
-		time.Sleep(20 * time.Second)
-		key := "example-key"
-
-		fmt.Printf("Looking up %s in DHT...\n", key)
-		value, err := dht.GetValue(ctx, key)
-		if err != nil {
-			fmt.Printf("Failed to get value: %v\n", err)
-			return
-		}
-		fmt.Printf("Retrieved %s => %s\n", key, string(value))
-	}()
 }

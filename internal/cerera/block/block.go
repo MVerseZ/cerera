@@ -254,3 +254,5 @@ func (b *Block) GetHash() common.Hash {
 // func (h *Header) Hash() common.Hash {
 // 	return CrvHeaderHash(*h)
 // }
+
+var EmptyBlock = Block{}

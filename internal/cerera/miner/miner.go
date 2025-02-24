@@ -53,8 +53,12 @@ func Init() {
 func Run() {
 }
 
-func Start() {
-
+func Start(latest *block.Block, chId *big.Int, difficulty uint64) {
+	var newBlock, f, _ = TryToFind(latest, chId, difficulty, 1000000, 1)
+	if f {
+		fmt.Println("found!")
+		fmt.Println(newBlock.Hash)
+	}
 }
 
 func Stop() {
@@ -66,10 +70,9 @@ func CalculateHash(b *block.Block) common.Hash {
 	return common.BytesToHash(bhash)
 }
 
-func TryToFind(prevBlock *block.Block, chainId *big.Int, difficulty uint64, maxTimes uint64, jump uint32) ([]byte, bool, []byte) {
+func TryToFind(prevBlock *block.Block, chainId *big.Int, difficulty uint64, maxTimes uint64, jump uint32) (block.Block, bool, []byte) {
 
 	// block consume txs from pool or event-call from pool to blockchain/miner/validator/other ???
-	var hash []byte
 	var find = false
 	var sol []byte = []byte{0x0, 0x0, 0x0, 0x0}
 	var maxNonce = difficulty
@@ -97,11 +100,10 @@ func TryToFind(prevBlock *block.Block, chainId *big.Int, difficulty uint64, maxT
 		h, f, sol := xvm.Search(preBlock.ToBytes(), difficulty, 1, 1, preBlock.GetNonceBytes())
 		if f {
 			preBlock.Hash = common.BytesToHash(h)
-			return h, f, sol
+			return *preBlock, f, sol
 		}
-		hash = h
 	}
-	return hash, find, sol
+	return block.EmptyBlock, find, sol
 }
 
 func CalculateBlockHash(b block.Block) {

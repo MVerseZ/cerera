@@ -44,17 +44,17 @@ func NewServer(cfg *config.Config, flag string, address string) {
 	// flag.Parse()
 	// go SetUpHttp(httpPort)
 
-	// N = NewNode(cfg)
-	// N.Start()
+	N = NewNode(cfg)
+	N.Start()
 
-	// switch flag {
-	// case "server":
-	// 	go runServer(cfg.NetCfg.ADDR, address)
-	// case "client":
-	// 	go runClient(address)
-	// default:
-	// 	fmt.Println("Неизвестный режим. Используйте 'server' или 'client'.")
-	// }
+	switch flag {
+	case "server":
+		go runServer(cfg.NetCfg.ADDR, address)
+	case "client":
+		go runClient(address)
+	default:
+		fmt.Println("Неизвестный режим. Используйте 'server' или 'client'.")
+	}
 }
 
 // Запуск сервера
