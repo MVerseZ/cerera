@@ -96,6 +96,7 @@ func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
 
 func (p *Pool) GetInfo() MemPoolInfo {
 	var txPoolSize = 0
+
 	var usage uintptr
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
@@ -111,7 +112,8 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	}
 	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
 	var result = MemPoolInfo{
-		Size:             txPoolSize,
+		Size:             len(hashes),
+		Bytes:            txPoolSize,
 		Usage:            usage,
 		UnbroadCastCount: txPoolSize,
 		MaxMempool:       p.maxSize,

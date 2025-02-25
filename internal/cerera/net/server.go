@@ -20,12 +20,15 @@ import (
 const protocolID = "/cerera-p2p/1.0.0"
 
 type Node struct {
-	host.Host
-	types.Address
+	h       host.Host
+	address types.Address
+	ch      chan []byte
+
+	BroadcastHeartBeetTimer time.Ticker
 }
 
 func NewNode(h host.Host, addr types.Address) *Node {
-	node := &Node{h, addr}
+	node := &Node{h, addr, make(chan []byte), *time.NewTicker(5 * time.Minute)}
 	return node
 }
 
@@ -67,7 +70,9 @@ func StartNode(addr string, laddr types.Address) *Node {
 	if err != nil {
 		panic(err)
 	}
-	go streamStateTo(ctx, topic)
+
+	var node = NewNode(h, laddr)
+	go node.streamStateTo(ctx, topic)
 
 	sub, err := topic.Subscribe()
 	if err != nil {
@@ -75,7 +80,7 @@ func StartNode(addr string, laddr types.Address) *Node {
 	}
 	printMessagesFrom(ctx, sub)
 
-	return NewNode(h, laddr)
+	return node
 }
 
 func getHostAddress(ha host.Host) string {
@@ -140,18 +145,22 @@ func discoverPeers(ctx context.Context, h host.Host) {
 	fmt.Println("Peer discovery complete")
 }
 
-func streamStateTo(ctx context.Context, topic *pubsub.Topic) {
+func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 	// reader := bufio.NewReader(os.Stdin)
 	for {
+		select {
 		// s, err := reader.ReadString('\n')
 		// if err != nil {
 		// 	panic(err)
 		// }
-		var msg = "PING"
-		if err := topic.Publish(ctx, []byte(msg)); err != nil {
-			fmt.Println("### Publish error:", err)
+		case d := <-n.ch:
+			fmt.Printf("recieved channel: %s\r\n", d)
+		case <-n.BroadcastHeartBeetTimer.C:
+			var msg = "PING"
+			if err := topic.Publish(ctx, []byte(msg)); err != nil {
+				fmt.Println("### Publish error:", err)
+			}
 		}
-		time.Sleep(5 * time.Second)
 	}
 }
 
