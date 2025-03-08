@@ -35,7 +35,7 @@ var minGas = 1000
 var maxCap = 10
 
 func TestTransactionConsuming(t *testing.T) {
-	tPool := InitPool(uint64(minGas), maxCap)
+	tPool, _ := InitPool(uint64(minGas), maxCap)
 	tPool.AddTransaction(testTx1.From(), testTx1)
 	info := tPool.GetInfo()
 	if len(info.Txs) != 1 {
@@ -49,7 +49,7 @@ func TestTransactionConsuming(t *testing.T) {
 }
 
 func TestGetTx(t *testing.T) {
-	tPool := InitPool(uint64(minGas), maxCap)
+	tPool, _ := InitPool(uint64(minGas), maxCap)
 	tPool.AddTransaction(testTx1.From(), testTx1)
 	tPool.AddRawTransaction(testTx2)
 	tPool.AddRawTransaction(testTx3)
@@ -60,14 +60,14 @@ func TestGetTx(t *testing.T) {
 }
 
 func TestUtilityMethods(t *testing.T) {
-	tPool := InitPool(uint64(minGas), maxCap)
+	tPool, _ := InitPool(uint64(minGas), maxCap)
 	if tPool.GetMinimalGasValue() != uint64(minGas) {
 		t.Errorf("Diffenrent minimum gas value! Have %d, want %d", tPool.GetMinimalGasValue(), minGas)
 	}
 }
 
 func TestPoolCapacity(t *testing.T) {
-	tPool := InitPool(uint64(minGas), maxCap)
+	tPool, _ := InitPool(uint64(minGas), maxCap)
 
 	// Добавляем транзакции до достижения лимита
 	for i := 0; i < maxCap; i++ {
@@ -105,7 +105,7 @@ func TestPoolCapacity(t *testing.T) {
 }
 
 func TestGasLimit(t *testing.T) {
-	tPool := InitPool(uint64(minGas), maxCap)
+	tPool, _ := InitPool(uint64(minGas), maxCap)
 
 	// Добавляем транзакцию с низким газом (должна быть отклонена)
 	tx := types.NewTransaction(

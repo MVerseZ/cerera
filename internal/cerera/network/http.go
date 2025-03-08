@@ -99,6 +99,18 @@ func Execute(method string, params []interface{}) interface{} {
 			Pub:  pk,
 			Addr: addr,
 		}
+	case "verify_account", "account.verify":
+		walletAddress, ok1 := params[0].(string)
+		passphraseStr, ok2 := params[1].(string)
+		if !ok1 || !ok2 {
+			return 0xf
+		}
+		addr, err := vlt.VerifyAccount(types.HexToAddress(walletAddress), passphraseStr)
+		if err != nil {
+			Result = "Error while restore"
+			return 0xf
+		}
+		return addr
 	case "get_minimum_gas_value", "chain.getMinimumGasValue":
 		// get min gas value
 		Result = p.GetMinimalGasValue()
@@ -122,8 +134,9 @@ func Execute(method string, params []interface{}) interface{} {
 		// var txHash, err = vldtr.Faucet(to, int(count))
 		var addrTo = types.HexToAddress(to)
 		var coinbaseTx = coinbase.FaucetTransaction(gigea.C.Nonce, addrTo, count)
+		// vldtr.SignRawTransactionWithKey(coinbaseTx, coinbase.FaucetAccount().MPub)
 		p.Funnel <- []*types.GTransaction{coinbaseTx}
-		go N.BroadcastTx(*coinbaseTx)
+		// go N.BroadcastTx(*coinbaseTx)
 		Result = coinbaseTx
 	case "getblockchaininfo", "cerera.getInfo":
 		// get info of (block)chain
@@ -131,7 +144,7 @@ func Execute(method string, params []interface{}) interface{} {
 	case "getblockcount", "cerera.getBlockCount":
 		// get latest block of chain
 		Result = bc.GetLatestBlock().Header().Height
-	case "getblockhash", "cerera.getBlockHash":
+	case "getblockbyindex", "cerera.getBlockByIndex":
 		number, ok := params[0].(float64)
 		if !ok {
 			Result = "Error"
@@ -190,7 +203,7 @@ func Execute(method string, params []interface{}) interface{} {
 		if len(params) < 3 {
 			Result = "Wrong count of params"
 		} else {
-			_, ok0 := params[0].(string)
+			spk, ok0 := params[0].(string)
 			addrStr, ok1 := params[1].(string)
 			count, ok2 := params[2].(float64)
 			gas, ok3 := params[3].(float64)
@@ -202,6 +215,7 @@ func Execute(method string, params []interface{}) interface{} {
 				var addrTo = types.HexToAddress(addrStr)
 				var gasInt = int(gas)
 				tx, err := types.CreateUnbroadcastTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
+				vldtr.SignRawTransactionWithKey(tx, spk)
 				if err != nil {
 					Result = "Error while create transaction!"
 					return 0xf

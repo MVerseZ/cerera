@@ -141,7 +141,7 @@ func (h Hash) Value() (driver.Value, error) {
 
 func EmptyHash() Hash {
 	var h Hash
-	h.SetBytes(FromHex("0x000000000000000000000000000000000000000000000000000000000000000f"))
+	h.SetBytes(FromHex("0x0000000000000000000000000000000000000000000000000000000000000000"))
 	return h
 }
 

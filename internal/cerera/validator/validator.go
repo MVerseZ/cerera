@@ -35,10 +35,10 @@ type Validator interface {
 	CheckAddress(addr types.Address) bool
 	GasPrice() *big.Int
 	GetVersion() string
-	ExecuteTransaction(tx *types.GTransaction) error
+	ExecuteTransaction(tx types.GTransaction) error
 	// Faucet(addrStr string, valFor int) error
 	PreSend(to types.Address, value float64, gas uint64, msg string) *types.GTransaction
-	Reward(node types.Address)
+
 	SetUp(chainId *big.Int)
 	Signer() types.Signer
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) (*types.GTransaction, error)
@@ -59,16 +59,16 @@ type DDDDDValidator struct {
 	currentVersion string
 }
 
-func NewValidator(ctx context.Context, cfg config.Config) Validator {
+func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
 	v = &DDDDDValidator{
 		signatureKey:   p,
-		signer:         types.NewSimpleSignerWithPen(cfg.Chain.ChainID, p),
-		balance:        big.NewInt(0), // Initialize balance
+		signer:         types.NewSimpleSignerWithPen(big.NewInt(int64(cfg.Chain.ChainID))), //, p),
+		balance:        big.NewInt(0),                                                      // Initialize balance
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
 	}
-	return v
+	return v, nil
 }
 
 func (v *DDDDDValidator) CheckAddress(addr types.Address) bool {
@@ -84,7 +84,7 @@ func (v *DDDDDValidator) GasPrice() *big.Int {
 	return v.minGasPrice
 }
 
-func (v *DDDDDValidator) ExecuteTransaction(tx *types.GTransaction) error {
+func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 	// if send to address not generated - > send only to input
 	var localVault = storage.GetVault()
 	var gas = tx.Gas()
@@ -95,18 +95,25 @@ func (v *DDDDDValidator) ExecuteTransaction(tx *types.GTransaction) error {
 		return EmptyCoinbase
 	} else {
 		fmt.Printf(
-			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%d\r\n\t  current balance=%d\r\n",
+			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%f\r\n\t  current balance=%d\r\n",
 			tx.Hash(),
 			gas,
-			val,
+			types.BigIntToFloat(val),
 			out,
 		)
-		if tx.Type() == types.LegacyTxType {
+		fmt.Printf("\t\t reaylly signed?%t\r\n", tx.IsSigned())
+		switch tx.Type() {
+		case types.LegacyTxType:
+			fmt.Printf("\t\t legacy from %s\r\n", tx.From())
 			localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
-		}
-
-		if tx.Type() == types.AppTxType {
+		case types.FaucetTxType:
+			fmt.Printf("\t\t faucet from %s\r\n", tx.From())
+			localVault.DropFaucet(*tx.To(), tx.Value())
+		case types.CoinbaseTxType:
+			fmt.Printf("\t\t coinbase from %s\r\n", tx.From())
 			localVault.UpdateBalance(coinbase.GetCoinbaseAddress(), *tx.To(), val, tx.Hash())
+		default:
+			fmt.Printf("\t\t unknown from %s\r\n", tx.From())
 		}
 
 	}
@@ -134,16 +141,9 @@ func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, ms
 	return tx
 }
 
-func (v *DDDDDValidator) Reward(nodeAddr types.Address) {
-	// TODO do not work
-
-	var vault = storage.GetVault()
-	vault.FaucetBalance(nodeAddr, coinbase.CurrentReward())
-}
-
 func (v *DDDDDValidator) SetUp(chainId *big.Int) {
 	v.minGasPrice = big.NewInt(100)
-	v.signer = types.NewSimpleSignerWithPen(chainId, v.signatureKey)
+	v.signer = types.NewSimpleSignerWithPen(chainId) //, v.signatureKey)
 }
 
 func (v *DDDDDValidator) Signer() types.Signer {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestPoolSigningProc(t *testing.T) {
-	pool := pool.InitPool(1, 1000)
+	pool, _ := pool.InitPool(1, 1000)
 
 	var hashes []common.Hash
 	for i := 0; i < 3; i++ {

@@ -26,6 +26,8 @@ const (
 	AppTxType
 	ApiTxtype
 	LegacyTxType
+	CoinbaseTxType
+	FaucetTxType
 )
 
 type TxStatus byte
@@ -171,7 +173,10 @@ func (tx *GTransaction) Hash() common.Hash {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
-	if tx.Type() == AppTxType {
+	if tx.Type() == CoinbaseTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == FaucetTxType {
 		h = crvTxHash(tx.inner)
 	}
 	tx.hash.Store(h)
@@ -187,7 +192,10 @@ func (tx GTransaction) CalculateHash() ([]byte, error) {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
-	if tx.Type() == AppTxType {
+	if tx.Type() == CoinbaseTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == FaucetTxType {
 		h = crvTxHash(tx.inner)
 	}
 	tx.hash.Store(h)

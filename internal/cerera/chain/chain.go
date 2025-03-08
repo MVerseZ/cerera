@@ -11,7 +11,6 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/miner"
 
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/trie"
@@ -29,7 +28,7 @@ type BlockChainStatus struct {
 
 type Chain struct {
 	autoGen        bool
-	chainId        *big.Int
+	chainId        int
 	chainWork      *big.Int
 	currentAddress types.Address
 	currentBlock   *block.Block
@@ -37,7 +36,7 @@ type Chain struct {
 
 	mu   sync.Mutex
 	info BlockChainStatus
-	data []block.Block
+	data []*block.Block
 	t    *trie.MerkleTree
 
 	// tickers
@@ -58,7 +57,7 @@ func GetBlockChain() *Chain {
 	return &bch
 }
 
-func InitBlockChain(cfg *config.Config) { //Chain {
+func InitBlockChain(cfg *config.Config) error {
 
 	var (
 		t         *trie.MerkleTree
@@ -74,10 +73,12 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 
 	var err error
 
-	genesisBlock := block.Genesis(cfg.Chain.ChainID)
-	genesisBlock.Hash = miner.CalculateHash(&genesisBlock)
+	genesisHead := block.GenesisHead(cfg.Chain.ChainID)
+	genesisBlock := block.NewBlockWithHeaderAndHash(genesisHead)
+	genesisBlock.UpdateHash()
+	// genesisBlock.Hash = miner.CalculateHash(&genesisBlock)
 
-	dataBlocks := make([]block.Block, 0)
+	dataBlocks := make([]*block.Block, 0)
 	var list []trie.Content
 
 	if cfg.IN_MEM {
@@ -134,7 +135,7 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 		autoGen:        cfg.AUTOGEN,
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
-		currentBlock:   &dataBlocks[len(dataBlocks)-1],
+		currentBlock:   dataBlocks[len(dataBlocks)-1],
 		blockTicker:    time.NewTicker(BLOCKTIMER),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
@@ -149,7 +150,7 @@ func InitBlockChain(cfg *config.Config) { //Chain {
 	// go bch.BlockGenerator()
 	go bch.Start()
 
-	// return bch
+	return nil
 }
 
 func (bc *Chain) GetInfo() interface{} {
@@ -180,7 +181,7 @@ func (bc *Chain) GetBlockHash(number int) common.Hash {
 func (bc *Chain) GetBlockByNumber(number int) *block.Block {
 	for _, b := range bc.data {
 		if b.Header().Index == uint64(number) {
-			return &b
+			return b
 		}
 	}
 	return &block.Block{}
@@ -189,7 +190,7 @@ func (bc *Chain) GetBlockByNumber(number int) *block.Block {
 func (bc *Chain) GetBlock(blockHash common.Hash) *block.Block {
 	for _, b := range bc.data {
 		if b.GetHash().Compare(blockHash) == 0 {
-			return &b
+			return b
 		}
 	}
 	return &block.Block{}
@@ -220,12 +221,10 @@ func (bc *Chain) GetBlockHeader(blockHash string) *block.Header {
 // }
 
 func (bc *Chain) Start() {
+	fmt.Printf("Chain started with: %d, chain owner: %s, total: %d\r\n", bc.chainId, bc.currentAddress, bc.info.Total)
 	var p = pool.Get()
 	var v = validator.Get()
 	var errc chan error
-	if bc.autoGen {
-		miner.Start(bc.GetLatestBlock(), bc.chainId, bc.Difficulty)
-	}
 	// if bc.autoGen {
 	// 	var latest = bc.GetLatestBlock()
 	// 	go bc.Mine(latest)
@@ -246,7 +245,7 @@ func (bc *Chain) Start() {
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 			// 	err := SaveToVault(*newBlock)
 			bc.Size += newBlock.Header().Size
-			bc.data = append(bc.data, newBlock)
+			bc.data = append(bc.data, &newBlock)
 			bc.currentBlock = &newBlock
 			bc.mu.Unlock()
 		case <-bc.maintainTicker.C:
@@ -258,75 +257,7 @@ func (bc *Chain) Start() {
 }
 
 func (bc *Chain) Mine(latest *block.Block) {
-	// var vld = validator.Get()
-	// var pool = pool.Get()
-	// time.Sleep(10 * time.Second)
-
 	fmt.Println("MINE ON CHAIN")
-
-	// head := &block.Header{
-	// 	Ctx:        latest.Header().Ctx,
-	// 	Difficulty: latest.Head.Difficulty,
-	// 	Extra:      []byte("OP_AUTO_GEN_BLOCK_DAT"),
-	// 	Height:     latest.Header().Height + 1,
-	// 	Index:      latest.Header().Index + 1,
-	// 	Timestamp:  uint64(time.Now().UnixMilli()),
-	// 	Number:     bc.chainId,
-	// 	PrevHash:   bc.info.Latest,
-	// 	Node:       bc.currentAddress,
-	// 	GasLimit:   latest.Head.GasLimit, // todo get gas limit dynamically
-	// }
-	// // cpy version, should store elsewhere
-	// head.V = latest.Head.V
-	// newBlock := block.NewBlockWithHeader(head)
-	// newBlock.Nonce = latest.Nonce
-
-	// var finalSize = block.CalculateSize(*newBlock)
-	// newBlock.Head.Size = finalSize
-	// newBlock.Head.GasUsed += uint64(finalSize)
-	// gigea.E.BlockFunnel <- newBlock
-	// fmt.Printf("Block unconfirmed: %s\r\n", newBlock.GetHash())
-
-	// OLD CODE
-	// TODO refactor
-	// if len(pool.Prepared) > 0 {
-	// 	for _, tx := range pool.Prepared {
-	// 		if vld.ValidateTransaction(tx, tx.From()) {
-	// 			newBlock.Transactions = append(newBlock.Transactions, *tx)
-	// 			newBlock.Head.GasUsed += tx.Gas()
-	// 			// newBlock.SetTransaction(tx)
-	// 		}
-	// 	}
-	// }
-
-	// var nodeFees = int(finalSize)
-
-	// bc.DataChannel <- newBlock.ToBytes()
-
-	// if vld.ValidateBlock(*newBlock) {
-	// 	bc.t.Add(newBlock)
-	// 	var t, err = bc.t.VerifyTree()
-	// 	if err != nil || !t {
-	// 		log.Printf("Verifying trie error: %s\r\n", err)
-	// 	} else {
-	// 		bc.info.Latest = newBlock.Hash()
-	// 		bc.info.Total = bc.info.Total + 1
-	// 		bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-	// 		bc.currentBlock = newBlock
-	// 		err := SaveToVault(*newBlock)
-	// 		if err == nil {
-	// 			var rewardAddress = newBlock.Head.Node
-	// 			fmt.Printf("Reward to: %s, hash: %s\r\n", rewardAddress, newBlock.Hash())
-	// 			bc.data = append(bc.data, *newBlock)
-	// 			vld.Reward(rewardAddress)
-	// 		}
-	// 	}
-	// 	// clear array with included txs
-	// 	pool.Prepared = nil
-	// } else {
-
-	// return
-	// }
 }
 
 // change block generation time
@@ -337,15 +268,18 @@ func (bc *Chain) ChangeBlockInterval(val int) {
 
 func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	fmt.Printf("Current index: %d with hash: %s\r\n",
-		bc.currentBlock.Head.ChainId, bc.currentBlock.GetHash())
+		bc.currentBlock.Head.Index, bc.currentBlock.GetHash())
 	fmt.Printf("Incoming index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
 
-	if newBlock.Head.ChainId.Cmp(big.NewInt(0)) == 0 {
-		// replace all
-		ClearVault()
-		bc.data = nil
-	}
-	bc.data = append(bc.data, *newBlock)
+	// if newBlock.Head.ChainId.Cmp(big.NewInt(0)) == 0 {
+	// 	// replace all
+	// 	ClearVault()
+	// 	bc.data = nil
+	// }
+	bc.DataChannel <- newBlock.ToBytes()
+
+	bc.data = append(bc.data, newBlock)
+	bc.currentBlock = newBlock
 	fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
 
 	// bc.currentBlock = newBlock
@@ -354,6 +288,12 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 		var rewardAddress = newBlock.Head.Node
 		fmt.Printf("Reward to: %s\r\n", rewardAddress)
 	}
+
+	var v = validator.Get()
+	for _, btx := range newBlock.Transactions {
+		v.ExecuteTransaction(btx)
+	}
+
 	bc.info.Latest = newBlock.GetHash()
 	bc.info.Total = bc.info.Total + 1
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
@@ -383,32 +323,19 @@ func (bc *Chain) Resume() {
 		}
 	}
 }
+func (bc *Chain) GetChainId() int {
+	return bc.chainId
+}
+func (bc *Chain) GetCurrentChainOwnerAddress() types.Address {
+	return bc.currentAddress
+}
 
 // return lenght of array
-func ValidateBlocks(blocks []block.Block) (int, error) {
+func ValidateBlocks(blocks []*block.Block) (int, error) {
 	// var vld = validator.Get()
 
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
 	}
-
-	// for i, blk := range blocks {
-	// 	// check version chain
-	// 	if vld.GetVersion() != blocks[i].Head.V {
-	// 		return i, errors.New("wrong chain version")
-	// 	}
-	// 	if blocks[i].Head.GasUsed > blocks[i].Head.GasLimit {
-	// 		return i, errors.New("wrong gas data in block")
-	// 	}
-	// 	// Проверка целостности цепочки блоков
-	// 	if i > 0 {
-	// 		prevBlock := blocks[i-1]
-	// 		//log.Printf("%d-%d: %s - %s\r\n", i-1, i, blk.Head.PrevHash, prevBlock.Hash())
-	// 		if blk.Head.PrevHash.String() != prevBlock.Hash().String() {
-	// 			return i - 1, fmt.Errorf("block %d has invalid previous hash", i)
-	// 		}
-	// 	}
-	// }
-
 	return len(blocks), nil
 }

@@ -8,17 +8,16 @@ import (
 )
 
 type StateAccount struct {
-	Address  Address
-	Balance  *big.Int
-	Bloom    []byte
-	CodeHash []byte
-	Name     string
-	Nonce    uint64
-	Root     common.Hash // merkle root of the storage trie
-	Status   string
-	// Treasury []*coinbase.CoinBase
-	Inputs     []common.Hash
-	Passphrase common.Hash
+	Address    Address
+	Balance    *big.Int
+	Bloom      []byte
+	CodeHash   []byte
+	Name       string
+	Nonce      uint64
+	Root       common.Hash // merkle root of the storage trie
+	Status     string
+	Inputs     []common.Hash // hashes of transactions
+	Passphrase common.Hash   // hash of password
 	// bip32 data
 	MPub string
 	// MPriv    *bip32.Key

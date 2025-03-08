@@ -36,7 +36,7 @@ var (
 
 var N *Node
 
-func NewServer(cfg *config.Config, flag string, address string) {
+func NewServer(cfg *config.Config, flag string, address string) error {
 
 	// Флаги
 	// mode := flag.String("mode", "server", "Режим работы: server или client")
@@ -55,6 +55,7 @@ func NewServer(cfg *config.Config, flag string, address string) {
 	default:
 		fmt.Println("Неизвестный режим. Используйте 'server' или 'client'.")
 	}
+	return nil
 }
 
 // Запуск сервера

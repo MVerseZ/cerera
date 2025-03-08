@@ -95,7 +95,7 @@ func Sender(signer Signer, tx *GTransaction) (Address, error) {
 
 type SimpleSigner struct {
 	chainId, chainIdMul *big.Int
-	pen                 *ecdsa.PrivateKey
+	// pen                 *ecdsa.PrivateKey
 }
 
 func (ss SimpleSigner) ChainID() *big.Int {
@@ -111,9 +111,9 @@ func (fs SimpleSigner) Hash(tx *GTransaction) common.Hash {
 	return crvTxHash(tx.inner)
 }
 
-func (fs SimpleSigner) Pen() *ecdsa.PrivateKey {
-	return fs.pen
-}
+// func (fs SimpleSigner) Pen() *ecdsa.PrivateKey {
+// 	return fs.pen
+// }
 
 func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
 	if tx.Type() != LegacyTxType {
@@ -175,13 +175,13 @@ func VerifyECDSAWithZk(pubkey []byte, message []byte, zkProof interface{}) (bool
 	return true, nil
 }
 
-func NewSimpleSignerWithPen(chainId *big.Int, pekn *ecdsa.PrivateKey) Signer {
+func NewSimpleSignerWithPen(chainId *big.Int) Signer { //}, pekn *ecdsa.PrivateKey) Signer {
 	if chainId == nil {
 		chainId = new(big.Int)
 	}
 	return SimpleSigner{
 		chainId:    chainId,
 		chainIdMul: new(big.Int).Mul(chainId, big.NewInt(2)),
-		pen:        pekn,
+		// pen:        pekn,
 	}
 }

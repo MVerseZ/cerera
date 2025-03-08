@@ -30,7 +30,7 @@ func CurrentReward() int {
 }
 
 // SetCoinbase initializes the global Coinbase data.
-func InitOperationData() {
+func InitOperationData() error {
 	var addr = types.HexToAddress(AddressHex)
 	var faucetAddr = types.HexToAddress(FaucetAddressHex)
 
@@ -62,11 +62,13 @@ func InitOperationData() {
 		Status:   "OP_ACC_C",
 		Inputs:   []common.Hash{},
 	}
+
 	Faucet = coinbaseData{
 		coinbaseAccount: fc,
 		address:         faucetAddr,
 		balance:         big.NewInt(0),
 	}
+	return nil
 }
 
 // GetCoinbaseAddress returns the global Coinbase address.
@@ -88,10 +90,9 @@ func RewardBlock() *big.Int {
 	return blockReward
 }
 
-func DropFaucet(faucetValue int) *big.Int {
-	var faucetVal_BigInt = types.FloatToBigInt(float64(faucetValue))
-	Coinbase.balance = Coinbase.balance.Sub(Coinbase.balance, faucetVal_BigInt)
-	return faucetVal_BigInt
+func DropFaucet(faucetValue *big.Int) *big.Int {
+	Coinbase.balance = Coinbase.balance.Sub(Coinbase.balance, faucetValue)
+	return faucetValue
 }
 
 func CreateCoinBaseTransation(nonce uint64, addr types.Address) types.GTransaction {
@@ -105,15 +106,14 @@ func FaucetAccount() types.StateAccount {
 func GetFaucetAddress() types.Address {
 	return Faucet.address
 }
-
 func FaucetTransaction(nonce uint64, destAddr types.Address, cnt float64) *types.GTransaction {
-	var tx = types.NewTransaction(
+
+	var tx = types.NewFaucetTransaction(
 		nonce,
 		destAddr,
 		types.FloatToBigInt(cnt),
-		10000,
-		types.FloatToBigInt(0.343),
-		[]byte("FAUCET_REQ_TX"),
 	)
+	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(cnt))
+	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(1000))
 	return tx
 }
