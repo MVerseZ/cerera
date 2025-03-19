@@ -22,7 +22,7 @@ type Signer interface {
 	// // Equal returns true if the given signer is the same as the receiver.
 	Equal(Signer) bool
 
-	Pen() *ecdsa.PrivateKey
+	// Pen() *ecdsa.PrivateKey
 }
 type GDP77Signer struct {
 }

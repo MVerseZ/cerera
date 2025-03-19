@@ -17,7 +17,7 @@ const DefaultRpcPort = int(1337)
 var ChainId = big.NewInt(133707331)
 
 type ChainConfig struct {
-	ChainID *big.Int
+	ChainID int
 	Path    string
 	Type    string
 }
@@ -67,7 +67,7 @@ func GenerageConfig() *Config {
 			TlsFlag: false,
 			POOL: PoolConfig{
 				MinGas:  3,
-				MaxSize: 1000000,
+				MaxSize: 1_000_000, // bytes
 			},
 			Vault: VaultConfig{
 				MEM:  true,
@@ -82,7 +82,7 @@ func GenerageConfig() *Config {
 				PID: "/vavilov/1.0.0",
 			},
 			Chain: ChainConfig{
-				ChainID: big.NewInt(11),
+				ChainID: 11,
 				Path:    "EMPTY",
 				Type:    "VAVILOV",
 			},

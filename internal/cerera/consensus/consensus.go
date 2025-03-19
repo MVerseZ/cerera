@@ -5,7 +5,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/types"
 )
@@ -82,14 +81,14 @@ func CalculateProposals(c *ConsensusOld) float64 {
 	return newProposalW
 }
 
-func ConfirmBlock(b block.Block) bool {
-	fmt.Printf("Confirmind block %s with percent %f\r\n", b.Hash(), c.CurrentProposalsPercent)
-	if c.CurrentProposalsPercent == 1.0 {
-		return true
-	} else {
-		return false
-	}
-}
+// func ConfirmBlock(b block.Block) bool {
+// 	fmt.Printf("Confirmind block %s with percent %f\r\n", b.Hash(), c.CurrentProposalsPercent)
+// 	if c.CurrentProposalsPercent == 1.0 {
+// 		return true
+// 	} else {
+// 		return false
+// 	}
+// }
 
 func PrintInfo(v bool) {
 	fmt.Printf(

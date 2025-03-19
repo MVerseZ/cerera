@@ -1,37 +1,25 @@
 package block
 
 import (
-	"math/big"
 	"time"
-	"unsafe"
 
 	"github.com/cerera/internal/cerera/types"
 )
 
-func Genesis(chainId *big.Int) Block {
+func GenesisHead(chainId int) *Header {
 	var genesisHeader = &Header{
 		Ctx:        17,
-		Difficulty: big.NewInt(11111111111),
-		Extra:      []byte("GENESYS BLOCK VAVILOV PROTOCOL"),
+		Difficulty: 111111111111111, //uint64(111111111111111), // 4 trailng zeros
+		Extra:      [8]byte{0x1, 0xf, 0x0, 0x0, 0x0, 0x0, 0xd, 0xe},
 		Height:     0,
 		Timestamp:  uint64(time.Now().UnixMilli()),
 		GasLimit:   250000,
 		GasUsed:    249999,
-		Number:     chainId,
+		ChainId:    chainId,
 		Node:       types.EmptyAddress(),
 		Size:       0,
-		V:          "ALPHA-0.0.1",
+		V:          [8]byte{0xe, 0x0, 0xf, 0xf, 0xf, 0xf, 0x2, 0x1},
+		Nonce:      5437,
 	}
-
-	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
-	var genesisBlock = Block{
-		Head:  genesisHeader,
-		Nonce: 5377,
-	}
-	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
-	genesisBlock.Transactions = []*types.GTransaction{}
-	//make([]common.Hash, 0)
-	var finalSize = unsafe.Sizeof(genesisBlock)
-	genesisBlock.Head.Size = int(finalSize)
-	return genesisBlock
+	return genesisHeader
 }

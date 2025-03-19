@@ -36,14 +36,26 @@ func Execute(method string, params []interface{}) interface{} {
 	switch method {
 	case "network":
 		Result = "_SINGLE_NODE_"
+	case "coinbase":
+		Result = types.BigIntToFloat(coinbase.TotalValue)
 	case "accounts", "account.getAll":
 		// get all accounts of system
 		Result = vlt.GetAll()
 	case "accounts_cnt", "account.getCntAll":
 		// get all accounts of system
 		Result = vlt.GetCount()
-	case "coinbase":
-		Result = types.BigIntToFloat(coinbase.TotalValue)
+	case "account_inputs", "account.Inputs":
+		if len(params) == 1 {
+			addressStr, ok := params[0].(string)
+			if !ok {
+				Result = "Error"
+				return 0xf
+			}
+			var addr = types.HexToAddress(addressStr)
+			Result = vlt.Get(addr).Inputs
+		} else {
+			Result = "Wrong count of params"
+		}
 	case "create_account", "account.create":
 		// get all accounts of system
 		//
@@ -60,7 +72,7 @@ func Execute(method string, params []interface{}) interface{} {
 			return 0xf
 		}
 		// network broadcast
-		N.BroadcastAcc(vlt.Get(*addr))
+		// N.BroadcastAcc(vlt.Get(*addr))
 		type res struct {
 			Address  *types.Address `json:"address,omitempty"`
 			Priv     string         `json:"priv,omitempty"`
@@ -99,6 +111,18 @@ func Execute(method string, params []interface{}) interface{} {
 			Pub:  pk,
 			Addr: addr,
 		}
+	case "verify_account", "account.verify":
+		walletAddress, ok1 := params[0].(string)
+		passphraseStr, ok2 := params[1].(string)
+		if !ok1 || !ok2 {
+			return 0xf
+		}
+		addr, err := vlt.VerifyAccount(types.HexToAddress(walletAddress), passphraseStr)
+		if err != nil {
+			Result = "Error while restore"
+			return 0xf
+		}
+		return addr
 	case "get_minimum_gas_value", "chain.getMinimumGasValue":
 		// get min gas value
 		Result = p.GetMinimalGasValue()
@@ -122,16 +146,17 @@ func Execute(method string, params []interface{}) interface{} {
 		// var txHash, err = vldtr.Faucet(to, int(count))
 		var addrTo = types.HexToAddress(to)
 		var coinbaseTx = coinbase.FaucetTransaction(gigea.C.Nonce, addrTo, count)
+		// vldtr.SignRawTransactionWithKey(coinbaseTx, coinbase.FaucetAccount().MPub)
 		p.Funnel <- []*types.GTransaction{coinbaseTx}
-		go N.BroadcastTx(*coinbaseTx)
+		// go N.BroadcastTx(*coinbaseTx)
 		Result = coinbaseTx
 	case "getblockchaininfo", "cerera.getInfo":
 		// get info of (block)chain
 		Result = bc.GetInfo()
 	case "getblockcount", "cerera.getBlockCount":
 		// get latest block of chain
-		Result = bc.GetLatestBlock().Header().Number
-	case "getblockhash", "cerera.getBlockHash":
+		Result = bc.GetLatestBlock().Header().Height
+	case "getblockbyindex", "cerera.getBlockByIndex":
 		number, ok := params[0].(float64)
 		if !ok {
 			Result = "Error"
@@ -190,7 +215,7 @@ func Execute(method string, params []interface{}) interface{} {
 		if len(params) < 3 {
 			Result = "Wrong count of params"
 		} else {
-			_, ok0 := params[0].(string)
+			spk, ok0 := params[0].(string)
 			addrStr, ok1 := params[1].(string)
 			count, ok2 := params[2].(float64)
 			gas, ok3 := params[3].(float64)
@@ -202,11 +227,12 @@ func Execute(method string, params []interface{}) interface{} {
 				var addrTo = types.HexToAddress(addrStr)
 				var gasInt = int(gas)
 				tx, err := types.CreateUnbroadcastTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
+				tx, err = vldtr.SignRawTransactionWithKey(tx, spk)
 				if err != nil {
 					Result = "Error while create transaction!"
 					return 0xf
 				}
-				go N.BroadcastTx(*tx)
+				// go N.BroadcastTx(*tx)
 				p.Funnel <- []*types.GTransaction{tx}
 				Result = tx.Hash()
 				// // var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)
@@ -223,6 +249,21 @@ func Execute(method string, params []interface{}) interface{} {
 				// 	Result = types.EmptyCodeHash
 				// }
 			}
+		}
+	case "get_tx", "cerera.getTransaction":
+		// get transaction by hash
+
+		// hash
+		if len(params) == 1 {
+			txHashStr, ok0 := params[0].(string)
+			if !ok0 {
+				Result = "Error parse params"
+				return 0xf
+			} else {
+				Result = txHashStr
+			}
+		} else {
+			Result = "Wrong count of params"
 		}
 	case "info", "cerera.getVersion":
 		Result = vldtr.GetVersion()
@@ -265,7 +306,7 @@ func Execute(method string, params []interface{}) interface{} {
 	case "cerera.consensus.ready":
 		bc.Resume()
 		// guest use latest block for sync
-		Result = bc.GetLatestBlock().Hash()
+		// Result = bc.GetLatestBlock().Hash()
 	case "cerera.consensus.block":
 
 	default:

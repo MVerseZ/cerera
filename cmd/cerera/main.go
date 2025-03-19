@@ -10,113 +10,146 @@ import (
 	"syscall"
 
 	"github.com/cerera/internal/cerera/chain"
-	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/miner"
+	"github.com/cerera/internal/cerera/net"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
-	"github.com/cerera/internal/cerera/randomx"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea/gigea"
 )
 
-type Process struct {
-}
+// Process управляет жизненным циклом приложения.
+type Process struct{}
 
+// Stop завершает работу приложения.
 func (p *Process) Stop() {
-	fmt.Printf("Stopping...\r\n")
-	fmt.Printf("Stopped!\r\n")
+	fmt.Println("Stopping...")
+	fmt.Println("Stopped!")
 }
 
-type cerera struct {
-	bc     chain.Chain
-	g      validator.Validator
+// Cerera объединяет основные компоненты приложения.
+type Cerera struct {
+	bc     *chain.Chain
+	g      *validator.Validator
 	h      *network.Node
 	p      *pool.Pool
 	proc   Process
-	v      storage.Vault
+	v      *storage.Vault
 	status [8]byte
 }
 
-// todo run as daemin service
-func main() {
-	// listenRpcPortParam := flag.Int("r", -1, "rpc port to listen")
-	// listenP2pPortParam := flag.Int("l", -1, "p2p port for connections")
-	// port := flag.Int("p", 11, "p2p port for connections")
-	// gossipAddress := flag.String("g", "", "gossip address")
-	keyPathFlag := flag.String("key", "", "path to pem key")
-	// logto := flag.String("logto", "stdout", "file path to log to, \"syslog\" or \"stdout\"")
-	mode := flag.String("mode", "server", "Режим работы: server или client")
-	address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
-	http := flag.Int("http", 8080, "Порт для http сервера")
-	inMemFlag := flag.Bool("mem", true, "Хранение данных память/диск")
-	flag.Parse()
+// NewCerera создаёт и инициализирует экземпляр Cerera.
+func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, httpPort int, mine bool) (*Cerera, error) {
+	// Инициализация внутренних компонентов
+	if err := gigea.Init(cfg.NetCfg.ADDR); err != nil {
+		return nil, fmt.Errorf("failed to init gigea: %w", err)
+	}
+	if err := coinbase.InitOperationData(); err != nil {
+		return nil, fmt.Errorf("failed to init coinbase: %w", err)
+	}
 
-	// init log
-	// Open log file
-	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	// Инициализация хранилища
+	vault, err := storage.NewD5Vault(cfg)
 	if err != nil {
-		log.Fatalf("error opening file: %v", err)
+		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
-	defer f.Close()
-	log.SetOutput(f)
 
-	cfg := config.GenerageConfig()
-	// cfg.SetPorts(*listenRpcPortParam, *listenP2pPortParam)
-	cfg.SetNodeKey(*keyPathFlag)
-	cfg.SetAutoGen(true)
-	cfg.SetInMem(*inMemFlag)
+	// Инициализация сети
+	if mode == "p2p" {
+		go net.StartNode(address, cfg.NetCfg.ADDR)
+	} else {
+		if err := network.NewServer(cfg, mode, address); err != nil {
+			return nil, fmt.Errorf("failed to start network server: %w", err)
+		}
+	}
+	go network.SetUpHttp(httpPort)
+	go network.NewWsManager().Start()
 
-	ctx, _ := signal.NotifyContext(context.Background(), os.Kill, syscall.SIGTERM)
+	// Инициализация валидатора, цепочки и пула
+	val, err := validator.NewValidator(ctx, *cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init validator: %w", err)
+	}
+	if err := chain.InitBlockChain(cfg); err != nil {
+		return nil, fmt.Errorf("failed to init blockchain: %w", err)
+	}
+	poolInstance, err := pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init pool: %w", err)
+	}
 
-	var flags = []randomx.Flag{randomx.FlagDefault}
-	var myCache, _ = randomx.AllocCache(flags...)
-	var seed = []byte("SEED")
-	randomx.InitCache(myCache, seed)
-	var dataset, _ = randomx.AllocDataset(flags...)
-	var xvm, _ = randomx.CreateVM(myCache, dataset, flags...)
-	var res = randomx.CalculateHash(xvm, []byte("TEST INPUT DATA"))
-	fmt.Println(common.BytesToHash(res))
-	fmt.Println(res)
-	var res2 = randomx.CalculateHashNext(xvm, res)
-	fmt.Println(common.BytesToHash(res2))
-	fmt.Println(res2)
-	res = res2
-	randomx.DestroyVM(xvm)
+	// Инициализация майнера
+	if err := miner.Init(); err != nil {
+		return nil, fmt.Errorf("failed to init miner: %w", err)
+	}
+	if mine {
+		go miner.Run()
+	}
 
-	//## No multithreading.
-	// start steps
-
-	// inner structs
-	gigea.Init(cfg.NetCfg.ADDR)
-	coinbase.InitOperationData()
-
-	// public structs
-	storage.NewD5Vault(cfg)
-
-	// i/o structs
-	network.NewServer(cfg, *mode, *address)
-	go network.SetUpHttp(*http)
-
-	// validator.NewValidator(ctx, *cfg)
-	// chain.InitBlockChain(cfg)
-	pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
-
-	c := cerera{
-		// g:  validator.NewValidator(ctx, *cfg),
-		// bc: chain.InitBlockChain(cfg), //? chain use validator, init it before, not a clean way
-		// h: host,
-		// p: pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize),
-		// v:      storage.NewD5Vault(cfg),
+	return &Cerera{
+		bc:     chain.GetBlockChain(),
+		g:      &val,
+		p:      poolInstance,
+		v:      &vault,
+		proc:   Process{},
 		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
-	}
-	<-ctx.Done()
-	c.proc.Stop()
+	}, nil
 }
 
-// stages:
-// start app
-// check network connection and status of network
-// ...
-// PROFIT
+// setupLogging настраивает логирование в файл.
+func setupLogging() error {
+	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return fmt.Errorf("error opening log file: %w", err)
+	}
+	log.SetOutput(f)
+	return nil
+}
+
+// parseFlags разбирает аргументы командной строки.
+func parseFlags() (config.Config, string, string, int, bool, bool) {
+	addr := flag.String("addr", "", "p2p address for connection")
+	keyPath := flag.String("key", "", "path to pem key")
+	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
+	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
+	http := flag.Int("http", 8080, "Порт для http сервера")
+	mine := flag.Bool("miner", false, "Флаг для добычи новых блоков")
+	inMem := flag.Bool("mem", true, "Хранение данных память/диск")
+	flag.Parse()
+
+	cfg := config.GenerageConfig()
+	cfg.SetNodeKey(*keyPath)
+	cfg.SetAutoGen(true)
+	cfg.SetInMem(*inMem)
+
+	return *cfg, *mode, *addr, *http, *mine, *inMem
+}
+
+func main() {
+	// Настройка логирования
+	if err := setupLogging(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Парсинг флагов и создание конфигурации
+	cfg, mode, address, httpPort, mine, _ := parseFlags()
+
+	// Создание контекста с обработкой сигналов
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	// Инициализация приложения
+	app, err := NewCerera(&cfg, ctx, mode, address, httpPort, mine)
+	if err != nil {
+		log.Printf("Failed to initialize Cerera: %v", err)
+		os.Exit(1)
+	}
+
+	// Ожидание завершения
+	<-ctx.Done()
+	app.proc.Stop()
+}

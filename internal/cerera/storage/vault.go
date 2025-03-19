@@ -11,6 +11,7 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
+
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -28,6 +29,7 @@ type Vault interface {
 	GetOwner() types.StateAccount
 	Size() int64
 	Sync(saBytes []byte)
+	VerifyAccount(address types.Address, pass string) (types.Address, error)
 	//
 }
 
@@ -53,7 +55,7 @@ func GetVault() *D5Vault {
 }
 
 // NewD5Vault initializes and returns a new vault instance.
-func NewD5Vault(cfg *config.Config) Vault {
+func NewD5Vault(cfg *config.Config) (Vault, error) {
 	gob.Register(types.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
@@ -81,7 +83,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
 		Status:   "OP_ACC_NODE",
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs:   nil,
+		Inputs:   types.Input{M: make(map[common.Hash]*big.Int)},
 		MPub:     publicKey.B58Serialize(),
 	}
 
@@ -120,7 +122,7 @@ func NewD5Vault(cfg *config.Config) Vault {
 		SaveToVault(faucetAddr.Bytes())
 	}
 
-	return &vlt
+	return &vlt, nil
 }
 
 func (v *D5Vault) Prepare() {
@@ -171,7 +173,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 		CodeHash:   derBytes,
 		Status:     "OP_ACC_NEW",
 		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs:     nil,
+		Inputs:     types.Input{M: make(map[common.Hash]*big.Int)},
 		Passphrase: common.BytesToHash([]byte(pass)),
 		Mnemonic:   mnemonic,
 		MPub:       publicKey.B58Serialize(),
@@ -259,14 +261,19 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	// decrement first
 	// wtf big int sub only?
 
-	fmt.Println("Update balance")
+	fmt.Printf("\tupdate balance of %s\r\n", to)
+	fmt.Printf("\tupdate balance from %s\r\n", from)
 	var sa = v.Get(from)
+	fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
+	fmt.Printf("\tamount to transfer: %d\r\n", cnt)
 	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
-	// sa = v.accounts.GetAccount(from)
-
 	// increment second
 	var saDest = v.Get(to)
 	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+	saDest.AddInput(txHash, cnt)
+	fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
+		sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
+	fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
 	// when increment, add input to account - tx hash
 	// saDest.Inputs = append(saDest.Inputs, txHash)
@@ -280,17 +287,32 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 }
 
 // faucet method without creating transaction
-func (v *D5Vault) FaucetBalance(to types.Address, cntval int) error {
+func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
 
-	var destSA = v.Get(to)
-	var faucetTo = coinbase.DropFaucet(cntval)
+	fmt.Printf("\tupdate balance of %s\r\n", to)
+	fmt.Printf("\tupdate balance from %s\r\n", coinbase.GetCoinbaseAddress().String())
+	var sa = v.Get(coinbase.GetFaucetAddress())
+	fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
+	fmt.Printf("\tamount to transfer: %d\r\n", cnt)
+	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
+	// increment second
+	var saDest = v.Get(to)
+	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+	saDest.AddInput(txHash, cnt)
+	fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
+		sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
+	fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
-	destSA.Balance.Add(destSA.Balance, faucetTo)
+	// when increment, add input to account - tx hash
+	// saDest.Inputs = append(saDest.Inputs, txHash)
+	// saDest = v.accounts.GetAccount(to)
+
+	// done
 	if !v.inMem {
-		UpdateVault(destSA.Bytes())
+		UpdateVault(saDest.Bytes())
+		UpdateVault(sa.Bytes())
 	}
-
-	coinbase.TotalValue.Sub(coinbase.TotalValue, types.FloatToBigInt(float64(cntval)))
+	// coinbase.TotalValue.Sub(coinbase.TotalValue, types.FloatToBigInt(float64(cntval)))
 
 	return nil
 }
@@ -311,4 +333,12 @@ func (v *D5Vault) GetOwner() types.StateAccount {
 func (v *D5Vault) Sync(saBytes []byte) {
 	var sa = types.BytesToStateAccount(saBytes)
 	v.accounts.Append(sa.Address, sa)
+}
+
+func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address, error) {
+	var acc = v.accounts.GetAccount(addr)
+	if acc.Passphrase == common.BytesToHash([]byte(pass)) {
+		return acc.Address, nil
+	}
+	return types.EmptyAddress(), fmt.Errorf("wrong credentials!")
 }

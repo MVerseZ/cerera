@@ -9,15 +9,15 @@ import (
 
 func TestSigningTx(t *testing.T) {
 
-	var acc, err = GenerateAccount()
+	var accPrivKey, err = GenerateAccount()
 	if err != nil {
 		t.Fatal(err)
 	}
-	signerAcc, err := GenerateAccount()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := PubkeyToAddress(acc.PublicKey)
+	// signerAcc, err := GenerateAccount()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	addr := PubkeyToAddress(accPrivKey.PublicKey)
 
 	dna := make([]byte, 0, 16)
 	dna = append(dna, 0xf, 0xa, 0x42)
@@ -34,9 +34,9 @@ func TestSigningTx(t *testing.T) {
 	}
 	itx := NewTx(txs)
 
-	signer := NewSimpleSignerWithPen(big.NewInt(25331), signerAcc)
+	signer := NewSimpleSignerWithPen(big.NewInt(25331)) //, signerAcc)
 
-	tx, err := SignTx(itx, signer, acc)
+	tx, err := SignTx(itx, signer, accPrivKey)
 	if err != nil {
 		t.Fatal(err)
 	}

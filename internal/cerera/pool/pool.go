@@ -27,6 +27,7 @@ type MemPoolInfo struct {
 
 type Pool struct {
 	Funnel chan []*types.GTransaction // input funnel
+	Listen chan []*types.GTransaction // outbound channel
 
 	maxSize        int
 	minGas         uint64
@@ -50,7 +51,7 @@ func SendTransaction(tx types.GTransaction) (common.Hash, error) {
 	return tx.Hash(), nil
 }
 
-func InitPool(minGas uint64, maxSize int) *Pool {
+func InitPool(minGas uint64, maxSize int) (*Pool, error) {
 	mPool := make(map[common.Hash]types.GTransaction)
 	p = Pool{
 		memPool:        mPool,
@@ -62,12 +63,13 @@ func InitPool(minGas uint64, maxSize int) *Pool {
 		Executed: make([]types.GTransaction, 0),
 
 		Funnel: make(chan []*types.GTransaction),
+		Listen: make(chan []*types.GTransaction),
 		Status: 0xa,
 	}
 	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%d\r\n\tMAX_SIZE:%d\r\n", p.minGas, p.maxSize)
 
 	go p.PoolServiceLoop()
-	return &p
+	return &p, nil
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
@@ -96,6 +98,7 @@ func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
 
 func (p *Pool) GetInfo() MemPoolInfo {
 	var txPoolSize = 0
+
 	var usage uintptr
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
@@ -111,7 +114,8 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	}
 	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
 	var result = MemPoolInfo{
-		Size:             txPoolSize,
+		Size:             len(hashes),
+		Bytes:            txPoolSize,
 		Usage:            usage,
 		UnbroadCastCount: txPoolSize,
 		MaxMempool:       p.maxSize,
@@ -128,6 +132,16 @@ func (p *Pool) GetRawMemPool() []interface{} {
 	for i := range p.memPool {
 		var tx = p.memPool[i]
 		result = append(result, tx.Hash())
+	}
+	return result
+}
+
+func (p *Pool) GetPendingTransactions() []types.GTransaction {
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
+	result := make([]types.GTransaction, 0)
+	for _, k := range p.memPool {
+		result = append(result, k)
 	}
 	return result
 }
@@ -177,10 +191,20 @@ func (p *Pool) PoolServiceLoop() {
 			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
 		case txs := <-p.Funnel:
 			// fmt.Printf("Funnel data arrive\r\n")
-			for _, tx := range txs {
-				p.AddRawTransaction(tx)
-				// gigea.E.TxFunnel <- tx
+			var txPoolSize = 0
+			for _, k := range p.memPool {
+				var txSize = k.Size()
+				txPoolSize += int(txSize)
 			}
+			for _, tx := range txs {
+				if txPoolSize+int(tx.Size()) < p.maxSize {
+					p.AddRawTransaction(tx)
+				} else {
+					break
+				}
+			}
+			// go func() { p.Listen <- txs }()
+
 			// case newBlock := <-gigea.E.BlockPipe:
 			// 	fmt.Println("POOL")
 			// 	for _, tx := range newBlock.Transactions {

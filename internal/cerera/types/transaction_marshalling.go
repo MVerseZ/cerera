@@ -49,13 +49,22 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 		enc.To = tx.To()
 		enc.Dna = (*common.Bytes)(&itx.Dna)
 		enc.Time = (time.Time)(tx.GetTime())
-		enc.Type = AppTxType
+		enc.Type = CoinbaseTxType
 		enc.Hash = tx.Hash()
 		enc.Payload = (*common.Bytes)(&itx.Payload)
 		// var r, s, v = tx.RawSignatureValues()
 		// enc.R = (*Big)(r)
 		// enc.S = (*Big)(s)
 		// enc.V = (*Big)(v)
+	case *FaucetTransaction:
+		enc.Nonce = (*common.Uint64)(&itx.Nonce)
+		enc.Gas = (*common.Uint64)(&itx.Gas)
+		enc.GasPrice = (*common.Big)(itx.GasPrice)
+		enc.Value = (*common.Big)(itx.Value)
+		enc.To = tx.To()
+		enc.Time = (time.Time)(tx.GetTime())
+		enc.Type = FaucetTxType
+		enc.Hash = tx.Hash()
 	default:
 		fmt.Printf("%T\r\n", itx)
 	}
@@ -136,6 +145,35 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		itx.V = (*big.Int)(dec.V)
 
 		itx.Dna = *dec.Dna
+
+		itx.Time = dec.Time
+	case FaucetTxType:
+		var itx PGTransaction
+		inner = &itx
+		if dec.To == nil {
+			return errors.New("missing required field 'to' in transaction")
+		}
+		itx.To = dec.To
+
+		if dec.Nonce == nil {
+			return errors.New("missing required field 'nonce' in transaction")
+		}
+		itx.Nonce = uint64(*dec.Nonce)
+
+		if dec.GasPrice == nil {
+			return errors.New("missing required field 'gasPrice' in transaction")
+		}
+		itx.GasPrice = (*big.Int)(dec.GasPrice)
+
+		if dec.Gas == nil {
+			return errors.New("missing required field 'gas' in transaction")
+		}
+		itx.Gas = uint64(*dec.Gas)
+
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+		itx.Value = (*big.Int)(dec.Value)
 
 		itx.Time = dec.Time
 	default:

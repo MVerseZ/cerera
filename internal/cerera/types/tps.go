@@ -132,6 +132,7 @@ func (a Address) IsEmpty() bool {
 	return cnt == len(bts)
 }
 
+// MarshalText parses a hex string in a hash.
 func (a Address) MarshalText() ([]byte, error) {
 	// fmt.Printf("call marshal of address: %s\r\n", a.Hex())
 	return common.Bytes(a[:]).MarshalText()
