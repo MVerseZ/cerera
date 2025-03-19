@@ -83,7 +83,7 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
 		Status:   "OP_ACC_NODE",
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs:   nil,
+		Inputs:   types.Input{M: make(map[common.Hash]*big.Int)},
 		MPub:     publicKey.B58Serialize(),
 	}
 
@@ -173,7 +173,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 		CodeHash:   derBytes,
 		Status:     "OP_ACC_NEW",
 		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs:     nil,
+		Inputs:     types.Input{M: make(map[common.Hash]*big.Int)},
 		Passphrase: common.BytesToHash([]byte(pass)),
 		Mnemonic:   mnemonic,
 		MPub:       publicKey.B58Serialize(),
@@ -261,16 +261,19 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	// decrement first
 	// wtf big int sub only?
 
-	fmt.Println("Update balance")
-	fmt.Printf("Update balance from %s\r\n", from)
+	fmt.Printf("\tupdate balance of %s\r\n", to)
+	fmt.Printf("\tupdate balance from %s\r\n", from)
 	var sa = v.Get(from)
-	fmt.Printf("balance from: %d\r\n", sa.Balance)
+	fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
+	fmt.Printf("\tamount to transfer: %d\r\n", cnt)
 	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
-	// sa = v.accounts.GetAccount(from)
-
 	// increment second
 	var saDest = v.Get(to)
 	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+	saDest.AddInput(txHash, cnt)
+	fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
+		sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
+	fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
 	// when increment, add input to account - tx hash
 	// saDest.Inputs = append(saDest.Inputs, txHash)
@@ -284,18 +287,21 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 }
 
 // faucet method without creating transaction
-func (v *D5Vault) DropFaucet(to types.Address, cntval *big.Int) error {
+func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
 
-	fmt.Println("Update balance")
-	fmt.Printf("Update balance from %s\r\n", coinbase.GetCoinbaseAddress().String())
+	fmt.Printf("\tupdate balance of %s\r\n", to)
+	fmt.Printf("\tupdate balance from %s\r\n", coinbase.GetCoinbaseAddress().String())
 	var sa = v.Get(coinbase.GetFaucetAddress())
-	fmt.Printf("balance from: %d\r\n", sa.Balance)
-	sa.Balance = sa.Balance.Sub(sa.Balance, cntval)
-	// sa = v.accounts.GetAccount(from)
-
+	fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
+	fmt.Printf("\tamount to transfer: %d\r\n", cnt)
+	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
 	// increment second
 	var saDest = v.Get(to)
-	saDest.Balance = saDest.Balance.Add(saDest.Balance, cntval)
+	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+	saDest.AddInput(txHash, cnt)
+	fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
+		sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
+	fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
 	// when increment, add input to account - tx hash
 	// saDest.Inputs = append(saDest.Inputs, txHash)

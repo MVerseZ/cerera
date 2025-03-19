@@ -202,15 +202,19 @@ func (b *Block) ToBytes() []byte {
 // get nonce as [8]byte from header
 func (b *Block) GetNonceBytes() []byte {
 	bts := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bts, uint64(b.Header().Nonce))
+	binary.BigEndian.PutUint64(bts, uint64(b.Header().Nonce))
 	return bts
+}
+
+func (b *Block) IncNonce() {
+	b.Header().Nonce += 1
 }
 
 // get nonce as [4]byte from header
 func (b *Block) SetNonceBytes(newNonce []byte) {
 	bts := make([]byte, 8)
 	copy(bts[:], newNonce[:])
-	b.Head.Nonce = binary.LittleEndian.Uint64(bts)
+	b.Head.Nonce = binary.BigEndian.Uint64(bts)
 }
 
 func (b *Block) UpdateHash() {

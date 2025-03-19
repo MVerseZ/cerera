@@ -24,6 +24,7 @@ type BlockChainStatus struct {
 	ChainWork int         `json:"chainWork,omitempty"`
 	Latest    common.Hash `json:"latest,omitempty"`
 	Size      int64       `json:"size,omitempty"`
+	AvgTime   float64     `json:"avgTime,omitempty"` // Renamed to AvgTime (exported)
 }
 
 type Chain struct {
@@ -46,6 +47,11 @@ type Chain struct {
 	Size           int
 
 	Difficulty uint64
+
+	lastBlockTime int64
+	blockCount    int64
+	totalTime     int64
+	avgTime       float64
 }
 
 var (
@@ -145,6 +151,9 @@ func InitBlockChain(cfg *config.Config) error {
 		DataChannel:    make(chan []byte),
 		Size:           genesisBlock.Header().Size,
 		Difficulty:     genesisBlock.Head.Difficulty,
+		lastBlockTime:  time.Now().Unix(),
+		blockCount:     0,
+		totalTime:      0,
 	}
 	// genesisBlock.Head.Node = bch.currentAddress
 	// go bch.BlockGenerator()
@@ -153,18 +162,27 @@ func InitBlockChain(cfg *config.Config) error {
 	return nil
 }
 
-func (bc *Chain) GetInfo() interface{} {
-	var totalSize = 0
+func (bc *Chain) GetInfo() BlockChainStatus {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	// Calculate total size
+	var totalSize int
 	for _, b := range bc.data {
 		totalSize += b.Header().Size
 	}
+
+	// Update info struct with current values
 	bc.info.Size = int64(totalSize)
+	if len(bc.data) > 0 {
+		bc.info.Latest = bc.data[len(bc.data)-1].GetHash()
+	}
 	bc.info.Total = len(bc.data)
-	bc.info.Latest = bc.data[len(bc.data)-1].GetHash()
+	bc.info.ChainWork = int(bc.chainWork.Int64()) // Convert big.Int to int (if applicable)
+	bc.info.AvgTime = bc.avgTime                  // Ensure avgTime is included
 
 	return bc.info
 }
-
 func (bc *Chain) GetLatestBlock() *block.Block {
 	return bc.currentBlock
 }
@@ -266,7 +284,28 @@ func (bc *Chain) ChangeBlockInterval(val int) {
 	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
 }
 
+/*
+Update chain with new block
+param:
+
+	newBlock: new block for chain update
+*/
 func (bc *Chain) UpdateChain(newBlock *block.Block) {
+	// mined block -> simply approved
+	currentTime := time.Now().Unix()
+	// Calculate time since last block
+	timeSinceLast := currentTime - bc.lastBlockTime
+
+	// Update statistics
+	bc.blockCount++
+	bc.totalTime += timeSinceLast
+	bc.lastBlockTime = currentTime
+
+	// Calculate average
+	if bc.blockCount > 0 {
+		bc.avgTime = float64(bc.totalTime) / float64(bc.blockCount)
+	}
+	fmt.Printf(" \taverage time between blocks: %.2f seconds\r\n", bc.avgTime)
 	fmt.Printf("Current index: %d with hash: %s\r\n",
 		bc.currentBlock.Head.Index, bc.currentBlock.GetHash())
 	fmt.Printf("Incoming index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
@@ -289,14 +328,16 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 		fmt.Printf("Reward to: %s\r\n", rewardAddress)
 	}
 
+	// execute block transactions
 	var v = validator.Get()
 	for _, btx := range newBlock.Transactions {
 		v.ExecuteTransaction(btx)
 	}
-
+	// fill bc info with new latest block
 	bc.info.Latest = newBlock.GetHash()
 	bc.info.Total = bc.info.Total + 1
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+	bc.info.AvgTime = bc.avgTime
 }
 
 func (bc *Chain) Idle() {

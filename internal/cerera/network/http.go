@@ -36,14 +36,26 @@ func Execute(method string, params []interface{}) interface{} {
 	switch method {
 	case "network":
 		Result = "_SINGLE_NODE_"
+	case "coinbase":
+		Result = types.BigIntToFloat(coinbase.TotalValue)
 	case "accounts", "account.getAll":
 		// get all accounts of system
 		Result = vlt.GetAll()
 	case "accounts_cnt", "account.getCntAll":
 		// get all accounts of system
 		Result = vlt.GetCount()
-	case "coinbase":
-		Result = types.BigIntToFloat(coinbase.TotalValue)
+	case "account_inputs", "account.Inputs":
+		if len(params) == 1 {
+			addressStr, ok := params[0].(string)
+			if !ok {
+				Result = "Error"
+				return 0xf
+			}
+			var addr = types.HexToAddress(addressStr)
+			Result = vlt.Get(addr).Inputs
+		} else {
+			Result = "Wrong count of params"
+		}
 	case "create_account", "account.create":
 		// get all accounts of system
 		//
@@ -215,7 +227,7 @@ func Execute(method string, params []interface{}) interface{} {
 				var addrTo = types.HexToAddress(addrStr)
 				var gasInt = int(gas)
 				tx, err := types.CreateUnbroadcastTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
-				vldtr.SignRawTransactionWithKey(tx, spk)
+				tx, err = vldtr.SignRawTransactionWithKey(tx, spk)
 				if err != nil {
 					Result = "Error while create transaction!"
 					return 0xf
@@ -237,6 +249,21 @@ func Execute(method string, params []interface{}) interface{} {
 				// 	Result = types.EmptyCodeHash
 				// }
 			}
+		}
+	case "get_tx", "cerera.getTransaction":
+		// get transaction by hash
+
+		// hash
+		if len(params) == 1 {
+			txHashStr, ok0 := params[0].(string)
+			if !ok0 {
+				Result = "Error parse params"
+				return 0xf
+			} else {
+				Result = txHashStr
+			}
+		} else {
+			Result = "Wrong count of params"
 		}
 	case "info", "cerera.getVersion":
 		Result = vldtr.GetVersion()

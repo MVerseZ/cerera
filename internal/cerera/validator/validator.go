@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	EmptyCoinbase = &decError{"empty hex string"}
+	EmptyCoinbase    = &decError{"empty hex string"}
+	NotEnoughtInputs = &decError{"not enought inputs"}
 )
 
 type decError struct{ msg string }
@@ -108,7 +109,7 @@ func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 			localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 		case types.FaucetTxType:
 			fmt.Printf("\t\t faucet from %s\r\n", tx.From())
-			localVault.DropFaucet(*tx.To(), tx.Value())
+			localVault.DropFaucet(*tx.To(), val, tx.Hash())
 		case types.CoinbaseTxType:
 			fmt.Printf("\t\t coinbase from %s\r\n", tx.From())
 			localVault.UpdateBalance(coinbase.GetCoinbaseAddress(), *tx.To(), val, tx.Hash())
@@ -185,6 +186,20 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	// p.memPool[i] = *signTx
 	// network.PublishData("OP_TX_SIGNED", tx)
 	fmt.Printf("Now tx %s is %t\r\n", signTx.Hash(), signTx.IsSigned())
+	// check existing inputs
+
+	fmt.Printf("\tcheck tx: %s\r\n", tx.Hash())
+	var bFrom, bTo, bVal = vlt.Get(tx.From()).Balance, vlt.Get(*tx.To()).Balance, tx.Value()
+	fmt.Printf("\tbalance src %s\r\n", bFrom)
+	fmt.Printf("\tbalance dest %s\r\n", bTo)
+	fmt.Printf("\tamount to transfer: %d\r\n", bVal)
+	// fmt.Printf("\tsrc after transfer: %d\r\n", big.NewInt(0).Sub(bFrom, bVal))
+	// fmt.Printf("\tsrc after transfer: %f\r\n", types.BigIntToFloat(big.NewInt(0).Sub(bFrom, bVal)))
+	// fmt.Printf("\tsrc after transfer: %t\r\n", types.BigIntToFloat(big.NewInt(0).Sub(bFrom, bVal)) < 0.0)
+
+	if types.BigIntToFloat(big.NewInt(0).Sub(bFrom, bVal)) < 0.0 {
+		return nil, NotEnoughtInputs
+	}
 	return signTx, nil
 }
 

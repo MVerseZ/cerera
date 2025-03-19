@@ -22,7 +22,7 @@ var FaucetAddressHex = "0xf00000000000000000000000000000000000000000000000000000
 var TotalValue = types.FloatToBigInt(699999000000.0)
 var FaucetInitialBalance = types.FloatToBigInt(1000000.0)
 var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
-var blockReward = types.FloatToBigInt(1024.0)
+var blockReward = types.FloatToBigInt(1024000.0)
 var InitialNodeBalance = 0.0000
 
 func CurrentReward() int {
@@ -43,7 +43,7 @@ func InitOperationData() error {
 		Nonce:    1,
 		Root:     common.HexToHash(AddressHex),
 		Status:   "OP_ACC_C",
-		Inputs:   []common.Hash{},
+		Inputs:   types.Input{M: make(map[common.Hash]*big.Int)},
 	}
 	Coinbase = coinbaseData{
 		coinbaseAccount: ca,
@@ -60,7 +60,7 @@ func InitOperationData() error {
 		Nonce:    1,
 		Root:     common.HexToHash(AddressHex),
 		Status:   "OP_ACC_C",
-		Inputs:   []common.Hash{},
+		Inputs:   types.Input{M: make(map[common.Hash]*big.Int)},
 	}
 
 	Faucet = coinbaseData{

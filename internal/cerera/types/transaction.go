@@ -130,15 +130,20 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint6
 }
 
 func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
-	var tx = NewTransaction(
-		nonce,
-		addressTo,
-		FloatToBigInt(count),
-		gas,
-		big.NewInt(0),
-		[]byte(message),
-	)
-	return tx, nil
+	// check max size of tx here
+	if len(message) < 1024 {
+		var tx = NewTransaction(
+			nonce,
+			addressTo,
+			FloatToBigInt(count),
+			gas,
+			big.NewInt(0),
+			[]byte(message),
+		)
+		return tx, nil
+	} else {
+		return nil, ErrInvalidMsgLen
+	}
 }
 
 // WithSignature returns a new transaction with the given signature.
@@ -315,8 +320,8 @@ func crvTxHash(t TxData) (h common.Hash) {
 
 	tNonce := make([]byte, 8)
 	tGas := make([]byte, 16)
-	binary.LittleEndian.PutUint64(tNonce, t.nonce())
-	binary.LittleEndian.PutUint64(tGas, t.gas())
+	binary.BigEndian.PutUint64(tNonce, t.nonce())
+	binary.BigEndian.PutUint64(tGas, t.gas())
 
 	hw.Write(h[:0])
 	hw.Write(t.data())

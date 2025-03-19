@@ -23,6 +23,8 @@ type Miner struct {
 	difficulty int64
 	status     string
 
+	HeaderTemplate *block.Header
+
 	latest block.Block
 	chain  *chain.Chain
 	pool   *pool.Pool
@@ -38,6 +40,7 @@ var m *Miner
 var xvm *randomx.RxVM
 
 func Init() error {
+	// init randomx vm
 	var flags = []randomx.Flag{randomx.FlagDefault}
 	var myCache, _ = randomx.AllocCache(flags...)
 	var seed = []byte(big.NewInt(114167270716410).Bytes())
@@ -47,19 +50,6 @@ func Init() error {
 	xvm, _ = randomx.NewRxVM(rxDs, flags...)
 	// randomx.SetVMDataset(xvm, dataset)
 	xvm.CalcHashFirst([]byte("FIRST"))
-	// randomx.CalculateHashFirst(xvm, []byte("FIRST"))
-
-	// var res2 = randomx.CalculateHashNext(xvm, []byte("NEXT"))
-
-	// hash, found, sol := randomx.Search(xvm, []byte("INPUT DATA"), target, maxTimes, jump, nonce)
-	// fmt.Println(hash)
-	// fmt.Println(common.BytesToHash(hash))
-	// fmt.Println(found)
-	// fmt.Println(sol)
-
-	// fmt.Println(common.BytesToHash(res2))
-	// fmt.Println(res2)
-	// randomx.DestroyVM(xvm)
 	return nil
 }
 
@@ -90,7 +80,26 @@ func Run() {
 		},
 	)
 	prometheus.MustRegister(minerMetric)
-
+	cTime := time.Now().Unix() // time for mine
+	// tTime := time.Unix(0, 0).Unix()
+	avgTime := time.Unix(0, 0).Unix()
+	latest := m.chain.GetLatestBlock()
+	m.HeaderTemplate = &block.Header{
+		Ctx:        17,
+		Difficulty: latest.Head.Difficulty,
+		Extra:      [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Height:     latest.Head.Height + 1,
+		Index:      latest.Head.Index + 1,
+		GasLimit:   250000,
+		GasUsed:    1,
+		ChainId:    m.chain.GetChainId(),
+		Node:       m.chain.GetCurrentChainOwnerAddress(),
+		Size:       0,
+		V:          [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0},
+		Nonce:      latest.Head.Nonce,
+		PrevHash:   latest.Hash,
+		Root:       latest.Head.Root,
+	}
 	for {
 		select {
 		case txs := <-m.pool.Listen:
@@ -104,56 +113,66 @@ func Run() {
 			m.status = "STOP"
 			return
 		default:
-			latest := m.chain.GetLatestBlock()
-
-			var head = &block.Header{
-				Ctx:        17,
-				Difficulty: latest.Head.Difficulty,
-				Extra:      [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-				Height:     latest.Head.Height + 1,
-				Index:      latest.Head.Index + 1,
-				GasLimit:   250000,
-				GasUsed:    1,
-				ChainId:    m.chain.GetChainId(),
-				Node:       m.chain.GetCurrentChainOwnerAddress(),
-				Size:       0,
-				V:          [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0},
-				Nonce:      latest.Head.Nonce,
-				PrevHash:   latest.Hash,
-				Root:       latest.Head.Root,
-			}
 			if m.latest.Hash != common.EmptyHash() {
 				m.status = "RUN"
-				var templateBlock = block.NewBlockWithHeader(head)
-				var cbTx = types.NewCoinBaseTransaction(head.Nonce, m.chain.GetCurrentChainOwnerAddress(), coinbase.RewardBlock(), 100, types.FloatToBigInt(1_000_000.0), []byte("COINBASE_TX"))
-
+				var templateBlock = block.NewBlockWithHeader(m.HeaderTemplate)
+				var cbTx = types.NewCoinBaseTransaction(m.HeaderTemplate.Nonce, m.chain.GetCurrentChainOwnerAddress(), coinbase.RewardBlock(), 100, types.FloatToBigInt(1_000_000.0), []byte("COINBASE_TX"))
 				var txs = m.pool.GetPendingTransactions()
 
 				templateBlock.Transactions = append(templateBlock.Transactions, *cbTx)
 				templateBlock.Transactions = append(templateBlock.Transactions, txs...)
-				fmt.Printf("\tdifficulty:%d\r\n\tnonce:%x\r\n", head.Difficulty, templateBlock.GetNonceBytes())
-				var h, f, sol = xvm.Search(templateBlock.ToBytes(), head.Difficulty, 1000000, 1, templateBlock.GetNonceBytes())
+				for _, tx := range txs {
+					templateBlock.Head.GasUsed += tx.Gas()
+				}
+
+				// 1000000 and 1 ~ avg 60 sec searching
+				var h, f, sol = xvm.Search(
+					templateBlock.ToBytes(),
+					m.HeaderTemplate.Difficulty,
+					8000000,
+					// 8 * 1_000_000 PER CPU
+					100000, // more -> faster
+					/*
+						Small jump (10,000–50,000): For high difficulty or solo mining, ensuring thorough coverage.
+						Medium jump (100,000–200,000): Balanced approach, as in the default 111111, suitable for typical Monero difficulty.
+						Large jump (500,000+): For low difficulty or pool mining with many miners, prioritizing speed.
+					*/
+					templateBlock.GetNonceBytes(),
+				)
 				if f {
+					fmt.Printf(" \tfound!\r\n")
 					minerMetric.Inc()
-					fmt.Printf(" hash length from miner: %d\r\n", len(h))
+					cTime = time.Now().Unix() - cTime
+					// tTime = tTime + cTime
+					avgTime = cTime / int64(templateBlock.Head.Index)
+
+					fmt.Printf(" \tavg time : %d\r\n", avgTime)
+					fmt.Printf("\thash length from miner: %d\r\n\thash hex:%x\r\n", len(h), h)
+					fmt.Printf("\twith nonce %d and solution %d HEX:%x\r\n", m.HeaderTemplate.Nonce, sol, sol)
+
 					templateBlock.Hash = common.BytesToHash(h)
 					templateBlock.SetNonceBytes(sol)
 					// fill other fields
 					templateBlock.Head.Timestamp = uint64(time.Now().UnixMilli())
 
-					fmt.Printf("Size of new block is: %d\r\n", int(unsafe.Sizeof(templateBlock))+int(unsafe.Sizeof(templateBlock.Head)))
+					fmt.Printf("\tsize of new block is: %d\r\n", int(unsafe.Sizeof(templateBlock))+int(unsafe.Sizeof(templateBlock.Head)))
 					bb, _ := json.Marshal(templateBlock)
 					templateBlock.Head.Size = len(bb)
-
-					fmt.Println(common.BytesToHash(h))
-					fmt.Println(f)
-					fmt.Println(sol)
+					fmt.Printf("\tfound hash:%s\r\n", common.BytesToHash(h))
 					for _, ttx := range txs {
 						m.pool.RemoveFromPool(ttx.Hash())
 					}
 					m.chain.UpdateChain(templateBlock)
+					m.status = "FND"
+					m.UpdateTemplate()
+				} else {
+					// fmt.Printf("Cannot found with %d, and diff %d\r\n", templateBlock.Head.Nonce, m.HeaderTemplate.Difficulty)
+					m.HeaderTemplate.Nonce += 1
+					// fmt.Printf("\tchange diff to %d\r\n", m.HeaderTemplate.Difficulty )
 				}
-				m.status = "FND"
+				if m.HeaderTemplate.Nonce%100000 == 0 {
+					fmt.Printf("\t now: %d\r\n", m.HeaderTemplate.Nonce)
+				}
 			} else {
 				m.status = "NO_BLOCK"
 				var b = m.chain.GetLatestBlock()
@@ -165,6 +184,26 @@ func Run() {
 		}
 	}
 
+}
+
+func (m *Miner) UpdateTemplate() {
+	latest := m.chain.GetLatestBlock()
+	m.HeaderTemplate = &block.Header{
+		Ctx:        17,
+		Difficulty: latest.Head.Difficulty,
+		Extra:      [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Height:     latest.Head.Height + 1,
+		Index:      latest.Head.Index + 1,
+		GasLimit:   250000,
+		GasUsed:    1,
+		ChainId:    m.chain.GetChainId(),
+		Node:       m.chain.GetCurrentChainOwnerAddress(),
+		Size:       0,
+		V:          [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0},
+		Nonce:      latest.Head.Nonce,
+		PrevHash:   latest.Hash,
+		Root:       latest.Head.Root,
+	}
 }
 
 func (m *Miner) Stop() {

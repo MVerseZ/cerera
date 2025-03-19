@@ -29,9 +29,14 @@ func BytesToHash(b []byte) Hash {
 }
 
 func (h *Hash) SetBytes(b []byte) {
+	// fmt.Println("===========")
+	// fmt.Printf("\tsrc len:%d\r\n", len(b))
+	// fmt.Printf("\thash len:%d\r\n", len(h))
 	if len(b) > len(h) {
 		b = b[len(b)-HashLength:]
 	}
+	// fmt.Printf("\tcpy from index:%d - bytes array:%x\r\n", HashLength-len(b), b)
+	// fmt.Println("===========")
 	copy(h[HashLength-len(b):], b)
 }
 
