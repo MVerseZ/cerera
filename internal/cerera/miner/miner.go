@@ -100,6 +100,7 @@ func Run() {
 		PrevHash:   latest.Hash,
 		Root:       latest.Head.Root,
 	}
+
 	for {
 		select {
 		case txs := <-m.pool.Listen:
@@ -109,15 +110,23 @@ func Run() {
 			m.PreparedTransactions = append(m.PreparedTransactions, txs...)
 		case <-m.BlockChan:
 			fmt.Println("block in")
+			latest = m.chain.GetLatestBlock() // Обновляем latest при получении нового блока
 		case <-m.Quit:
 			m.status = "STOP"
 			return
 		default:
 			if m.latest.Hash != common.EmptyHash() {
 				m.status = "RUN"
-				var templateBlock = block.NewBlockWithHeader(m.HeaderTemplate)
-				var cbTx = types.NewCoinBaseTransaction(m.HeaderTemplate.Nonce, m.chain.GetCurrentChainOwnerAddress(), coinbase.RewardBlock(), 100, types.FloatToBigInt(1_000_000.0), []byte("COINBASE_TX"))
-				var txs = m.pool.GetPendingTransactions()
+				templateBlock := block.NewBlockWithHeader(m.HeaderTemplate)
+				cbTx := types.NewCoinBaseTransaction(
+					m.HeaderTemplate.Nonce,
+					m.chain.GetCurrentChainOwnerAddress(),
+					coinbase.RewardBlock(),
+					100,
+					types.FloatToBigInt(1_000_000.0),
+					[]byte("COINBASE_TX"),
+				)
+				txs := m.pool.GetPendingTransactions()
 
 				templateBlock.Transactions = append(templateBlock.Transactions, *cbTx)
 				templateBlock.Transactions = append(templateBlock.Transactions, txs...)
@@ -129,21 +138,14 @@ func Run() {
 				var h, f, sol = xvm.Search(
 					templateBlock.ToBytes(),
 					m.HeaderTemplate.Difficulty,
-					8000000,
-					// 8 * 1_000_000 PER CPU
-					100000, // more -> faster
-					/*
-						Small jump (10,000–50,000): For high difficulty or solo mining, ensuring thorough coverage.
-						Medium jump (100,000–200,000): Balanced approach, as in the default 111111, suitable for typical Monero difficulty.
-						Large jump (500,000+): For low difficulty or pool mining with many miners, prioritizing speed.
-					*/
+					1000000,
+					100000,
 					templateBlock.GetNonceBytes(),
 				)
 				if f {
 					fmt.Printf(" \tfound!\r\n")
 					minerMetric.Inc()
 					cTime = time.Now().Unix() - cTime
-					// tTime = tTime + cTime
 					avgTime = cTime / int64(templateBlock.Head.Index)
 
 					fmt.Printf(" \tavg time : %d\r\n", avgTime)
@@ -165,8 +167,9 @@ func Run() {
 					m.chain.UpdateChain(templateBlock)
 					m.status = "FND"
 					m.UpdateTemplate()
+					latest = m.chain.GetLatestBlock() // Обновляем latest после нахождения блока
 				} else {
-					// fmt.Printf("Cannot found with %d, and diff %d\r\n", templateBlock.Head.Nonce, m.HeaderTemplate.Difficulty)
+					// Если поиск прерван
 					m.HeaderTemplate.Nonce += 1
 					// fmt.Printf("\tchange diff to %d\r\n", m.HeaderTemplate.Difficulty )
 				}
@@ -175,7 +178,7 @@ func Run() {
 				}
 			} else {
 				m.status = "NO_BLOCK"
-				var b = m.chain.GetLatestBlock()
+				b := m.chain.GetLatestBlock()
 				if m.latest.Hash != b.Hash {
 					m.latest = *b
 				}
@@ -183,7 +186,6 @@ func Run() {
 			}
 		}
 	}
-
 }
 
 func (m *Miner) UpdateTemplate() {

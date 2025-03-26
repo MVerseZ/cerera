@@ -91,12 +91,12 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 
 	if vlt.inMem {
 		var cbAcc = coinbase.CoinBaseStateAccount()
-		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), cbAcc)
+		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
 
 		var faucetAddr = coinbase.FaucetAccount()
-		vlt.accounts.Append(coinbase.GetFaucetAddress(), faucetAddr)
+		vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
 
-		vlt.accounts.Append(rootSA.Address, rootSA)
+		vlt.accounts.Append(rootSA.Address, &rootSA)
 	} else {
 		// TO DO rewrite
 		if _, err := os.Stat("./vault.dat"); errors.Is(err, os.ErrNotExist) || cfg.Vault.PATH == "EMPTY" {
@@ -114,11 +114,11 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 		}
 
 		var cbAcc = coinbase.CoinBaseStateAccount()
-		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), cbAcc)
+		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
 		SaveToVault(cbAcc.Bytes())
 
 		var faucetAddr = coinbase.FaucetAccount()
-		vlt.accounts.Append(coinbase.GetFaucetAddress(), faucetAddr)
+		vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
 		SaveToVault(faucetAddr.Bytes())
 	}
 
@@ -179,7 +179,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 		MPub:       publicKey.B58Serialize(),
 		// MPriv:      masterKey,
 	}
-	v.accounts.Append(address, newAccount)
+	v.accounts.Append(address, &newAccount)
 	// pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: derBytes})
 	// x509EncodedPub, _ := x509.MarshalPKIXPublicKey(pubkey)
 	// pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
@@ -200,7 +200,11 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 	seed := bip39.NewSeed(mnemonic, pass)
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
-	return types.EmptyAddress(), masterKey.B58Serialize(), publicKey.B58Serialize(), nil
+	addr, err := v.accounts.FindAddrByPub(publicKey.B58Serialize())
+	if err == nil {
+		return types.EmptyAddress(), "", "", err
+	}
+	return addr, masterKey.B58Serialize(), publicKey.B58Serialize(), nil
 }
 
 // Get - get account by address
@@ -244,8 +248,9 @@ func (v *D5Vault) GetAll() interface{} {
 	}
 	return v.accounts.GetAll()
 }
+
 func (v *D5Vault) Put(address types.Address, acc types.StateAccount) {
-	v.accounts.Append(address, acc)
+	v.accounts.Append(address, &acc)
 }
 func (v *D5Vault) Size() int64 {
 	var s, err = VaultSourceSize()
@@ -332,7 +337,7 @@ func (v *D5Vault) GetOwner() types.StateAccount {
 
 func (v *D5Vault) Sync(saBytes []byte) {
 	var sa = types.BytesToStateAccount(saBytes)
-	v.accounts.Append(sa.Address, sa)
+	v.accounts.Append(sa.Address, &sa)
 }
 
 func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address, error) {
@@ -340,5 +345,5 @@ func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address,
 	if acc.Passphrase == common.BytesToHash([]byte(pass)) {
 		return acc.Address, nil
 	}
-	return types.EmptyAddress(), fmt.Errorf("wrong credentials!")
+	return types.EmptyAddress(), errors.New("wrong credentials!")
 }

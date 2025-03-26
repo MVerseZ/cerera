@@ -9,7 +9,7 @@ import (
 )
 
 type Input struct {
-	sync.RWMutex
+	*sync.RWMutex
 	M map[common.Hash]*big.Int
 }
 

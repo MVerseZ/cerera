@@ -78,7 +78,7 @@ func SyncVault(path string) error {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		account := types.BytesToStateAccount(line)
-		GetVault().accounts.Append(account.Address, account)
+		GetVault().accounts.Append(account.Address, &account)
 	}
 
 	if err := scanner.Err(); err != nil {

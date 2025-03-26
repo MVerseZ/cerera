@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/cerera/internal/cerera/types"
@@ -26,11 +27,11 @@ func GetAccountsTrie() *AccountsTrie {
 }
 
 // add account with address to Account Tree
-func (at *AccountsTrie) Append(addr types.Address, sa types.StateAccount) {
+func (at *AccountsTrie) Append(addr types.Address, sa *types.StateAccount) {
 	at.mu.Lock()
 	defer at.mu.Unlock()
-	at.accounts[addr] = sa
-	at.index[at.lastInsert] = sa
+	at.accounts[addr] = *sa
+	at.index[at.lastInsert] = *sa
 	at.lastInsert++
 }
 
@@ -78,4 +79,16 @@ func (at *AccountsTrie) GetAll() map[types.Address]float64 {
 
 func (at *AccountsTrie) GetByIndex(idx int64) types.StateAccount {
 	return at.index[idx]
+}
+
+// FindAddrByPub searches for an address by its public key serialization
+func (at *AccountsTrie) FindAddrByPub(pubKey string) (types.Address, error) {
+	at.mu.Lock()
+	defer at.mu.Unlock()
+	for _, account := range at.accounts {
+		if account.MPub == pubKey {
+			return account.Address, nil
+		}
+	}
+	return types.EmptyAddress(), errors.New("public key not found")
 }

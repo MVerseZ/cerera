@@ -85,6 +85,7 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 		}
 	}
 	p.mu.Unlock()
+	p.Listen <- []*types.GTransaction{tx}
 	// fmt.Println(len(p.memPool))
 }
 

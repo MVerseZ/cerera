@@ -25,7 +25,7 @@ var (
 	ErrInvalidPubkey       = errors.New("invalid public key")
 	ErrSignFailed          = errors.New("signing failed")
 	ErrRecoverFailed       = errors.New("recovery failed")
-	ErrTxTypeNotSupported  = errors.New("Tx not supported")
+	ErrTxTypeNotSupported  = errors.New("tx not supported")
 )
 
 type Address [common.AddressLength]byte
