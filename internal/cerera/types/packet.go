@@ -1,8 +1,6 @@
 package types
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"math/big"
 
 	"github.com/cerera/internal/cerera/common"
@@ -44,26 +42,26 @@ func CreateValidatePacket(pk []byte) PacketData {
 	return packetData
 }
 
-func CreateVavilovNamedPacketWithAddr(pk *ecdsa.PublicKey, method string) PacketData {
-	packetData := &VavilovPacketData{}
-	packetData.method = method
-	packetData.addr = PubkeyToAddress(*pk)
-	packetData.status = 0xf
+// func CreateVavilovNamedPacketWithAddr(pk *ecdh.PublicKey, method string) PacketData {
+// 	packetData := &VavilovPacketData{}
+// 	packetData.method = method
+// 	packetData.addr = PubkeyToAddress(*pk)
+// 	packetData.status = 0xf
 
-	packetData.pk = elliptic.Marshal(pk.Curve, pk.X, pk.Y)
-	return packetData
-}
+// 	packetData.pk = elliptic.Marshal(pk.Curve, pk.X, pk.Y)
+// 	return packetData
+// }
 
-func CreateVavilovAccountPacket(pk ecdsa.PublicKey) PacketData {
-	packetData := &VavilovPacketData{}
-	packetData.method = "vavilov.account.status"
-	packetData.status = 0x1
-	packetData.Topic = "ACCOUNT STATUS"
-	addr := PubkeyToAddress(pk)
-	dpKey := elliptic.Marshal(pk.Curve, pk.X, pk.Y)
-	packetData.SetData(dpKey, addr)
-	return packetData
-}
+// func CreateVavilovAccountPacket(pk ecdsa.PublicKey) PacketData {
+// 	packetData := &VavilovPacketData{}
+// 	packetData.method = "vavilov.account.status"
+// 	packetData.status = 0x1
+// 	packetData.Topic = "ACCOUNT STATUS"
+// 	addr := PubkeyToAddress(pk)
+// 	dpKey := elliptic.Marshal(pk.Curve, pk.X, pk.Y)
+// 	packetData.SetData(dpKey, addr)
+// 	return packetData
+// }
 
 func CreateVavilovPacketInnerPacket(adr Address) PacketData {
 	packetData := &VavilovPacketData{}

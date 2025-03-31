@@ -62,8 +62,9 @@ type DDDDDValidator struct {
 
 func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
+	epk := types.ECDHToECDSAPrivate(p)
 	v = &DDDDDValidator{
-		signatureKey:   p,
+		signatureKey:   epk,
 		signer:         types.NewSimpleSignerWithPen(big.NewInt(int64(cfg.Chain.ChainID))), //, p),
 		balance:        big.NewInt(0),                                                      // Initialize balance
 		currentVersion: "ALPHA-0.0.1",
@@ -171,9 +172,11 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	if err1 != nil {
 		return nil, errors.New("error ParsePKC58 key")
 	}
+
+	ecdhKey := types.ECDSAToECDHPrivate(aKey)
 	fmt.Printf("Sing tx: %s\r\n", tx.Hash())
 
-	signTx, err2 := types.SignTx(tx, v.signer, aKey)
+	signTx, err2 := types.SignTx(tx, v.signer, ecdhKey)
 	if err2 != nil {
 		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
 		return nil, errors.New("error while sign tx")

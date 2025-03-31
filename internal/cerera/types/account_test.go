@@ -23,7 +23,7 @@ func CreateTestStateAccount() StateAccount {
 
 	privateKey, _ := GenerateAccount()
 
-	pubkey := &privateKey.PublicKey
+	pubkey := privateKey.PublicKey()
 	address := PubkeyToAddress(*pubkey)
 	derBytes := EncodePrivateKeyToByte(privateKey)
 	// derBytes, _ := x509.MarshalECPrivateKey(privateKey)

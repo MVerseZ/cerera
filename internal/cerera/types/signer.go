@@ -1,7 +1,7 @@
 package types
 
 import (
-	"crypto/ecdsa"
+	"crypto/ecdh"
 	"math/big"
 
 	"github.com/cerera/internal/cerera/common"
@@ -13,7 +13,7 @@ type Signer interface {
 
 	// SignatureValues returns the raw R, S, V values corresponding to the
 	// given signature.
-	SignTransaction(tx *GTransaction, k *ecdsa.PrivateKey) (common.Hash, error)
+	SignTransaction(tx *GTransaction, k *ecdh.PrivateKey) (common.Hash, error)
 	SignatureValues(tx *GTransaction, sig []byte) (r, s, v *big.Int, err error)
 	ChainID() *big.Int
 
