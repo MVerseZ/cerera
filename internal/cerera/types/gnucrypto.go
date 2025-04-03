@@ -148,7 +148,6 @@ func GenerateAccount() (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		panic(err)
 	}
-
 	return pk, nil
 }
 
@@ -179,6 +178,23 @@ func EncodePublicKeyToByte(pub *ecdsa.PublicKey) []byte {
 	x509Encoded, _ := x509.MarshalPKIXPublicKey(pub)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509Encoded})
 	return pemEncoded
+}
+
+func DecodeByteToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("failed to decode PEM block containing public key")
+	}
+	x509Encoded := block.Bytes
+	pub, err := x509.ParsePKIXPublicKey(x509Encoded)
+	if err != nil {
+		return nil, err
+	}
+	ecdsaPub, ok := pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("not an ECDSA public key")
+	}
+	return ecdsaPub, nil
 }
 
 func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {

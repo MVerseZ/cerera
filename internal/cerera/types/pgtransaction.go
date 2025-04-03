@@ -6,6 +6,7 @@ import (
 )
 
 type PGTransaction struct {
+	Status   TxStatus
 	ChainID  *big.Int
 	Nonce    uint64
 	GasPrice *big.Int // wei per gas
@@ -31,6 +32,7 @@ func NewTransactionEnrich(nonce uint64,
 	data []byte,
 	payload []byte) *GTransaction {
 	return NewTx(&PGTransaction{
+		Status:   0x1,
 		Nonce:    nonce,
 		To:       &to,
 		Value:    amount,
@@ -48,6 +50,7 @@ func NewTransaction(nonce uint64,
 	gasPrice *big.Int,
 	data []byte) *GTransaction {
 	return NewTx(&PGTransaction{
+		Status:   0x1,
 		Nonce:    nonce,
 		To:       &to,
 		Value:    amount,
@@ -67,10 +70,11 @@ func (tx *PGTransaction) copy() TxData {
 		return nil
 	}
 	cpy := &PGTransaction{
-		Nonce: tx.Nonce,
-		To:    copyAddressPtr(tx.To),
-		Data:  CopyBytes(tx.Data),
-		Gas:   tx.Gas,
+		Status: tx.Status,
+		Nonce:  tx.Nonce,
+		To:     copyAddressPtr(tx.To),
+		Data:   CopyBytes(tx.Data),
+		Gas:    tx.Gas,
 		// atomic
 		Value:    new(big.Int),
 		GasPrice: new(big.Int),
@@ -142,6 +146,9 @@ func (tx *PGTransaction) time() time.Time {
 	return tx.Time
 }
 
+func (tx *PGTransaction) status() TxStatus {
+	return tx.Status
+}
 func copyAddressPtr(a *Address) *Address {
 	if a == nil {
 		return nil

@@ -17,7 +17,7 @@ const DefaultRpcPort = int(1337)
 var ChainId = big.NewInt(133707331)
 
 type ChainConfig struct {
-	ChainID *big.Int
+	ChainID int
 	Path    string
 	Type    string
 }
@@ -55,6 +55,8 @@ type Config struct {
 	AUTOGEN bool   // auto generating blocks
 	VERSION string // version field
 	VER     int    // other version field
+	Gossip  string
+	IN_MEM  bool // storage inmem?
 }
 
 func GenerageConfig() *Config {
@@ -65,7 +67,7 @@ func GenerageConfig() *Config {
 			TlsFlag: false,
 			POOL: PoolConfig{
 				MinGas:  3,
-				MaxSize: 1000,
+				MaxSize: 1_000_000, // bytes
 			},
 			Vault: VaultConfig{
 				MEM:  true,
@@ -80,12 +82,14 @@ func GenerageConfig() *Config {
 				PID: "/vavilov/1.0.0",
 			},
 			Chain: ChainConfig{
-				ChainID: big.NewInt(11),
+				ChainID: 11,
 				Path:    "EMPTY",
 				Type:    "VAVILOV",
 			},
 			VERSION: "ALPHA",
 			VER:     1,
+			Gossip:  "127.0.0.1:8091",
+			IN_MEM:  true,
 		}
 		cfg.WriteConfigToFile()
 	} else {
@@ -144,7 +148,6 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 	}
 	cfg.NetCfg.ADDR = currentNodeAddress
 	cfg.NetCfg.PRIV = ppk
-
 	cfg.NetCfg.PUB = types.EncodePublicKeyToByte(&nodeK.PublicKey)
 
 	cfg.WriteConfigToFile()
@@ -180,6 +183,10 @@ func (cfg *Config) WriteConfigToFile() error {
 		panic(err)
 	}
 	return nil
+}
+func (cfg *Config) SetInMem(p bool) {
+	cfg.IN_MEM = p
+	cfg.WriteConfigToFile()
 }
 func ReadConfig(filePath string) (*Config, error) {
 	fileData, err := os.ReadFile(filePath)

@@ -3,7 +3,6 @@ package types
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -96,7 +95,7 @@ func Sender(signer Signer, tx *GTransaction) (Address, error) {
 
 type SimpleSigner struct {
 	chainId, chainIdMul *big.Int
-	pen                 *ecdsa.PrivateKey
+	// pen                 *ecdsa.PrivateKey
 }
 
 func (ss SimpleSigner) ChainID() *big.Int {
@@ -112,9 +111,9 @@ func (fs SimpleSigner) Hash(tx *GTransaction) common.Hash {
 	return crvTxHash(tx.inner)
 }
 
-func (fs SimpleSigner) Pen() *ecdsa.PrivateKey {
-	return fs.pen
-}
+// func (fs SimpleSigner) Pen() *ecdsa.PrivateKey {
+// 	return fs.pen
+// }
 
 func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
 	if tx.Type() != LegacyTxType {
@@ -158,29 +157,6 @@ func crvHash(x interface{}) (h common.Hash) {
 	return h
 }
 
-func crvTxHash(t TxData) (h common.Hash) {
-	hw, _ := blake2b.New256(nil)
-
-	tNonce := make([]byte, 16)
-	tGas := make([]byte, 16)
-	binary.LittleEndian.PutUint64(tNonce, t.nonce())
-	binary.LittleEndian.PutUint64(tGas, t.gas())
-
-	hw.Write(h[:0])
-	hw.Write(t.data())
-	hw.Write(t.dna())
-	hw.Write(t.value().Bytes())
-	hw.Write(tNonce)
-	hw.Write(t.to()[:])
-	hw.Write(t.gasPrice().Bytes())
-	hw.Write(tGas)
-
-	dateBytes, _ := t.time().MarshalBinary()
-	hw.Write(dateBytes)
-	h.SetBytes(hw.Sum(nil))
-	return h
-}
-
 func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error) {
 	return BytesToAddress(INRISeq(append(R.Bytes())[1:])[12:]), nil
 }
@@ -199,13 +175,13 @@ func VerifyECDSAWithZk(pubkey []byte, message []byte, zkProof interface{}) (bool
 	return true, nil
 }
 
-func NewSimpleSignerWithPen(chainId *big.Int, pekn *ecdsa.PrivateKey) Signer {
+func NewSimpleSignerWithPen(chainId *big.Int) Signer { //}, pekn *ecdsa.PrivateKey) Signer {
 	if chainId == nil {
 		chainId = new(big.Int)
 	}
 	return SimpleSigner{
 		chainId:    chainId,
 		chainIdMul: new(big.Int).Mul(chainId, big.NewInt(2)),
-		pen:        pekn,
+		// pen:        pekn,
 	}
 }

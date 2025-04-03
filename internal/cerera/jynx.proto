@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package jynx;
+
+option go_package = "/internal/cerera/jynx";
+
+message JynxMessage {
+    string text = 1;
+}

@@ -78,7 +78,7 @@ func SyncVault(path string) error {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		account := types.BytesToStateAccount(line)
-		GetVault().accounts.Append(account.Address, account)
+		GetVault().accounts.Append(account.Address, &account)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -97,7 +97,7 @@ func SaveToVault(account []byte) error {
 
 	// Decode account from bytes using BytesToStateAccount
 	accountData := types.BytesToStateAccount(account)
-	accountData.Status = "SYNC"
+	accountData.Status = "LOCAL"
 	accountDataToWrite := accountData.Bytes()
 	accountDataToWrite = append(accountDataToWrite, '\n') // Добавляем разделитель новой строки
 
@@ -106,7 +106,6 @@ func SaveToVault(account []byte) error {
 	}
 
 	return nil
-
 }
 
 // UpdateVault updates an account in the vault file.

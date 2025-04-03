@@ -184,3 +184,18 @@ func TestEncodePrivateKeyToToString(t *testing.T) {
 		t.Fatalf("Decoded private key does not match the original private key")
 	}
 }
+
+func TestEncode(t *testing.T) {
+	var data2 = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis fermentum id justo a cursus. Ut id libero tortor. Nunc sagittis."
+	expected2 := "QHcZT8DWsLqJQfp343kzSV5KosyyV17iuCrD7gkLYr4S5yVvn7wPgbfgAGEmBsC8Jxztv9sKjMxu6oHCZc7WQutzopekQfYoR4Z44q3524nXT24JdHq5683Fak2anPDwvZid1RJnzCRv2Q9YdbXcGi1Dqa3zrLvidTTvUjC8aKrM"
+	result := Base58Encode([]byte(data2))
+	if result != expected2 {
+		t.Errorf("different encode strings!, Have %s, want %s", result, expected2)
+	}
+	var data1 = "EXAMPLE 1"
+	expected := "tCJ7UoNDJRUk"
+	result = Base58Encode([]byte(data1))
+	if result != expected {
+		t.Errorf("different encode strings!, Have %s, want %s", result, expected)
+	}
+}

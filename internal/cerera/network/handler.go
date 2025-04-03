@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	"github.com/btcsuite/websocket"
-	"github.com/cerera/internal/pallada/pallada"
+	"github.com/cerera/internal/cerera/types"
 )
 
 func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDDDDPoa, m prometheus.Counter) http.HandlerFunc {
@@ -35,7 +35,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			return
 		}
 
-		var request Request
+		var request types.Request
 		err = json.Unmarshal(body, &request)
 		if err != nil {
 			fmt.Println(err)
@@ -43,13 +43,10 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			return
 		}
 
-		// var result =
-		// poa.Execute(request.Method, request.Params)
-		// fmt.Printf("Result byte is:%x\r\n", result)
-		pallada.Execute(request.Method, request.Params)
+		// Execute(request.Method, request.Params)
 
-		var response = Response{
-			Result: pallada.GetData(),
+		var response = types.Response{
+			Result: Execute(request.Method, request.Params),
 		}
 
 		response.JSONRPC = "2.0"
@@ -82,7 +79,11 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 	}
 }
 
+var wsManager = NewWsManager()
+
 var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -105,43 +106,31 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 			return
 		}
 
-		AddWsClientConnection(conn)
+		wsManager.register <- conn
 
-		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("Failed to read message from WebSocket:", err)
-				break
+		go func(conn *websocket.Conn) {
+			defer func() {
+				wsManager.unregister <- conn
+			}()
+
+			for {
+				_, message, err := conn.ReadMessage()
+				if err != nil {
+					log.Println("Failed to read message from WebSocket:", err)
+					break
+				}
+				if string(message) == "ping" {
+					conn.WriteJSON("pong")
+				}
 			}
-
-			if string(message) == "ping" {
-				conn.WriteJSON("pong")
-			}
-
-			// Обработка сообщения и генерация ответа
-			// В этом примере просто отправляем обратно полученное сообщение
-			var request Request
-			var response Response
-			response.JSONRPC = "2.0"
-			response.ID = request.ID
-			err = json.Unmarshal(message, &request)
-		}
+		}(conn)
 	}
 }
 
-type Request struct {
-	JSONRPC string        `json:"jsonrpc"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
-	ID      int           `json:"id"`
-}
-type Response struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result"`
-	ID      int         `json:"id"`
-	Error   *Error      `json:"error,omitempty"`
-}
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+func BroadCastWs(data []byte) {
+
+	// var wst = GetTransport()
+	// for i := 0; i < len(wst.wsListeners); i++ {
+	// 	wst.wsListeners[i].WriteJSON(data)
+	// }
 }
