@@ -17,7 +17,7 @@ func TestSigningTx(t *testing.T) {
 	// if err != nil {
 	// 	t.Fatal(err)
 	// }
-	addr := PubkeyToAddress(*accPrivKey.PublicKey())
+	addr := PubkeyToAddress(accPrivKey.PublicKey)
 
 	dna := make([]byte, 0, 16)
 	dna = append(dna, 0xf, 0xa, 0x42)

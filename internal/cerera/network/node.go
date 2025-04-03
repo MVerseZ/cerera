@@ -2,7 +2,6 @@ package network
 
 import (
 	"bytes"
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
@@ -26,7 +25,7 @@ type KnownNode struct {
 	nodeID types.Address
 	url    string
 	// pubkey *rsa.PublicKey
-	pubkey *ecdh.PublicKey
+	pubkey *ecdsa.PublicKey
 }
 
 type PreKnownNode struct {
@@ -55,8 +54,8 @@ type Node struct {
 }
 
 type Keypair struct {
-	privkey *ecdh.PrivateKey
-	pubkey  *ecdh.PublicKey
+	privkey *ecdsa.PrivateKey
+	pubkey  *ecdsa.PublicKey
 }
 
 type MsgLog struct {
@@ -728,7 +727,7 @@ func (node *Node) BroadcastTx(tx types.GTransaction) {
 	Broadcast(ComposeMsg(hTx, msg, []byte{}))
 }
 
-func (node *Node) findNodePubkey(nodeId types.Address) *ecdh.PublicKey {
+func (node *Node) findNodePubkey(nodeId types.Address) *ecdsa.PublicKey {
 	for _, knownNode := range node.knownNodes {
 		if knownNode.nodeID.Hex() == nodeId.Hex() {
 			return knownNode.pubkey
@@ -779,15 +778,18 @@ func generateDigest(msg interface{}) []byte {
 func verifyDigest(msg interface{}, digest string) bool {
 	return hex.EncodeToString(generateDigest(msg)) == digest
 }
-func verifySignatrue(msg interface{}, sig []byte, pubkey *ecdh.PublicKey) (bool, error) {
+func verifySignatrue(msg interface{}, sig []byte, pubkey *ecdsa.PublicKey) (bool, error) {
 	dig := generateDigest(msg)
-	ecdsaPub := types.ECDHToECDSAPublic(pubkey)
-	return ecdsa.VerifyASN1(ecdsaPub, dig, sig), nil
+	return ecdsa.VerifyASN1(pubkey, dig, sig), nil
+	// err := rsa.VerifyPKCS1v15(pubkey, crypto.SHA256, dig, sig)
+	// if err != nil {
+	// 	return false, err
+	// }
+	// return true, nil
 }
-func signMessage(msg interface{}, privkey *ecdh.PrivateKey) ([]byte, error) {
+func signMessage(msg interface{}, privkey *ecdsa.PrivateKey) ([]byte, error) {
 	dig := generateDigest(msg)
-	apk := types.ECDHToECDSAPrivate(privkey)
-	sig, err := ecdsa.SignASN1(rand.Reader, apk, dig)
+	sig, err := ecdsa.SignASN1(rand.Reader, privkey, dig)
 	// sig, err := rsa.SignPKCS1v15(rand.Reader, privkey, crypto.SHA256, dig)
 	if err != nil {
 		return nil, err

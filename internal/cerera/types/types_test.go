@@ -16,7 +16,7 @@ import (
 
 func TestHexToAddress(t *testing.T) {
 	pk, _ := GenerateAccount()
-	currentNodeAddress := PubkeyToAddress(*pk.PublicKey())
+	currentNodeAddress := PubkeyToAddress(pk.PublicKey)
 	var addrStr = currentNodeAddress.Hex()
 	var resultAddr = HexToAddress(addrStr)
 	if resultAddr != currentNodeAddress {
@@ -28,7 +28,7 @@ func TestHexToAddress(t *testing.T) {
 
 func TestBytesToAddress(t *testing.T) {
 	pk, _ := GenerateAccount()
-	var currentNodeAddress = PubkeyToAddress(*pk.PublicKey())
+	var currentNodeAddress = PubkeyToAddress(pk.PublicKey)
 	var addrBytes = currentNodeAddress.Bytes()
 	var resultAddr = BytesToAddress(addrBytes)
 	if resultAddr != currentNodeAddress {

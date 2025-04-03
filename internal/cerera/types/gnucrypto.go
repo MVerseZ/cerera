@@ -1,7 +1,6 @@
 package types
 
 import (
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -19,8 +18,7 @@ import (
 const SignatureLength = 64 + 1
 
 var (
-	chainElliptic     = elliptic.P256()
-	chainEllipticEcdh = ecdh.P256()
+	chainElliptic = elliptic.P256()
 )
 
 // as keccak
@@ -53,17 +51,21 @@ func INRISeqHash(data ...[]byte) (h common.Hash) {
 	return common.BytesToHash(d.Sum(h[:]))
 }
 
-func FromECDSAPub(pub *ecdh.PublicKey) []byte {
-	return pub.Bytes()
+func FromECDSAPub(pub *ecdsa.PublicKey) []byte {
+	if pub == nil || pub.X == nil || pub.Y == nil {
+		return nil
+	}
+	// return append(pub.X.Bytes(), pub.Y.Bytes()...)
+	return elliptic.Marshal(chainElliptic, pub.X, pub.Y)
 }
 
-func PubkeyToAddress(p ecdh.PublicKey) Address {
+func PubkeyToAddress(p ecdsa.PublicKey) Address {
 	pubBytes := FromECDSAPub(&p)
 	return BytesToAddress(INRISeq(pubBytes[1:])[16:])
 }
 
-func PrivKeyToAddress(p *ecdh.PrivateKey) Address {
-	pubBytes := FromECDSAPub(p.PublicKey())
+func PrivKeyToAddress(p ecdsa.PrivateKey) Address {
+	pubBytes := FromECDSAPub(&p.PublicKey)
 
 	return BytesToAddress(INRISeq(pubBytes[1:])[32:])
 }
@@ -96,52 +98,61 @@ func Base58Encode(input []byte) string {
 	return output
 }
 
-func GenerateKey() (*ecdh.PrivateKey, error) {
-	return chainEllipticEcdh.GenerateKey(rand.Reader)
+func GenerateKey() (*ecdsa.PrivateKey, error) {
+	return ecdsa.GenerateKey(chainElliptic, rand.Reader)
 }
 
 // unused
-// func checkSignature(sig []byte) error {
-// 	if len(sig) != 65 {
-// 		return ErrInvalidSignatureLen
-// 	}
-// 	if sig[64] >= 4 {
-// 		return ErrInvalidRecoveryID
-// 	}
-// 	return nil
-// }
+func checkSignature(sig []byte) error {
+	if len(sig) != 65 {
+		return ErrInvalidSignatureLen
+	}
+	if sig[64] >= 4 {
+		return ErrInvalidRecoveryID
+	}
+	return nil
+}
 
-func PublicKeyFromString(s string) (*ecdh.PublicKey, error) {
+func PublicKeyFromString(s string) (*ecdsa.PublicKey, error) {
 	decoded, err := hex.DecodeString(s)
 	if err != nil {
 		return nil, err
 	}
 
-	// curve := chainElliptic
-	pubKey, err := ecdh.P256().NewPublicKey(decoded)
-	if err != nil {
-		return nil, fmt.Errorf("invalid public key encoding: %v", err)
+	curve := chainElliptic // use the same curve as in publicKeyToString
+	x, y := elliptic.Unmarshal(curve, decoded)
+	if x == nil || y == nil {
+		return nil, fmt.Errorf("invalid encoding")
 	}
-
-	return pubKey, nil
+	publicKey := &ecdsa.PublicKey{
+		Curve: curve,
+		X:     x,
+		Y:     y,
+	}
+	return publicKey, nil
 }
 
-func PublicKeyToString(publicKey *ecdh.PublicKey) (string, error) {
+func PublicKeyToString(publicKey *ecdsa.PublicKey) (string, error) {
 	curve := chainElliptic
 	if curve == nil {
 		return "", fmt.Errorf("public key curve is nil")
 	}
-	encoded := publicKey.Bytes()
+	x := publicKey.X
+	y := publicKey.Y
+	encoded := elliptic.Marshal(curve, x, y)
 	return hex.EncodeToString(encoded), nil
 }
 
-func GenerateAccount() (*ecdh.PrivateKey, error) {
-	return chainEllipticEcdh.GenerateKey(rand.Reader)
+func GenerateAccount() (*ecdsa.PrivateKey, error) {
+	pk, err := ecdsa.GenerateKey(chainElliptic, rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pk, nil
 }
 
-func EncodeKeys(privateKey *ecdh.PrivateKey) (string, string) {
-	ecdsaKey := ECDHToECDSAPrivate(privateKey)
-	x509Encoded, _ := x509.MarshalECPrivateKey(ecdsaKey)
+func EncodeKeys(privateKey *ecdsa.PrivateKey) (string, string) {
+	x509Encoded, _ := x509.MarshalECPrivateKey(privateKey)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
 
 	x509EncodedPub, _ := x509.MarshalPKIXPublicKey(privateKey.PublicKey)
@@ -150,33 +161,26 @@ func EncodeKeys(privateKey *ecdh.PrivateKey) (string, string) {
 	return string(pemEncoded), string(pemEncodedPub)
 }
 
-func EncodePrivateKeyToToString(pk *ecdh.PrivateKey) string {
-	// Convert ECDH to ECDSA private key first
-	ecdsaKey := ECDHToECDSAPrivate(pk)
-
-	x509Encoded, _ := x509.MarshalECPrivateKey(ecdsaKey)
+func EncodePrivateKeyToToString(pk *ecdsa.PrivateKey) string {
+	x509Encoded, _ := x509.MarshalECPrivateKey(pk)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
 
 	return string(pemEncoded)
 }
 
-func EncodePrivateKeyToByte(pk *ecdh.PrivateKey) []byte {
-	// Convert ECDH private key to ECDSA private key first
-	ecdsaKey := ECDHToECDSAPrivate(pk)
-
-	// Now marshal the ECDSA key
-	x509Encoded, _ := x509.MarshalECPrivateKey(ecdsaKey)
+func EncodePrivateKeyToByte(pk *ecdsa.PrivateKey) []byte {
+	x509Encoded, _ := x509.MarshalECPrivateKey(pk)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
 	return pemEncoded
 }
 
-func EncodePublicKeyToByte(pub *ecdh.PublicKey) []byte {
+func EncodePublicKeyToByte(pub *ecdsa.PublicKey) []byte {
 	x509Encoded, _ := x509.MarshalPKIXPublicKey(pub)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509Encoded})
 	return pemEncoded
 }
 
-func DecodeByteToPublicKey(data []byte) (*ecdh.PublicKey, error) {
+func DecodeByteToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
 	block, _ := pem.Decode(data)
 	if block == nil || block.Type != "PUBLIC KEY" {
 		return nil, fmt.Errorf("failed to decode PEM block containing public key")
@@ -190,21 +194,15 @@ func DecodeByteToPublicKey(data []byte) (*ecdh.PublicKey, error) {
 	if !ok {
 		return nil, fmt.Errorf("not an ECDSA public key")
 	}
-	ecdhPub, err := chainEllipticEcdh.NewPublicKey(elliptic.Marshal(chainElliptic, ecdsaPub.X, ecdsaPub.Y))
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert to ECDH key: %v", err)
-	}
-	return ecdhPub, nil
+	return ecdsaPub, nil
 }
 
-func DecodePrivKey(pemEncoded string) *ecdh.PrivateKey {
+func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {
 	block, _ := pem.Decode([]byte(pemEncoded))
 	x509Encoded := block.Bytes
 	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
 
-	// Convert ECDSA to ECDH private key
-	ecdhKey, _ := chainEllipticEcdh.NewPrivateKey(privateKey.D.Bytes())
-	return ecdhKey
+	return privateKey
 }
 
 func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.PrivateKey, *ecdsa.PublicKey) {
@@ -218,32 +216,4 @@ func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.
 	publicKey := genericPublicKey.(*ecdsa.PublicKey)
 
 	return privateKey, publicKey
-}
-
-func ECDHToECDSAPrivate(ecdhKey *ecdh.PrivateKey) *ecdsa.PrivateKey {
-	// Get the raw private key bytes
-	d := ecdhKey.Bytes()
-
-	// Create new ECDSA private key
-	privKey := new(ecdsa.PrivateKey)
-	privKey.D = new(big.Int).SetBytes(d)
-	privKey.Curve = chainElliptic
-
-	// Calculate public key components
-	// FY DEPRECATE LEGACY SHIT
-	privKey.X, privKey.Y = privKey.Curve.ScalarBaseMult(d)
-
-	return privKey
-}
-
-// Add this function to convert ECDH public key to ECDSA public key
-func ECDHToECDSAPublic(ecdhPub *ecdh.PublicKey) *ecdsa.PublicKey {
-	pubBytes := ecdhPub.Bytes()
-	x, y := elliptic.UnmarshalCompressed(chainElliptic, pubBytes)
-	return &ecdsa.PublicKey{Curve: chainElliptic, X: x, Y: y}
-}
-
-func ECDSAToECDHPrivate(ecdsaKey *ecdsa.PrivateKey) *ecdh.PrivateKey {
-	ecdhKey, _ := chainEllipticEcdh.NewPrivateKey(ecdsaKey.D.Bytes())
-	return ecdhKey
 }

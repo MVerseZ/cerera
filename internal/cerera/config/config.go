@@ -1,7 +1,7 @@
 package config
 
 import (
-	"crypto/ecdh"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -119,7 +119,7 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 		pemFilePath = "ddddd.nodekey.pem"
 	}
 	var currentNodeAddress types.Address
-	var nodeK *ecdh.PrivateKey
+	var nodeK *ecdsa.PrivateKey
 	var ppk string
 	{ // private key of node
 		if _, err := os.Stat(pemFilePath); err == nil {
@@ -135,10 +135,10 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 			ppk = string(b1[:n1])
 			nodeK = types.DecodePrivKey(ppk)
 			ppk = types.EncodePrivateKeyToToString(nodeK)
-			currentNodeAddress = types.PubkeyToAddress(*nodeK.PublicKey())
+			currentNodeAddress = types.PubkeyToAddress(nodeK.PublicKey)
 		} else {
 			nodeK, _ = types.GenerateAccount()
-			currentNodeAddress = types.PubkeyToAddress(*nodeK.PublicKey())
+			currentNodeAddress = types.PubkeyToAddress(nodeK.PublicKey)
 			ppk = types.EncodePrivateKeyToToString(nodeK)
 			err := os.WriteFile(pemFilePath, []byte(ppk), 0644)
 			if err != nil {
@@ -148,7 +148,7 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 	}
 	cfg.NetCfg.ADDR = currentNodeAddress
 	cfg.NetCfg.PRIV = ppk
-	cfg.NetCfg.PUB = types.EncodePublicKeyToByte(nodeK.PublicKey())
+	cfg.NetCfg.PUB = types.EncodePublicKeyToByte(&nodeK.PublicKey)
 
 	cfg.WriteConfigToFile()
 }

@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-
 	//"math/rand"
 	"runtime"
 	"strconv"
-
 	//"strconv"
 	"sync"
 	"testing"
@@ -29,8 +27,7 @@ var testPairs = [][][]byte{
 	{
 		[]byte("test key 000"),
 		[]byte("This is a test"),
-		// []byte("b291ec8a532bc4f78bd75b43d211e1169bb65b1a8f66d4250376ba1d6fcff1bd"),
-		[]byte("46b49051978dcce1cd534a4066035184afb16a0591b43522466e10cc2496717e"),
+		[]byte("b291ec8a532bc4f78bd75b43d211e1169bb65b1a8f66d4250376ba1d6fcff1bd"),
 	},
 }
 
@@ -91,9 +88,8 @@ func TestCreateVM(t *testing.T) {
 		log.Println(err)
 	}
 
-	var rHash = CalculateHash(vm, tp[1])
-	if !bytes.Equal(rHash, hashCorrect) {
-		t.Errorf("diff hashes, has %x, wanted %x!\r\n", rHash, hashCorrect)
+	if bytes.Compare(CalculateHash(vm, tp[1]), hashCorrect) != 0 {
+		t.Fail()
 	}
 }
 

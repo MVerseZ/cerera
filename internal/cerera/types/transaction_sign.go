@@ -1,7 +1,6 @@
 package types
 
 import (
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"errors"
@@ -25,24 +24,24 @@ type sigCache struct {
 
 // in this file only work with GTransacion now
 
-func Sign(msg []byte, privKey *ecdh.PrivateKey) ([]byte, error) {
+func Sign(msg []byte, privKey *ecdsa.PrivateKey) ([]byte, error) {
 	// fmt.Println("message lenght (tx): ", len(msg))
 	h := blake2b.Sum256(msg)
-	pk := ECDHToECDSAPrivate(privKey)
-	r, s, err := ecdsa.Sign(rand.Reader, pk, h[:])
+
+	r, s, err := ecdsa.Sign(rand.Reader, privKey, h[:])
 
 	if err != nil {
 		return nil, err
 	}
 	// Get the byte length of the curve order
-	n := (pk.Curve.Params().N.BitLen() + 7) / 8
+	n := (privKey.Curve.Params().N.BitLen() + 7) / 8
 	rb := r.Bytes()
 	sb := s.Bytes()
 	signature := make([]byte, 2*n)
 	copy(signature[n-len(rb):], rb)
 	copy(signature[2*n-len(sb):], sb)
 
-	xBytes, yBytes := pk.PublicKey.X.Bytes(), pk.PublicKey.Y.Bytes()
+	xBytes, yBytes := privKey.PublicKey.X.Bytes(), privKey.PublicKey.Y.Bytes()
 	backup := make([]byte, 0)
 	backup = append(backup, xBytes...)
 	backup = append(backup, yBytes...)
@@ -50,14 +49,8 @@ func Sign(msg []byte, privKey *ecdh.PrivateKey) ([]byte, error) {
 	return append(signature, backup...), nil
 }
 
-/*
-@method
-SignTx - sing transation with private key of sender, confirming by pen of signer
-@params
-tx: transaction, s: signer, prv: private key
-*/
-func SignTx(tx *GTransaction, s Signer, prv *ecdh.PrivateKey) (*GTransaction, error) {
-	fmt.Printf("Sign tx %s with key: %x\r\n", tx.Hash(), prv.Bytes())
+func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, error) {
+	fmt.Printf("Sign tx %s with key: %s\r\n", tx.Hash(), prv.D)
 	h := s.Hash(tx)
 	sig, err := Sign(h[:], prv)
 	if err != nil {
@@ -65,19 +58,20 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdh.PrivateKey) (*GTransaction, er
 	}
 	if sc := tx.from.Load(); sc != nil {
 		sigCache := sc.(sigCache)
-		sigCache.from = PrivKeyToAddress(prv)
+		sigCache.from = PrivKeyToAddress(*prv)
 		sigCache.signer = s
 		tx.from.Store(sigCache)
 	} else {
 		var sgCache = sigCache{
-			from: PrivKeyToAddress(prv),
+			from: PrivKeyToAddress(*prv),
 		}
 		sgCache.signer = s
 		tx.from.Store(sgCache)
 	}
 	var signTx, errSign = tx.WithSignature(s, sig)
-	if errSign != nil {
-		fmt.Printf("Error while sign tx %s from: %s\r\n\t%s\r\n", tx.Hash(), tx.From(), errSign)
+	if err != nil {
+		fmt.Errorf("%s", errSign)
+		fmt.Printf("Error while sign tx %s from: %s\r\n", tx.Hash(), tx.From())
 	}
 	fmt.Printf("Success sign tx %s from: %s\r\n", tx.Hash(), tx.From())
 	return signTx, nil
@@ -139,7 +133,7 @@ func (fs SimpleSigner) SignatureValues(tx *GTransaction, sig []byte) (R, S, V *b
 	return R, S, V, nil
 }
 
-func (fs SimpleSigner) SignTransaction(tx *GTransaction, k *ecdh.PrivateKey) (common.Hash, error) {
+func (fs SimpleSigner) SignTransaction(tx *GTransaction, k *ecdsa.PrivateKey) (common.Hash, error) {
 	// ecdsaPkey := aKey.(ecdsa.PrivateKey)
 	sTx, err2 := SignTx(tx, fs, k)
 	if err2 != nil {

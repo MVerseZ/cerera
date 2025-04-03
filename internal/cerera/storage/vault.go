@@ -152,7 +152,7 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	pubkey := privateKey.PublicKey()
+	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
 	derBytes := types.EncodePrivateKeyToByte(privateKey)
 	// derBytes, _ := x509.MarshalECPrivateKey(privateKey)
