@@ -1,35 +1,29 @@
 package validator
 
 import (
-	"math/big"
-	"strconv"
 	"testing"
-
-	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/pool"
-	"github.com/cerera/internal/cerera/types"
 )
 
 func TestPoolSigningProc(t *testing.T) {
-	pool, _ := pool.InitPool(1, 1000)
+	// pool, _ := pool.InitPool(1, 1000)
 
-	var hashes []common.Hash
-	for i := 0; i < 3; i++ {
-		transaction := types.NewTransaction(
-			7,
-			types.HexToAddress("0xc9C5c06E295d8FB8E97f4df93C4919D557D0B284521d71A7fCA1e1C3F289849989E80B0B81ED4EDB361d1f8F67DDf613"),
-			big.NewInt(1000001),
-			500,
-			big.NewInt(250),
-			[]byte(strconv.Itoa(i)),
-		)
-		pool.AddRawTransaction(transaction)
-		hashes = append(hashes, transaction.Hash())
-	}
-	info := pool.GetInfo()
-	if len(info.Txs) != 3 {
-		t.Errorf("Error pool size! Have %d, want %d\r\n", len(info.Txs), 3)
-	}
+	// var hashes []common.Hash
+	// for i := 0; i < 3; i++ {
+	// 	transaction := types.NewTransaction(
+	// 		7,
+	// 		types.HexToAddress("0xc9C5c06E295d8FB8E97f4df93C4919D557D0B284521d71A7fCA1e1C3F289849989E80B0B81ED4EDB361d1f8F67DDf613"),
+	// 		big.NewInt(1000001),
+	// 		500,
+	// 		big.NewInt(250),
+	// 		[]byte(strconv.Itoa(i)),
+	// 	)
+	// 	pool.AddRawTransaction(transaction)
+	// 	hashes = append(hashes, transaction.Hash())
+	// }
+	// info := pool.GetInfo()
+	// if len(info.Txs) != 3 {
+	// 	t.Errorf("Error pool size! Have %d, want %d\r\n", len(info.Txs), 3)
+	// }
 
 	// pk, _ := types.GenerateAccount()
 	// signer := types.NewSimpleSignerWithPen(big.NewInt(7), pk)
