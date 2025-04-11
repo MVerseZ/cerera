@@ -64,8 +64,8 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
 	v = &DDDDDValidator{
 		signatureKey:   p,
-		signer:         types.NewSimpleSignerWithPen(big.NewInt(int64(cfg.Chain.ChainID))), //, p),
-		balance:        big.NewInt(0),                                                      // Initialize balance
+		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))), //, p),
+		balance:        big.NewInt(0),                                               // Initialize balance
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
 	}
@@ -144,7 +144,7 @@ func (v *DDDDDValidator) PreSend(to types.Address, value float64, gas uint64, ms
 
 func (v *DDDDDValidator) SetUp(chainId *big.Int) {
 	v.minGasPrice = big.NewInt(100)
-	v.signer = types.NewSimpleSignerWithPen(chainId) //, v.signatureKey)
+	v.signer = types.NewSimpleSigner(chainId) //, v.signatureKey)
 }
 
 func (v *DDDDDValidator) Signer() types.Signer {
