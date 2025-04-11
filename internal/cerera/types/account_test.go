@@ -1,7 +1,6 @@
 package types
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/cerera/internal/cerera/common"
@@ -36,15 +35,15 @@ func CreateTestStateAccount() StateAccount {
 	}
 
 	newAccount := StateAccount{
-		Address:    address,
-		Name:       walletName,
-		Nonce:      1,
-		Balance:    FloatToBigInt(0.0),
-		Root:       common.Hash(address.Bytes()),
-		CodeHash:   derBytes,
-		Status:     "OP_ACC_NEW",
-		Bloom:      []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
-		Inputs:     Input{M: make(map[common.Hash]*big.Int)},
+		Address:  address,
+		Name:     walletName,
+		Nonce:    1,
+		Balance:  FloatToBigInt(0.0),
+		Root:     common.Hash(address.Bytes()),
+		CodeHash: derBytes,
+		Status:   "OP_ACC_NEW",
+		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
+		// Inputs:     Input{M: make(map[common.Hash]*big.Int)},
 		Passphrase: common.BytesToHash([]byte(pass)),
 		Mnemonic:   mnemonic,
 		// MPub:       publicKey,
