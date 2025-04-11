@@ -34,7 +34,7 @@ func TestSigningTx(t *testing.T) {
 	}
 	itx := NewTx(txs)
 
-	signer := NewSimpleSignerWithPen(big.NewInt(25331)) //, signerAcc)
+	signer := NewSimpleSigner(big.NewInt(25331)) //, signerAcc)
 
 	tx, err := SignTx(itx, signer, accPrivKey)
 	if err != nil {
@@ -104,5 +104,43 @@ func TestHashTx(t *testing.T) {
 	crvTxHash(otherTransaction.inner)
 	if otherTransaction.Hash() == transaction.Hash() {
 		t.Errorf("similar hashes! Have %s\r\n want %s\r\n", otherTransaction.Hash(), transaction.Hash())
+	}
+}
+
+func TestGetSender(t *testing.T) {
+	var accPrivKey, err = GenerateAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := PubkeyToAddress(accPrivKey.PublicKey)
+
+	dna := make([]byte, 0, 16)
+	dna = append(dna, 0xf, 0xa, 0x42)
+
+	var to = HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea24807B491717081c42F2575F09B6bc60206")
+	txs := &PGTransaction{
+		To:       &to,
+		Value:    big.NewInt(10),
+		GasPrice: big.NewInt(15),
+		Gas:      1000000,
+		Nonce:    0x1,
+		Dna:      dna,
+		Time:     time.Now(),
+	}
+	itx := NewTx(txs)
+
+	signer := NewSimpleSigner(big.NewInt(25331)) //, signerAcc)
+
+	tx, err := SignTx(itx, signer, accPrivKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	senderAddr, err := signer.Sender(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if senderAddr.Hex() != addr.Hex() {
+		t.Errorf("Different addresses! Have %s, expected %s\r\n", senderAddr.Hex(), addr.Hex())
 	}
 }

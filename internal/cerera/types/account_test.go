@@ -3,6 +3,7 @@ package types
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/cerera/internal/cerera/common"
 	"github.com/stretchr/testify/assert"
@@ -80,4 +81,22 @@ func TestBytesToStateAccount(t *testing.T) {
 	data := account.Bytes()
 	newAccount := BytesToStateAccount(data)
 	assert.Equal(t, account, newAccount, "BytesToStateAccount should return an account identical to the original")
+}
+
+func TestInputs(t *testing.T) {
+	account := CreateTestStateAccount()
+	dna := append(make([]byte, 0, 16), 0xf, 0xa, 0x42)
+	to := HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")
+	txs := &PGTransaction{
+		To:       &to,
+		Value:    txValue,
+		GasPrice: big.NewInt(15),
+		Gas:      1000000,
+		Nonce:    0x1,
+		Dna:      dna,
+		Time:     time.Now(),
+	}
+	itx := NewTx(txs)
+	account.AddInput(itx.Hash(), itx.Value())
+	// assert.Equal(t, 1, account.In)
 }
