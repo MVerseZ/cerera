@@ -8,34 +8,33 @@ import (
 	"github.com/cerera/internal/cerera/types"
 )
 
+const (
+	AddressHex       = "0x0000000000000000000000000000000000000000"
+	FaucetAddressHex = "0x0000000000000000000000000000000000000001"
+)
+
+var (
+	TotalValue           = big.NewInt(1000000000000000000) // 1 billion CER
+	FaucetInitialBalance = big.NewInt(100000000000000000)  // 100 million CER
+	blockReward          = big.NewInt(10000000000000000)   // 10 million CER
+)
+
 type coinbaseData struct {
+	coinbaseAccount *types.StateAccount
 	address         types.Address
-	coinbaseAccount types.StateAccount
 	balance         *big.Int
 }
 
-// Create a global instance of coinbaseData
-var Coinbase coinbaseData
-var Faucet coinbaseData
+var (
+	Coinbase coinbaseData
+	Faucet   coinbaseData
+)
 
-var AddressHex = "0xf0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f"
-var FaucetAddressHex = "0xf0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a"
-var TotalValue = types.FloatToBigInt(699999000000.0)
-var FaucetInitialBalance = types.FloatToBigInt(1000000.0)
-var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
-var blockReward = types.FloatToBigInt(1024000.0)
-var InitialNodeBalance = 0.0000
-
-func CurrentReward() int {
-	return 1024
-}
-
-// SetCoinbase initializes the global Coinbase data.
 func InitOperationData() error {
 	var addr = types.HexToAddress(AddressHex)
 	var faucetAddr = types.HexToAddress(FaucetAddressHex)
 
-	ca := types.StateAccount{
+	ca := &types.StateAccount{
 		Address:  addr,
 		Balance:  TotalValue,
 		Bloom:    []byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -55,15 +54,15 @@ func InitOperationData() error {
 		balance:         ca.Balance,
 	}
 
-	fc := types.StateAccount{
+	fc := &types.StateAccount{
 		Address:  addr,
 		Balance:  FaucetInitialBalance,
 		Bloom:    []byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		CodeHash: []byte{},
-		Name:     "FAUCET",
+		Name:     "COINBASE",
 		Nonce:    1,
 		Root:     common.HexToHash(AddressHex),
-		Status:   "OP_ACC_F",
+		Status:   "OP_ACC_C",
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -88,7 +87,7 @@ func GetCoinbaseBalance() *big.Int {
 	return Coinbase.balance
 }
 
-func CoinBaseStateAccount() types.StateAccount {
+func CoinBaseStateAccount() *types.StateAccount {
 	return Coinbase.coinbaseAccount
 }
 
@@ -106,21 +105,6 @@ func CreateCoinBaseTransation(nonce uint64, addr types.Address) types.GTransacti
 	return *types.NewCoinBaseTransaction(nonce, addr, blockReward, 100, big.NewInt(100), []byte("OP_REW"))
 }
 
-func FaucetAccount() types.StateAccount {
+func FaucetAccount() *types.StateAccount {
 	return Faucet.coinbaseAccount
-}
-
-func GetFaucetAddress() types.Address {
-	return Faucet.address
-}
-func FaucetTransaction(nonce uint64, destAddr types.Address, cnt float64) *types.GTransaction {
-
-	var tx = types.NewFaucetTransaction(
-		nonce,
-		destAddr,
-		types.FloatToBigInt(cnt),
-	)
-	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(cnt))
-	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(1000))
-	return tx
 }

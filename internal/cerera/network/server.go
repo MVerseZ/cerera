@@ -17,6 +17,7 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -29,13 +30,14 @@ var (
 	peers      []*Peer
 	peersMutex sync.Mutex
 	consensus  *block.Block
-	votes      map[common.Hash]int // Карта для хранения голосов
+	votes      map[common.Hash]int // Карта для хранения голосов .. какие голоса?
 	votesMutex sync.Mutex
 )
 
 var N *Node
 
-func NewServer(cfg *config.Config, flag string, address string) {
+func NewServer(cfg *config.Config, flag string, address string) error {
+
 	// Флаги
 	// mode := flag.String("mode", "server", "Режим работы: server или client")
 	// address := flag.String("address", "127.0.0.1:8080", "Адрес для подключения или прослушивания")
@@ -53,6 +55,7 @@ func NewServer(cfg *config.Config, flag string, address string) {
 	default:
 		fmt.Println("Неизвестный режим. Используйте 'server' или 'client'.")
 	}
+	return nil
 }
 
 // Запуск сервера
@@ -171,51 +174,6 @@ func removePeer(peer *Peer) {
 
 // Начало консенсуса
 func startConsensus(proposedValue *block.Block) {
-	peersMutex.Lock()
-	defer peersMutex.Unlock()
-
-	// Инициализация карты голосов vse v bloke (CONF)
-	// remake
-	proposedValue.Confirmations += 1
-	votesMutex.Lock()
-	var votes = make(map[common.Hash]int)
-	votes[proposedValue.Hash()] = 1 // Голос сервера
-	votesMutex.Unlock()
-
-	fmt.Println("Начало голосования за значение:", proposedValue.Hash())
-
-	// Отправка предложения всем пирам
-	for _, peer := range peers {
-		//_, err :=
-		peer.conn.Write(proposedValue.ToBytes())
-		_, err := peer.conn.Write([]byte{'\n'})
-		if err != nil {
-			fmt.Println("Ошибка при отправке предложения:", err)
-		}
-	}
-
-	// Ожидание голосов
-	time.Sleep(3 * time.Second) // Упрощенное ожидание
-
-	// Подсчет голосов
-	// votesMutex.Lock()
-	maxVotes := 0
-	// var chosenValue common.Hash
-	// for value, count := range votes {
-	// 	if count > maxVotes {
-	// 		maxVotes = count
-	// 		chosenValue = value
-	// 	}
-	// }
-	// votesMutex.Unlock()
-
-	// Принятие решения
-	if maxVotes > len(peers)/2 {
-		// consensus = chosenValue
-		fmt.Printf("Консенсус достигнут: %s (голосов: %d)\n", consensus.Hash(), maxVotes)
-	} else {
-		fmt.Println("Консенсус не достигнут")
-	}
 }
 
 // Обработка голоса

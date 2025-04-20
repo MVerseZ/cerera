@@ -1,9 +1,7 @@
 package types
 
-import "log"
-
 type EventFunnel struct {
-	logger log.Logger
+	// logger log.Logger
 }
 
 func (ef *EventFunnel) Add(l string, topic string) {

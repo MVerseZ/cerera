@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -26,6 +27,8 @@ const (
 	AppTxType
 	ApiTxtype
 	LegacyTxType
+	CoinbaseTxType
+	FaucetTxType
 )
 
 type TxStatus byte
@@ -128,15 +131,20 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint6
 }
 
 func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
-	var tx = NewTransaction(
-		nonce,
-		addressTo,
-		FloatToBigInt(count),
-		gas,
-		big.NewInt(0),
-		[]byte(message),
-	)
-	return tx, nil
+	// check max size of tx here
+	if len(message) < 1024 {
+		var tx = NewTransaction(
+			nonce,
+			addressTo,
+			FloatToBigInt(count),
+			gas,
+			big.NewInt(0),
+			[]byte(message),
+		)
+		return tx, nil
+	} else {
+		return nil, ErrInvalidMsgLen
+	}
 }
 
 // WithSignature returns a new transaction with the given signature.
@@ -171,7 +179,10 @@ func (tx *GTransaction) Hash() common.Hash {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
-	if tx.Type() == AppTxType {
+	if tx.Type() == CoinbaseTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == FaucetTxType {
 		h = crvTxHash(tx.inner)
 	}
 	tx.hash.Store(h)
@@ -187,7 +198,10 @@ func (tx GTransaction) CalculateHash() ([]byte, error) {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
-	if tx.Type() == AppTxType {
+	if tx.Type() == CoinbaseTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == FaucetTxType {
 		h = crvTxHash(tx.inner)
 	}
 	tx.hash.Store(h)
@@ -307,8 +321,8 @@ func crvTxHash(t TxData) (h common.Hash) {
 
 	tNonce := make([]byte, 8)
 	tGas := make([]byte, 16)
-	binary.LittleEndian.PutUint64(tNonce, t.nonce())
-	binary.LittleEndian.PutUint64(tGas, t.gas())
+	binary.BigEndian.PutUint64(tNonce, t.nonce())
+	binary.BigEndian.PutUint64(tGas, t.gas())
 
 	hw.Write(h[:0])
 	hw.Write(t.data())
@@ -331,4 +345,12 @@ func crvTxHash(t TxData) (h common.Hash) {
 
 func (tx *GTransaction) ComparePrice(other *GTransaction) int {
 	return tx.inner.gasPrice().Cmp(other.inner.gasPrice())
+}
+
+func (tx *GTransaction) Bytes() []byte {
+	bytes, err := tx.MarshalJSON()
+	if err != nil {
+		fmt.Printf("err while tx marhsal: %s\r\n", err)
+	}
+	return bytes
 }

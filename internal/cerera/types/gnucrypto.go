@@ -32,7 +32,7 @@ func NewINRISeq() INRI {
 }
 
 func INRISeq(data ...[]byte) []byte {
-	b := make([]byte, 48)
+	b := make([]byte, 64)
 	d := NewINRISeq()
 
 	for _, b := range data {
@@ -61,12 +61,13 @@ func FromECDSAPub(pub *ecdsa.PublicKey) []byte {
 
 func PubkeyToAddress(p ecdsa.PublicKey) Address {
 	pubBytes := FromECDSAPub(&p)
-	return BytesToAddress(INRISeq(pubBytes[1:])[16:])
+	// Skip the format byte (0x04) and take the last 32 bytes of the hash
+	return BytesToAddress(INRISeq(pubBytes[1:])[32:])
 }
 
 func PrivKeyToAddress(p ecdsa.PrivateKey) Address {
 	pubBytes := FromECDSAPub(&p.PublicKey)
-
+	// Skip the format byte (0x04) and take the last 32 bytes of the hash
 	return BytesToAddress(INRISeq(pubBytes[1:])[32:])
 }
 

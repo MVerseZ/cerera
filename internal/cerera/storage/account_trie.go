@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/cerera/internal/cerera/types"
@@ -11,22 +12,22 @@ import (
 // in smth like merkle-b-tree (cool data structure)
 type AccountsTrie struct {
 	mu         sync.RWMutex
-	index      map[int64]types.StateAccount
-	accounts   map[types.Address]types.StateAccount
+	index      map[int64]*types.StateAccount
+	accounts   map[types.Address]*types.StateAccount
 	lastInsert int64
 }
 
 func GetAccountsTrie() *AccountsTrie {
 	// this smth like init function
 	return &AccountsTrie{
-		index:      make(map[int64]types.StateAccount),
-		accounts:   make(map[types.Address]types.StateAccount),
+		index:      make(map[int64]*types.StateAccount),
+		accounts:   make(map[types.Address]*types.StateAccount),
 		lastInsert: 0,
 	}
 }
 
 // add account with address to Account Tree
-func (at *AccountsTrie) Append(addr types.Address, sa types.StateAccount) {
+func (at *AccountsTrie) Append(addr types.Address, sa *types.StateAccount) {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 	at.accounts[addr] = sa
@@ -35,16 +36,17 @@ func (at *AccountsTrie) Append(addr types.Address, sa types.StateAccount) {
 }
 
 func (at *AccountsTrie) Clear() error {
-	// at.mu.Lock()
-	// defer at.mu.Unlock()
-	at.accounts = make(map[types.Address]types.StateAccount)
+	at.mu.Lock()
+	defer at.mu.Unlock()
+	at.accounts = make(map[types.Address]*types.StateAccount)
+	at.index = make(map[int64]*types.StateAccount)
 	at.lastInsert = 0
 	return nil
 }
 
-func (at *AccountsTrie) GetAccount(addr types.Address) types.StateAccount {
-	// at.mu.Lock()
-	// defer at.mu.Unlock()
+func (at *AccountsTrie) GetAccount(addr types.Address) *types.StateAccount {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
 	return at.accounts[addr]
 }
 
@@ -76,6 +78,20 @@ func (at *AccountsTrie) GetAll() map[types.Address]float64 {
 	return res
 }
 
-func (at *AccountsTrie) GetByIndex(idx int64) types.StateAccount {
+func (at *AccountsTrie) GetByIndex(idx int64) *types.StateAccount {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
 	return at.index[idx]
+}
+
+// FindAddrByPub searches for an address by its public key serialization
+func (at *AccountsTrie) FindAddrByPub(pubKey string) (types.Address, error) {
+	at.mu.Lock()
+	defer at.mu.Unlock()
+	for _, account := range at.accounts {
+		if account.MPub == pubKey {
+			return account.Address, nil
+		}
+	}
+	return types.EmptyAddress(), errors.New("public key not found")
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 )
 
-func InitChainVault(initBLock block.Block) {
+func InitChainVault(initBLock *block.Block) {
 	// Open file for writing, create if it doesn't exist
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -29,13 +29,13 @@ func InitChainVault(initBLock block.Block) {
 }
 
 // load from file
-func SyncVault() ([]block.Block, error) {
+func SyncVault() ([]*block.Block, error) {
 	file, err := os.OpenFile("./chain.dat", os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the vault file: %w", err)
 	}
 	defer file.Close()
-	var readBlocks = make([]block.Block, 0)
+	var readBlocks = make([]*block.Block, 0)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -46,7 +46,7 @@ func SyncVault() ([]block.Block, error) {
 		if err != nil {
 			panic(err)
 		}
-		readBlocks = append(readBlocks, *bl)
+		readBlocks = append(readBlocks, bl)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -85,7 +85,7 @@ func UpdateVault(account []byte) error {
 	}
 	defer file.Close()
 
-	var accounts = make([]types.StateAccount, 0)
+	var accounts = make([]*types.StateAccount, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()

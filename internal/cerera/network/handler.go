@@ -79,7 +79,11 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 	}
 }
 
+var wsManager = NewWsManager()
+
 var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -102,23 +106,29 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 			return
 		}
 
-		// AddWsClientConnection(conn)
+		wsManager.register <- conn
 
-		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("Failed to read message from WebSocket:", err)
-				break
-			}
-			if string(message) == "ping" {
-				conn.WriteJSON("pong")
-			}
+		go func(conn *websocket.Conn) {
+			defer func() {
+				wsManager.unregister <- conn
+			}()
 
-		}
+			for {
+				_, message, err := conn.ReadMessage()
+				if err != nil {
+					log.Println("Failed to read message from WebSocket:", err)
+					break
+				}
+				if string(message) == "ping" {
+					conn.WriteJSON("pong")
+				}
+			}
+		}(conn)
 	}
 }
 
 func BroadCastWs(data []byte) {
+
 	// var wst = GetTransport()
 	// for i := 0; i < len(wst.wsListeners); i++ {
 	// 	wst.wsListeners[i].WriteJSON(data)
