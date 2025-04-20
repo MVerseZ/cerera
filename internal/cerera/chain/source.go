@@ -10,7 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 )
 
-func InitChainVault(initBLock block.Block) {
+func InitChainVault(initBLock *block.Block) {
 	// Open file for writing, create if it doesn't exist
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -29,13 +29,13 @@ func InitChainVault(initBLock block.Block) {
 }
 
 // load from file
-func SyncVault() ([]block.Block, error) {
+func SyncVault() ([]*block.Block, error) {
 	file, err := os.OpenFile("./chain.dat", os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the vault file: %w", err)
 	}
 	defer file.Close()
-	var readBlocks = make([]block.Block, 0)
+	var readBlocks = make([]*block.Block, 0)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -46,31 +46,32 @@ func SyncVault() ([]block.Block, error) {
 		if err != nil {
 			panic(err)
 		}
-		readBlocks = append(readBlocks, *bl)
+		readBlocks = append(readBlocks, bl)
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read account data from file: %w", err)
+		return nil, fmt.Errorf("failed to read block data from file: %w", err)
 	}
 
 	return readBlocks, nil
 }
 
-func SaveToVault(newBlock block.Block) {
+func SaveToVault(newBlock block.Block) error {
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer f.Close()
 
 	buf, err := json.Marshal(newBlock)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	buf = append(buf, '\n') // Добавляем разделитель новой строки
 	if _, err := f.Write(buf); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 // UpdateVault updates an account in the vault file.
@@ -84,7 +85,7 @@ func UpdateVault(account []byte) error {
 	}
 	defer file.Close()
 
-	var accounts = make([]types.StateAccount, 0)
+	var accounts = make([]*types.StateAccount, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -136,4 +137,12 @@ func GetChainSourceSize() (int64, error) {
 		return 0, err2
 	}
 	return fi.Size(), nil
+}
+
+func ClearVault() error {
+	if err := os.Truncate("./chain.dat", 0); err != nil {
+		fmt.Printf("Failed to truncate: %v", err)
+		return err
+	}
+	return nil
 }

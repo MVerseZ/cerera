@@ -3,7 +3,6 @@ package types
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -94,9 +93,19 @@ func Sender(signer Signer, tx *GTransaction) (Address, error) {
 	return addr, nil
 }
 
+// simple signer
 type SimpleSigner struct {
 	chainId, chainIdMul *big.Int
-	pen                 *ecdsa.PrivateKey
+}
+
+func NewSimpleSigner(chainId *big.Int) Signer {
+	if chainId == nil {
+		chainId = new(big.Int)
+	}
+	return SimpleSigner{
+		chainId:    chainId,
+		chainIdMul: new(big.Int).Mul(chainId, big.NewInt(2)),
+	}
 }
 
 func (ss SimpleSigner) ChainID() *big.Int {
@@ -112,10 +121,6 @@ func (fs SimpleSigner) Hash(tx *GTransaction) common.Hash {
 	return crvTxHash(tx.inner)
 }
 
-func (fs SimpleSigner) Pen() *ecdsa.PrivateKey {
-	return fs.pen
-}
-
 func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
 	if tx.Type() != LegacyTxType {
 		return Address{}, ErrTxTypeNotSupported
@@ -129,13 +134,11 @@ func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
 }
 
 func (fs SimpleSigner) SignatureValues(tx *GTransaction, sig []byte) (R, S, V *big.Int, err error) {
-	// txdata, ok := tx.inner.(*PGTransaction)
 	R, S, V = decodeSignature(sig)
 	return R, S, V, nil
 }
 
 func (fs SimpleSigner) SignTransaction(tx *GTransaction, k *ecdsa.PrivateKey) (common.Hash, error) {
-	// ecdsaPkey := aKey.(ecdsa.PrivateKey)
 	sTx, err2 := SignTx(tx, fs, k)
 	if err2 != nil {
 		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
@@ -158,31 +161,14 @@ func crvHash(x interface{}) (h common.Hash) {
 	return h
 }
 
-func crvTxHash(t TxData) (h common.Hash) {
-	hw, _ := blake2b.New256(nil)
-
-	tNonce := make([]byte, 16)
-	tGas := make([]byte, 16)
-	binary.LittleEndian.PutUint64(tNonce, t.nonce())
-	binary.LittleEndian.PutUint64(tGas, t.gas())
-
-	hw.Write(h[:0])
-	hw.Write(t.data())
-	hw.Write(t.dna())
-	hw.Write(t.value().Bytes())
-	hw.Write(tNonce)
-	hw.Write(t.to()[:])
-	hw.Write(t.gasPrice().Bytes())
-	hw.Write(tGas)
-
-	dateBytes, _ := t.time().MarshalBinary()
-	hw.Write(dateBytes)
-	h.SetBytes(hw.Sum(nil))
-	return h
-}
-
 func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error) {
-	return BytesToAddress(INRISeq(append(R.Bytes())[1:])[12:]), nil
+	// Use the same slice range as PubkeyToAddress and PrivKeyToAddress
+	pubBytes := FromECDSAPub(&ecdsa.PublicKey{
+		Curve: chainElliptic,
+		X:     R,
+		Y:     S,
+	})
+	return BytesToAddress(INRISeq(pubBytes[1:])[32:]), nil
 }
 
 func decodeSignature(sig []byte) (r, s, v *big.Int) {
@@ -197,15 +183,4 @@ func decodeSignature(sig []byte) (r, s, v *big.Int) {
 
 func VerifyECDSAWithZk(pubkey []byte, message []byte, zkProof interface{}) (bool, error) {
 	return true, nil
-}
-
-func NewSimpleSignerWithPen(chainId *big.Int, pekn *ecdsa.PrivateKey) Signer {
-	if chainId == nil {
-		chainId = new(big.Int)
-	}
-	return SimpleSigner{
-		chainId:    chainId,
-		chainIdMul: new(big.Int).Mul(chainId, big.NewInt(2)),
-		pen:        pekn,
-	}
 }

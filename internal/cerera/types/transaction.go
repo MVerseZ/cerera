@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cerera/internal/cerera/common"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -25,7 +27,11 @@ const (
 	AppTxType
 	ApiTxtype
 	LegacyTxType
+	CoinbaseTxType
+	FaucetTxType
 )
+
+type TxStatus byte
 
 type GTransactionType struct {
 	Typ   uint8
@@ -84,6 +90,13 @@ type GTransaction struct {
 	from atomic.Value
 }
 
+// Content represents the data that is stored and verified by the tree. A type that
+// implements this interface can be used as an item in the tree.
+type Content interface {
+	CalculateHash() ([]byte, error)
+	Equals(other Content) (bool, error)
+}
+
 type DNA interface {
 }
 
@@ -103,6 +116,35 @@ func NewTx(inner TxData) *GTransaction {
 	tx := new(GTransaction)
 	tx.setDecoded(inner.copy(), 0)
 	return tx
+}
+
+func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
+	var tx = NewTransaction(
+		nonce,
+		addressTo,
+		FloatToBigInt(count),
+		gas,
+		big.NewInt(0),
+		[]byte(message),
+	)
+	return tx, nil
+}
+
+func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
+	// check max size of tx here
+	if len(message) < 1024 {
+		var tx = NewTransaction(
+			nonce,
+			addressTo,
+			FloatToBigInt(count),
+			gas,
+			big.NewInt(0),
+			[]byte(message),
+		)
+		return tx, nil
+	} else {
+		return nil, ErrInvalidMsgLen
+	}
 }
 
 // WithSignature returns a new transaction with the given signature.
@@ -137,6 +179,12 @@ func (tx *GTransaction) Hash() common.Hash {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
+	if tx.Type() == CoinbaseTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == FaucetTxType {
+		h = crvTxHash(tx.inner)
+	}
 	tx.hash.Store(h)
 	return h
 }
@@ -150,12 +198,26 @@ func (tx GTransaction) CalculateHash() ([]byte, error) {
 	if tx.Type() == LegacyTxType {
 		h = crvTxHash(tx.inner)
 	}
+	if tx.Type() == CoinbaseTxType {
+		h = crvTxHash(tx.inner)
+	}
+	if tx.Type() == FaucetTxType {
+		h = crvTxHash(tx.inner)
+	}
 	tx.hash.Store(h)
 	return h.Bytes(), nil
 }
 
-func (tx GTransaction) Equals(other GTransaction) (bool, error) {
-	return tx.Hash() == other.Hash(), nil
+func (tx GTransaction) CompareHash(other GTransaction) (bool, error) {
+	return tx.Hash().Compare(other.Hash()) == 0, nil
+}
+
+func (tx GTransaction) Equals(other Content) (bool, error) {
+	otherTxHash, err := other.(GTransaction).CalculateHash()
+	if err != nil {
+		return false, errors.New("value is not of type Transaction")
+	}
+	return tx.Hash() == common.BytesToHash(otherTxHash), nil
 }
 
 func (tx *GTransaction) Type() uint8 {
@@ -192,9 +254,9 @@ func (tx *GTransaction) Size() uint64 {
 	txEncData, _ := tx.MarshalJSON()
 	size := uint64(len(txEncData))
 
-	if tx.Type() != LegacyTxType {
-		size += 1 // type byte
-	}
+	// if tx.Type() != LegacyTxType {
+	// size += 1 // type byte
+	// }
 	tx.size.Store(size)
 	return size
 }
@@ -241,9 +303,9 @@ func (tx *GTransaction) UpdateDna(dna []byte) {
 
 func (tx *GTransaction) IsSigned() bool {
 	var r, s, v = tx.RawSignatureValues()
-	fmt.Printf("sig values: %d %d %d\r\n", r, s, v)
+	// fmt.Printf("sig values: %d %d %d\r\n", r, s, v)
 	r, s, v = tx.inner.rawSignatureValues()
-	fmt.Printf("inner sig values: %d %d %d\r\n", r, s, v)
+	// fmt.Printf("inner sig values: %d %d %d\r\n", r, s, v)
 	return big.NewInt(0).Cmp(r) == -1 && big.NewInt(0).Cmp(s) == -1 && big.NewInt(0).Cmp(v) == -1
 }
 
@@ -253,10 +315,42 @@ func (gtxs *GTransactions) Size() int {
 	return len(*gtxs)
 }
 
+func crvTxHash(t TxData) (h common.Hash) {
+	hw, _ := blake2b.New256(nil)
+	// hw, _ := blake2b.New256(nil)
+
+	tNonce := make([]byte, 8)
+	tGas := make([]byte, 16)
+	binary.BigEndian.PutUint64(tNonce, t.nonce())
+	binary.BigEndian.PutUint64(tGas, t.gas())
+
+	hw.Write(h[:0])
+	hw.Write(t.data())
+	hw.Write(t.dna())
+	hw.Write(t.value().Bytes())
+	hw.Write(tNonce)
+	hw.Write(t.to()[:])
+	hw.Write(t.gasPrice().Bytes())
+	hw.Write(tGas)
+
+	dateBytes, _ := t.time().MarshalBinary()
+	hw.Write(dateBytes)
+	h.SetBytes(hw.Sum(nil))
+	return h
+}
+
 // ///////////////////////////
 // ////Fee shit
 // //////////////////////////
 
 func (tx *GTransaction) ComparePrice(other *GTransaction) int {
 	return tx.inner.gasPrice().Cmp(other.inner.gasPrice())
+}
+
+func (tx *GTransaction) Bytes() []byte {
+	bytes, err := tx.MarshalJSON()
+	if err != nil {
+		fmt.Printf("err while tx marhsal: %s\r\n", err)
+	}
+	return bytes
 }

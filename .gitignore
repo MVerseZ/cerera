@@ -24,7 +24,6 @@ go.work
 logfile
 main
 *.pem
-cerera
 
 .vscode
 
@@ -32,3 +31,7 @@ cerera
 chain.dat
 config.json
 vault.dat
+
+*.dev
+*.pem
+Keys

@@ -2,17 +2,22 @@ package types
 
 import (
 	"math/big"
+	"reflect"
 	"testing"
 	"time"
 )
 
 func TestSigningTx(t *testing.T) {
 
-	var acc, err = GenerateAccount()
+	var accPrivKey, err = GenerateAccount()
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr := PubkeyToAddress(acc.PublicKey)
+	// signerAcc, err := GenerateAccount()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	addr := PubkeyToAddress(accPrivKey.PublicKey)
 
 	dna := make([]byte, 0, 16)
 	dna = append(dna, 0xf, 0xa, 0x42)
@@ -29,9 +34,9 @@ func TestSigningTx(t *testing.T) {
 	}
 	itx := NewTx(txs)
 
-	signer := NewSimpleSignerWithPen(big.NewInt(25331), acc)
+	signer := NewSimpleSigner(big.NewInt(25331)) //, signerAcc)
 
-	tx, err := SignTx(itx, signer, acc)
+	tx, err := SignTx(itx, signer, accPrivKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +53,24 @@ func TestSigningTx(t *testing.T) {
 	}
 	if from != addr {
 		t.Errorf("exected from and address to be equal. Got %x want %x", from, addr)
+	}
+	if itx.Hash() != tx.Hash() {
+		t.Errorf("different hashes!! Got %s want %s", itx.Hash(), tx.Hash())
+	}
+	if itx.Value().Cmp(tx.Value()) != 0 {
+		t.Errorf("different inner values!! Got %d want %d", itx.Value(), tx.Value())
+	}
+	if !reflect.DeepEqual(itx.Data(), tx.Data()) {
+		t.Errorf("different data!! Got %s want %s", itx.Data(), tx.Data())
+	}
+	if itx.Gas() != tx.Gas() {
+		t.Errorf("different gas!! Got %d want %d", itx.Gas(), tx.Gas())
+	}
+	if itx.GasPrice().Cmp(tx.GasPrice()) != 0 {
+		t.Errorf("different gas!! Got %d want %d", itx.GasPrice(), tx.GasPrice())
+	}
+	if itx.Nonce() != tx.Nonce() {
+		t.Errorf("different nonce!! Got %d want %d", itx.Nonce(), tx.Nonce())
 	}
 }
 
@@ -81,5 +104,43 @@ func TestHashTx(t *testing.T) {
 	crvTxHash(otherTransaction.inner)
 	if otherTransaction.Hash() == transaction.Hash() {
 		t.Errorf("similar hashes! Have %s\r\n want %s\r\n", otherTransaction.Hash(), transaction.Hash())
+	}
+}
+
+func TestGetSender(t *testing.T) {
+	var accPrivKey, err = GenerateAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := PubkeyToAddress(accPrivKey.PublicKey)
+
+	dna := make([]byte, 0, 16)
+	dna = append(dna, 0xf, 0xa, 0x42)
+
+	var to = HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea24807B491717081c42F2575F09B6bc60206")
+	txs := &PGTransaction{
+		To:       &to,
+		Value:    big.NewInt(10),
+		GasPrice: big.NewInt(15),
+		Gas:      1000000,
+		Nonce:    0x1,
+		Dna:      dna,
+		Time:     time.Now(),
+	}
+	itx := NewTx(txs)
+
+	signer := NewSimpleSigner(big.NewInt(25331)) //, signerAcc)
+
+	tx, err := SignTx(itx, signer, accPrivKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	senderAddr, err := signer.Sender(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if senderAddr.Hex() != addr.Hex() {
+		t.Errorf("Different addresses! Have %s, expected %s\r\n", senderAddr.Hex(), addr.Hex())
 	}
 }

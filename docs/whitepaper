@@ -1,0 +1,68 @@
+Cerera network.
+Version 1.
+(Cerera Blockchain network v.1)
+________________________________________________
+Abstract
+There are many types of blockchains with different integrations. 
+Most of them are EVM-compatible.
+Pioneer of all - bitcoin network.
+Cerera network - simple transaction PoW chain with limited inner coin.
+
+Cerera provides secure storage for user accounts, stored off chain.
+There are block with transactions (or empty) with on-chain data. It open and anybody can only-read it.
+
+As the any blockchain project there is RPC communication protocol via HTTP(S).
+
+There is no any VM for virtual contracts creation. But transaction entity can store big data, like CSV dataframes or multimedia content.
+
+________________________________________________
+Consensus algorythm
+Based on Raft with some mods.
+
+Example for nodes (A[100]), (B[0])
+
+A <------------> B
+A <---B--join--- B
+A ----Latest---> B
+A <---B--sync--- B[100]
+A ----[100]----> B
+A <---B--done--- B
+
+Now A[100+N], B[100] (N - count waiting for consensus)
+
+Example for nodes (A[1], B[10], C[100], D[10], E[42], F[0], G[5000])
+Where D and G node are compromated by hjacking
+
+
+Example:
+
+New node connect to gossip and send ID + public key
+Swarm of consensus add new node to KNOWN NODES
+Move to consensus
+>>>>>
+What if KNOWN NODE has height 1000, new node is 0. Consensus of new node has been started from 1001 height?
+Or there is a sync process making new node to height 1000. Before it will be KNOWN NODE 2.
+
+Or there is a Consensus knowledge and operation borrowing.
+We have 1 node. Consenus.
+We have 1 node and 1 diff node. Consenus work.
+We have 2 nodes. Consenus.
+>>>>>
+<<<<<
+<<<<<
+
+
+
+
+________________________________________________
+
+Thanks to:
+https://bitcoin.org
+https://github.com/tn606024/simplePBFT/tree/master
+https://github.com/ethereum/go-ethereum
+https://github.com/yggdrasil-network/yggdrasil-go
+https://chatgpt.com
+
+________________________________________________
+Author: gnupunk, veers
+Moscow, 2024

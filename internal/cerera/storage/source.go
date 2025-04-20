@@ -49,7 +49,7 @@ func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-func InitSecureVault(rootSa types.StateAccount) error {
+func InitSecureVault(rootSa *types.StateAccount) error {
 	// Open file for writing, create if it doesn't exist
 	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -97,16 +97,15 @@ func SaveToVault(account []byte) error {
 
 	// Decode account from bytes using BytesToStateAccount
 	accountData := types.BytesToStateAccount(account)
-	accountData.Status = "SYNC"
+	accountData.Status = "LOCAL"
 	accountDataToWrite := accountData.Bytes()
-	accountDataToWrite = append(accountDataToWrite, '\n') // Добавляем разделитель новой строки
+	accountDataToWrite = append(accountDataToWrite, '\n')
 
 	if _, err := f.Write(accountDataToWrite); err != nil {
 		return err
 	}
 
 	return nil
-
 }
 
 // UpdateVault updates an account in the vault file.
@@ -120,7 +119,7 @@ func UpdateVault(account []byte) error {
 	}
 	defer file.Close()
 
-	var accounts = make([]types.StateAccount, 0)
+	var accounts = make([]*types.StateAccount, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()

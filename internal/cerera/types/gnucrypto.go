@@ -32,7 +32,7 @@ func NewINRISeq() INRI {
 }
 
 func INRISeq(data ...[]byte) []byte {
-	b := make([]byte, 48)
+	b := make([]byte, 64)
 	d := NewINRISeq()
 
 	for _, b := range data {
@@ -61,12 +61,13 @@ func FromECDSAPub(pub *ecdsa.PublicKey) []byte {
 
 func PubkeyToAddress(p ecdsa.PublicKey) Address {
 	pubBytes := FromECDSAPub(&p)
-	return BytesToAddress(INRISeq(pubBytes[1:])[16:])
+	// Skip the format byte (0x04) and take the last 32 bytes of the hash
+	return BytesToAddress(INRISeq(pubBytes[1:])[32:])
 }
 
 func PrivKeyToAddress(p ecdsa.PrivateKey) Address {
 	pubBytes := FromECDSAPub(&p.PublicKey)
-
+	// Skip the format byte (0x04) and take the last 32 bytes of the hash
 	return BytesToAddress(INRISeq(pubBytes[1:])[32:])
 }
 
@@ -148,7 +149,6 @@ func GenerateAccount() (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		panic(err)
 	}
-
 	return pk, nil
 }
 
@@ -179,6 +179,23 @@ func EncodePublicKeyToByte(pub *ecdsa.PublicKey) []byte {
 	x509Encoded, _ := x509.MarshalPKIXPublicKey(pub)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509Encoded})
 	return pemEncoded
+}
+
+func DecodeByteToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("failed to decode PEM block containing public key")
+	}
+	x509Encoded := block.Bytes
+	pub, err := x509.ParsePKIXPublicKey(x509Encoded)
+	if err != nil {
+		return nil, err
+	}
+	ecdsaPub, ok := pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("not an ECDSA public key")
+	}
+	return ecdsaPub, nil
 }
 
 func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {
