@@ -315,7 +315,7 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	// 	ClearVault()
 	// 	bc.data = nil
 	// }
-	bc.DataChannel <- newBlock.ToBytes()
+	// bc.DataChannel <- newBlock.ToBytes()
 
 	bc.data = append(bc.data, newBlock)
 	bc.currentBlock = newBlock

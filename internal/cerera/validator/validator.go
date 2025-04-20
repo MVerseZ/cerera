@@ -96,7 +96,8 @@ func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 		return EmptyCoinbase
 	} else {
 		fmt.Printf(
-			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%f\r\n\t  current balance=%d\r\n",
+			"APPROVED_TX_TYPE:%d\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%f\r\n\t  current balance=%d\r\n",
+			tx.Type(),
 			tx.Hash(),
 			gas,
 			types.BigIntToFloat(val),
@@ -185,7 +186,7 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 
 	// p.memPool[i] = *signTx
 	// network.PublishData("OP_TX_SIGNED", tx)
-	fmt.Printf("Now tx %s is %t\r\n", signTx.Hash(), signTx.IsSigned())
+	fmt.Printf("Now tx %s isSigned status: %t\r\n", signTx.Hash(), signTx.IsSigned())
 	// check existing inputs
 
 	fmt.Printf("\tcheck tx: %s\r\n", tx.Hash())
@@ -226,7 +227,8 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 		return false
 	} else {
 		fmt.Printf(
-			"APPROVED\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%d\r\n\t  current balance=%d\r\n",
+			"APPROVED_TX_TYPE_%d\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%d\r\n\t  current balance=%d\r\n",
+			tx.Type(),
 			tx.Hash(),
 			gas,
 			val,

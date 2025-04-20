@@ -141,7 +141,7 @@ func TestSize(t *testing.T) {
 	}
 	txSize := uint64(0)
 	if runtime.GOOS == "windows" {
-		fmt.Println("Hello from Windows")
+		// fmt.Println("Hello from Windows")
 		txSize = uint64(393)
 	} else {
 		txSize = uint64(392)

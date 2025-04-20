@@ -85,7 +85,7 @@ func UpdateVault(account []byte) error {
 	}
 	defer file.Close()
 
-	var accounts = make([]types.StateAccount, 0)
+	var accounts = make([]*types.StateAccount, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()

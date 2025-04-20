@@ -162,7 +162,13 @@ func crvHash(x interface{}) (h common.Hash) {
 }
 
 func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error) {
-	return BytesToAddress(INRISeq(append(R.Bytes())[1:])[12:]), nil
+	// Use the same slice range as PubkeyToAddress and PrivKeyToAddress
+	pubBytes := FromECDSAPub(&ecdsa.PublicKey{
+		Curve: chainElliptic,
+		X:     R,
+		Y:     S,
+	})
+	return BytesToAddress(INRISeq(pubBytes[1:])[32:]), nil
 }
 
 func decodeSignature(sig []byte) (r, s, v *big.Int) {

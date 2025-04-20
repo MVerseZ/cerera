@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -344,4 +345,12 @@ func crvTxHash(t TxData) (h common.Hash) {
 
 func (tx *GTransaction) ComparePrice(other *GTransaction) int {
 	return tx.inner.gasPrice().Cmp(other.inner.gasPrice())
+}
+
+func (tx *GTransaction) Bytes() []byte {
+	bytes, err := tx.MarshalJSON()
+	if err != nil {
+		fmt.Printf("err while tx marhsal: %s\r\n", err)
+	}
+	return bytes
 }

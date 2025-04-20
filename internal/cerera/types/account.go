@@ -22,7 +22,7 @@ type StateAccount struct {
 	Nonce      uint64
 	Root       common.Hash // merkle root of the storage trie
 	Status     string
-	Inputs     Input       // hashes of transactions
+	Inputs     *Input      // hashes of transactions
 	Passphrase common.Hash // hash of password
 	// bip32 data
 	MPub string
@@ -57,17 +57,23 @@ func (sa *StateAccount) Bytes() []byte {
 }
 
 func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
-	// if (sa.Inputs[tx] == nil) {}
 	sa.Inputs.Lock()
+	defer sa.Inputs.Unlock()
 	sa.Inputs.M[txHash] = cnt
-	sa.Inputs.Unlock()
 }
 
-func BytesToStateAccount(data []byte) StateAccount {
+func BytesToStateAccount(data []byte) *StateAccount {
 	sa := &StateAccount{}
 	err := json.Unmarshal(data, sa)
 	if err != nil {
 		panic(err)
 	}
-	return *sa
+	// Initialize the mutex if it's nil
+	if sa.Inputs == nil {
+		sa.Inputs = &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		}
+	}
+	return sa
 }

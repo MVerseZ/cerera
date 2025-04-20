@@ -26,8 +26,9 @@ type MemPoolInfo struct {
 }
 
 type Pool struct {
-	Funnel chan []*types.GTransaction // input funnel
-	Listen chan []*types.GTransaction // outbound channel
+	Funnel      chan []*types.GTransaction // input funnel
+	Listen      chan []*types.GTransaction // outbound channel
+	DataChannel chan []byte                // ws channel
 
 	maxSize        int
 	minGas         uint64
@@ -37,6 +38,8 @@ type Pool struct {
 	Status   byte
 	Prepared []*types.GTransaction
 	Executed []types.GTransaction
+
+	observers []Observer
 
 	mu sync.Mutex
 }
@@ -62,9 +65,12 @@ func InitPool(minGas uint64, maxSize int) (*Pool, error) {
 		Prepared: make([]*types.GTransaction, 0),
 		Executed: make([]types.GTransaction, 0),
 
-		Funnel: make(chan []*types.GTransaction),
-		Listen: make(chan []*types.GTransaction),
-		Status: 0xa,
+		Funnel:      make(chan []*types.GTransaction),
+		Listen:      make(chan []*types.GTransaction),
+		DataChannel: make(chan []byte),
+		Status:      0xa,
+
+		observers: make([]Observer, 0),
 	}
 	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%d\r\n\tMAX_SIZE:%d\r\n", p.minGas, p.maxSize)
 
@@ -85,16 +91,10 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 		}
 	}
 	p.mu.Unlock()
-	p.Listen <- []*types.GTransaction{tx}
+	p.NotifyAll(tx)
+	// p.Listen <- []*types.GTransaction{tx}
+	// p.DataChannel <- tx.Bytes()
 	// fmt.Println(len(p.memPool))
-}
-
-func (p *Pool) AddTransaction(from types.Address, tx *types.GTransaction) {
-	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-		p.memPool[tx.Hash()] = *tx
-		// p.memPool = append(p.memPool, *tx)
-		// network.BroadcastTx(tx)
-	}
 }
 
 func (p *Pool) GetInfo() MemPoolInfo {
@@ -191,6 +191,7 @@ func (p *Pool) PoolServiceLoop() {
 			// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
 			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
 		case txs := <-p.Funnel:
+			// NEED TO REWRITE 13/04/25 gnupunk
 			// fmt.Printf("Funnel data arrive\r\n")
 			var txPoolSize = 0
 			for _, k := range p.memPool {
@@ -257,6 +258,32 @@ func (p *Pool) Clear() {
 
 func (p *Pool) GetMinimalGasValue() uint64 {
 	return p.minGas
+}
+
+func (p *Pool) Register(observer Observer) {
+	fmt.Printf("Register new pool observer: %s\r\n", observer.GetID())
+	p.observers = append(p.observers, observer)
+}
+
+func (p *Pool) UnRegister(observer Observer) {
+	p.observers = removeFromslice(p.observers, observer)
+}
+
+func removeFromslice(observerList []Observer, observerToRemove Observer) []Observer {
+	observerListLength := len(observerList)
+	for i, observer := range observerList {
+		if observerToRemove.GetID() == observer.GetID() {
+			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
+			return observerList[:observerListLength-1]
+		}
+	}
+	return observerList
+}
+
+func (p *Pool) NotifyAll(tx *types.GTransaction) {
+	for _, observer := range p.observers {
+		observer.Update(tx)
+	}
 }
 
 func Get() *Pool {

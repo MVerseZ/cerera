@@ -12,16 +12,16 @@ import (
 // in smth like merkle-b-tree (cool data structure)
 type AccountsTrie struct {
 	mu         sync.RWMutex
-	index      map[int64]types.StateAccount
-	accounts   map[types.Address]types.StateAccount
+	index      map[int64]*types.StateAccount
+	accounts   map[types.Address]*types.StateAccount
 	lastInsert int64
 }
 
 func GetAccountsTrie() *AccountsTrie {
 	// this smth like init function
 	return &AccountsTrie{
-		index:      make(map[int64]types.StateAccount),
-		accounts:   make(map[types.Address]types.StateAccount),
+		index:      make(map[int64]*types.StateAccount),
+		accounts:   make(map[types.Address]*types.StateAccount),
 		lastInsert: 0,
 	}
 }
@@ -30,22 +30,23 @@ func GetAccountsTrie() *AccountsTrie {
 func (at *AccountsTrie) Append(addr types.Address, sa *types.StateAccount) {
 	at.mu.Lock()
 	defer at.mu.Unlock()
-	at.accounts[addr] = *sa
-	at.index[at.lastInsert] = *sa
+	at.accounts[addr] = sa
+	at.index[at.lastInsert] = sa
 	at.lastInsert++
 }
 
 func (at *AccountsTrie) Clear() error {
-	// at.mu.Lock()
-	// defer at.mu.Unlock()
-	at.accounts = make(map[types.Address]types.StateAccount)
+	at.mu.Lock()
+	defer at.mu.Unlock()
+	at.accounts = make(map[types.Address]*types.StateAccount)
+	at.index = make(map[int64]*types.StateAccount)
 	at.lastInsert = 0
 	return nil
 }
 
-func (at *AccountsTrie) GetAccount(addr types.Address) types.StateAccount {
-	// at.mu.Lock()
-	// defer at.mu.Unlock()
+func (at *AccountsTrie) GetAccount(addr types.Address) *types.StateAccount {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
 	return at.accounts[addr]
 }
 
@@ -77,7 +78,9 @@ func (at *AccountsTrie) GetAll() map[types.Address]float64 {
 	return res
 }
 
-func (at *AccountsTrie) GetByIndex(idx int64) types.StateAccount {
+func (at *AccountsTrie) GetByIndex(idx int64) *types.StateAccount {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
 	return at.index[idx]
 }
 

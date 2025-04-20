@@ -34,9 +34,9 @@ var testTx3 = types.NewTransaction(
 var minGas = 1000
 var maxCap = 10
 
-func TestTransactionConsuming(t *testing.T) {
+func TestPoolSize(t *testing.T) {
 	tPool, _ := InitPool(uint64(minGas), maxCap)
-	tPool.AddTransaction(testTx1.From(), testTx1)
+	tPool.AddRawTransaction(testTx1)
 	info := tPool.GetInfo()
 	if len(info.Txs) != 1 {
 		t.Errorf("Different pool size, have %d, want %d", len(info.Txs), 1)
@@ -50,7 +50,6 @@ func TestTransactionConsuming(t *testing.T) {
 
 // func TestGetTx(t *testing.T) {
 // 	tPool, _ := InitPool(uint64(minGas), maxCap)
-// 	tPool.AddTransaction(testTx1.From(), testTx1)
 // 	tPool.AddRawTransaction(testTx2)
 // 	tPool.AddRawTransaction(testTx3)
 // 	info := tPool.GetInfo()

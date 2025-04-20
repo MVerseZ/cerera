@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -17,8 +18,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// PROTOTYPE STRUCTURE
+type MinerObserver struct {
+	pool.Observer
+}
 
+// getID implements pool.Observer.
+func (mo MinerObserver) GetID() string {
+	return fmt.Sprintf("OBSERVER_MINER_%s_%s", runtime.GOOS, runtime.GOARCH)
+}
+
+// update implements pool.Observer.
+func (mo MinerObserver) Update(tx *types.GTransaction) {
+	fmt.Printf("Miner observer: \r\n\tReceived new transaction with hash %s\r\n", tx.Hash())
+}
+
+// PROTOTYPE STRUCTURE
 type Miner struct {
 	difficulty int64
 	status     string
@@ -66,6 +80,7 @@ func Run() {
 		pool:                 pool.Get(),
 		status:               "ALLOC",
 		PreparedTransactions: make([]*types.GTransaction, 0),
+		TxChan:               make(chan types.GTransaction),
 	}
 	// fmt.Println("start miner")
 	// var f = false
@@ -100,14 +115,19 @@ func Run() {
 		PrevHash:   latest.Hash,
 		Root:       latest.Head.Root,
 	}
+	minerObserver := MinerObserver{}
+	m.pool.Register(minerObserver)
 
 	for {
 		select {
-		case txs := <-m.pool.Listen:
-			for _, v := range txs {
-				fmt.Printf("tx in %s\r\n", v.Hash().Hex())
-			}
-			m.PreparedTransactions = append(m.PreparedTransactions, txs...)
+		// case txs := <-m.pool.Listen:
+		// 	for _, v := range txs {
+		// 		fmt.Printf("tx in %s\r\n", v.Hash().Hex())
+		// 	}
+		// 	m.PreparedTransactions = append(m.PreparedTransactions, txs...)
+		case incomingTransaction := <-m.TxChan:
+			fmt.Println("tx in")
+			m.PreparedTransactions = append(m.PreparedTransactions, &incomingTransaction)
 		case <-m.BlockChan:
 			fmt.Println("block in")
 			latest = m.chain.GetLatestBlock() // Обновляем latest при получении нового блока
@@ -119,12 +139,12 @@ func Run() {
 				m.status = "RUN"
 				templateBlock := block.NewBlockWithHeader(m.HeaderTemplate)
 				cbTx := types.NewCoinBaseTransaction(
-					m.HeaderTemplate.Nonce,
-					m.chain.GetCurrentChainOwnerAddress(),
-					coinbase.RewardBlock(),
-					100,
-					types.FloatToBigInt(1_000_000.0),
-					[]byte("COINBASE_TX"),
+					m.HeaderTemplate.Nonce,                // nonce
+					m.chain.GetCurrentChainOwnerAddress(), // current miner
+					coinbase.RewardBlock(),                // reward
+					100,                                   // gas
+					types.FloatToBigInt(1_000_000.0),      // gas price
+					[]byte("COINBASE_TX"),                 // data
 				)
 				txs := m.pool.GetPendingTransactions()
 

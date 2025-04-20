@@ -147,7 +147,8 @@ func Execute(method string, params []interface{}) interface{} {
 		var addrTo = types.HexToAddress(to)
 		var coinbaseTx = coinbase.FaucetTransaction(gigea.C.Nonce, addrTo, count)
 		// vldtr.SignRawTransactionWithKey(coinbaseTx, coinbase.FaucetAccount().MPub)
-		p.Funnel <- []*types.GTransaction{coinbaseTx}
+		// TODO potential
+		go func() { p.Funnel <- []*types.GTransaction{coinbaseTx} }()
 		// go N.BroadcastTx(*coinbaseTx)
 		Result = coinbaseTx
 	case "getblockchaininfo", "cerera.getInfo":
@@ -227,6 +228,10 @@ func Execute(method string, params []interface{}) interface{} {
 				var addrTo = types.HexToAddress(addrStr)
 				var gasInt = int(gas)
 				tx, err := types.CreateUnbroadcastTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
+				if err != nil {
+					Result = "Error while create transaction!"
+					return 0xf
+				}
 				tx, err = vldtr.SignRawTransactionWithKey(tx, spk)
 				if err != nil {
 					Result = "Error while create transaction!"
