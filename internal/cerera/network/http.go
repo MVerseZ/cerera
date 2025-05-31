@@ -229,12 +229,12 @@ func Execute(method string, params []interface{}) interface{} {
 				var gasInt = int(gas)
 				tx, err := types.CreateUnbroadcastTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
 				if err != nil {
-					Result = "Error while create transaction!"
+					Result = err
 					return 0xf
 				}
 				tx, err = vldtr.SignRawTransactionWithKey(tx, spk)
 				if err != nil {
-					Result = "Error while create transaction!"
+					Result = err
 					return 0xf
 				}
 				// go N.BroadcastTx(*tx)

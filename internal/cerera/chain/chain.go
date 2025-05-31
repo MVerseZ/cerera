@@ -317,6 +317,10 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	// }
 	// bc.DataChannel <- newBlock.ToBytes()
 
+	for _, v := range bc.data {
+		v.Confirmations += 1
+	}
+
 	bc.data = append(bc.data, newBlock)
 	bc.currentBlock = newBlock
 	fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())

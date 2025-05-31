@@ -3,8 +3,11 @@ package types
 import (
 	"math/big"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
+
+	"github.com/cerera/internal/cerera/common"
 )
 
 func TestSigningTx(t *testing.T) {
@@ -142,5 +145,95 @@ func TestGetSender(t *testing.T) {
 	}
 	if senderAddr.Hex() != addr.Hex() {
 		t.Errorf("Different addresses! Have %s, expected %s\r\n", senderAddr.Hex(), addr.Hex())
+	}
+}
+
+func TestSizeSigning(t *testing.T) {
+	var accPrivKey, err = GenerateAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := PubkeyToAddress(accPrivKey.PublicKey)
+
+	dna := make([]byte, 0, 16)
+	dna = append(dna, 0xf, 0xa, 0x42)
+
+	var to = HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea24807B491717081c42F2575F09B6bc60206")
+	txs := &PGTransaction{
+		To:       &to,
+		Value:    big.NewInt(10),
+		GasPrice: big.NewInt(15),
+		Gas:      1000000,
+		Nonce:    0x1,
+		Dna:      dna,
+		Time:     time.Now(),
+	}
+	itx := NewTx(txs)
+
+	// Expected size for unsigned transaction:
+
+	// Total: 81 bytes
+	expectedUnsignedSize := uint64(81)
+
+	if itx.Size() != expectedUnsignedSize {
+		t.Errorf("diff sizes for unsigned tx: expected %d, actual: %d", expectedUnsignedSize, itx.Size())
+	}
+
+	signer := NewSimpleSigner(big.NewInt(25331))
+	tx, err := SignTx(itx, signer, accPrivKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tx.IsSigned() {
+		t.Fatal("tx should be signed!")
+	}
+
+	// Expected size for signed transaction:
+
+	// Total: 161 bytes
+	expectedSignedSize := uint64(161)
+
+	if tx.Size() != expectedSignedSize {
+		t.Errorf("diff sizes for signed tx: expected %d, actual: %d", expectedSignedSize, tx.Size())
+	}
+
+	from, err := Sender(signer, tx)
+	if tx.Type() != txs.txType() {
+		t.Errorf("exected from and address to be equal. Got %x want %x", tx.Type(), txs.txType())
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if from != addr {
+		t.Errorf("exected from and address to be equal. Got %x want %x", from, addr)
+	}
+	bhash, err := tx.CalculateHash()
+	if err != nil {
+		t.Errorf("Error while transaction.CalculateHash call %s\r\n", err)
+	}
+	var sbHash = common.BytesToHash(bhash)
+	if sbHash.Compare(tx.Hash()) != 0 {
+		t.Errorf("Difference between transaction.CalculateHash and transaction.Hash\r\n\t %s - %s\r\n", tx.Hash(), sbHash)
+	}
+
+	// next part
+	var toAddr = HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea24807B491717081c42F2575F09B6bc60206")
+	var tx1 = NewTransaction(
+		1337,
+		toAddr,
+		big.NewInt(100000000),
+		250000,
+		big.NewInt(1111),
+		[]byte("TEST_TX"),
+	)
+	txSize := uint64(0)
+	if runtime.GOOS == "windows" {
+		// fmt.Println("Hello from Windows")
+		txSize = uint64(92)
+	} else {
+		txSize = uint64(161)
+	}
+	if tx1.Size() != txSize || txSize == 0 {
+		t.Errorf("diff sizes: expected %d, actual: %d", txSize, tx1.Size())
 	}
 }

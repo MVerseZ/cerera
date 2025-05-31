@@ -3,7 +3,6 @@ package types
 import (
 	"fmt"
 	"math/big"
-	"runtime"
 	"testing"
 	"time"
 
@@ -86,16 +85,53 @@ func TestSerialize(t *testing.T) {
 	}
 	itx := NewTx(txs)
 
+	// Print original transaction details
+	// t.Logf("Original transaction:")
+	// t.Logf("  Data: %v", itx.Data())
+	// t.Logf("  DNA: %v", itx.Dna())
+	// t.Logf("  To: %v", itx.To())
+	// t.Logf("  Value: %v", itx.Value())
+	// t.Logf("  GasPrice: %v", itx.GasPrice())
+	// t.Logf("  Gas: %v", itx.Gas())
+	// t.Logf("  Nonce: %v", itx.Nonce())
+	// t.Logf("  Original size: %d", itx.Size())
+
 	txBytes, err := itx.MarshalJSON()
 	if err != nil {
 		t.Error("Error while parse transaction to bytes!")
 	}
 
 	var tx GTransaction
-	tx.UnmarshalJSON(txBytes)
+	if err := tx.UnmarshalJSON(txBytes); err != nil {
+		t.Error("Error while unmarshaling transaction:", err)
+	}
 
-	if tx.size != itx.size {
-		t.Errorf("Differenet sizes! Have %d, want %d", tx.Size(), itx.Size())
+	// // Print unmarshaled transaction details
+	// t.Logf("\nUnmarshaled transaction:")
+	// t.Logf("  Data: %v", tx.Data())
+	// t.Logf("  DNA: %v", tx.Dna())
+	// t.Logf("  To: %v", tx.To())
+	// t.Logf("  Value: %v", tx.Value())
+	// t.Logf("  GasPrice: %v", tx.GasPrice())
+	// t.Logf("  Gas: %v", tx.Gas())
+	// t.Logf("  Nonce: %v", tx.Nonce())
+	// t.Logf("  Unmarshaled size: %d", tx.Size())
+
+	// Expected size calculation:
+	// - inner data: 0 bytes
+	// - DNA: 3 bytes (0xf, 0xa, 0x42)
+	// - time: 15 bytes
+	// - signature: 0 bytes (not signed)
+	// - to address: 32 bytes
+	// - value: len(10) = 1 byte
+	// - gas price: len(15) = 1 byte
+	// - nonce: 8 bytes
+	// - gas: 8 bytes
+	// Total: 68 bytes
+	expectedSize := uint64(itx.Size())
+
+	if tx.Size() != expectedSize {
+		t.Errorf("Different sizes! Have %d, want %d", tx.Size(), expectedSize)
 	}
 }
 
@@ -139,15 +175,14 @@ func TestSize(t *testing.T) {
 	if sbHash.Compare(tx.Hash()) != 0 {
 		t.Errorf("Difference between transaction.CalculateHash and transaction.Hash\r\n\t %s - %s\r\n", tx.Hash(), sbHash)
 	}
-	txSize := uint64(0)
-	if runtime.GOOS == "windows" {
-		// fmt.Println("Hello from Windows")
-		txSize = uint64(393)
-	} else {
-		txSize = uint64(392)
-	}
-	if tx.Size() != txSize || txSize == 0 {
-		t.Errorf("diff sizes: expected %d, actual: %d", txSize, tx.Size())
+
+	// Expected size calculation:
+
+	// Total: 92 bytes
+	expectedSize := uint64(92)
+
+	if tx.Size() != expectedSize {
+		t.Errorf("diff sizes: expected %d, actual: %d", expectedSize, tx.Size())
 	}
 }
 

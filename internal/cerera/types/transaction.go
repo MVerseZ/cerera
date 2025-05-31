@@ -16,8 +16,8 @@ var (
 	ErrInvalidCurveSig      = errors.New("invalid transaction v, r, s values")
 	ErrUnexpectedProtection = errors.New("transaction type does not supported EIP-155 protected signatures")
 	ErrInvalidTxType        = errors.New("transaction type not valid in this context")
-	// ErrTxTypeNotSupported   = errors.New("transaction type not supported")
-	ErrGasFeeCapTooLow = errors.New("fee cap less than base fee")
+	ErrTxTypeNotSupported   = errors.New("transaction type not supported")
+	ErrGasFeeCapTooLow      = errors.New("fee cap less than base fee")
 )
 
 // Transaction types.
@@ -245,20 +245,65 @@ func (tx *GTransaction) Data() []byte { return tx.inner.data() }
 func (tx *GTransaction) Dna() []byte { return tx.inner.dna() }
 
 func (tx *GTransaction) Size() uint64 {
-	if size := tx.size.Load(); size != nil {
-		return size.(uint64)
+	if size, ok := tx.size.Load().(uint64); ok {
+		return size
 	}
-	// c := writeCounter(0)
-	// rlp.Encode(&c, &tx.inner)
 
-	txEncData, _ := tx.MarshalJSON()
-	size := uint64(len(txEncData))
+	// Calculate size of inner transaction data
+	innerData := tx.inner.data()
+	innerSize := uint64(len(innerData))
 
-	// if tx.Type() != LegacyTxType {
-	// size += 1 // type byte
-	// }
-	tx.size.Store(size)
-	return size
+	// Calculate size of DNA data
+	dnaData := tx.inner.dna()
+	dnaSize := uint64(len(dnaData))
+
+	// Calculate size of time field
+	timeBytes, err := tx.time.MarshalBinary()
+	if err != nil {
+		return 0
+	}
+	timeSize := uint64(len(timeBytes))
+
+	// Calculate size of signature fields
+	r, s, v := tx.RawSignatureValues()
+	sigSize := uint64(0)
+	if r != nil {
+		sigSize += uint64(len(r.Bytes()))
+	}
+	if s != nil {
+		sigSize += uint64(len(s.Bytes()))
+	}
+	if v != nil {
+		sigSize += uint64(len(v.Bytes()))
+	}
+
+	// Calculate size of other fields
+	toSize := uint64(0)
+	if tx.To() != nil {
+		toSize = uint64(len(tx.To().Bytes()))
+	}
+
+	// Calculate size of value and gas price
+	valueSize := uint64(0)
+	if tx.Value() != nil {
+		valueSize = uint64(len(tx.Value().Bytes()))
+	}
+	gasPriceSize := uint64(0)
+	if tx.GasPrice() != nil {
+		gasPriceSize = uint64(len(tx.GasPrice().Bytes()))
+	}
+
+	// Calculate size of nonce and gas
+	nonceSize := uint64(8) // uint64 is always 8 bytes
+	gasSize := uint64(8)   // uint64 is always 8 bytes
+
+	// Calculate total size
+	totalSize := innerSize + dnaSize + timeSize + sigSize + toSize + valueSize + gasPriceSize + nonceSize + gasSize
+
+	// Cache the result
+	tx.size.Store(totalSize)
+
+	return totalSize
 }
 
 func (tx *GTransaction) To() *Address {
@@ -266,16 +311,13 @@ func (tx *GTransaction) To() *Address {
 }
 
 func (tx *GTransaction) setDecoded(inner TxData, size uint64) {
-	// partially realized. Need copy other fileds.
 	tx.dna = inner.dna()
 	tx.time = inner.time()
 	tx.inner = inner
 	tx.hash.Store(tx.Hash())
-	if size > 0 {
-		tx.size.Store(size)
-	} else {
-		tx.size.Store(tx.Size())
-	}
+
+	// Always recalculate size to ensure consistency
+	tx.size.Store(tx.Size())
 }
 
 func (tx *GTransaction) SetTime(t time.Time) {

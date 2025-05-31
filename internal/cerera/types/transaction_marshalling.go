@@ -79,13 +79,8 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		return err
 	}
 
-	var totalSize = len(input)
-
 	// handle fields by tx type
 	var inner TxData
-	// fmt.Printf("TX TYPE: %d\r\n", dec.Type)
-	// fmt.Printf("TX TYPE: %s\r\n", dec.Type)
-	// fmt.Printf("TX TO: %s\r\n", dec.To)
 	switch dec.Type {
 	case LegacyTxType:
 		var itx PGTransaction
@@ -145,7 +140,6 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		itx.V = (*big.Int)(dec.V)
 
 		itx.Dna = *dec.Dna
-
 		itx.Time = dec.Time
 	case FaucetTxType:
 		var itx PGTransaction
@@ -180,9 +174,8 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		return ErrTxTypeNotSupported
 	}
 
-	// set inner tx
-	tx.setDecoded(inner, uint64(totalSize))
+	// set inner tx with size 0 to trigger recalculation
+	tx.setDecoded(inner, 0)
 
-	// TODO: check hash here?
 	return nil
 }

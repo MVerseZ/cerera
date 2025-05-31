@@ -87,6 +87,7 @@ func (v *DDDDDValidator) GasPrice() *big.Int {
 
 func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 	// if send to address not generated - > send only to input
+	// executed transaction adds to txs trie struct
 	var localVault = storage.GetVault()
 	var gas = tx.Gas()
 	var val = tx.Value()

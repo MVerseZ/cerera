@@ -18,21 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type MinerObserver struct {
-	pool.Observer
-}
-
-// getID implements pool.Observer.
-func (mo MinerObserver) GetID() string {
-	return fmt.Sprintf("OBSERVER_MINER_%s_%s", runtime.GOOS, runtime.GOARCH)
-}
-
-// update implements pool.Observer.
-func (mo MinerObserver) Update(tx *types.GTransaction) {
-	fmt.Printf("Miner observer: \r\n\tReceived new transaction with hash %s\r\n", tx.Hash())
-}
-
-// PROTOTYPE STRUCTURE
 type Miner struct {
 	difficulty int64
 	status     string
@@ -53,6 +38,20 @@ type Miner struct {
 var m *Miner
 var xvm *randomx.RxVM
 
+type MinerObserver struct {
+	pool.Observer
+}
+
+// getID implements pool.Observer.
+func (mo MinerObserver) GetID() string {
+	return fmt.Sprintf("OBSERVER_MINER_%s_%s", runtime.GOOS, runtime.GOARCH)
+}
+
+// update implements pool.Observer.
+func (mo MinerObserver) Update(tx *types.GTransaction) {
+	fmt.Printf("Miner observer: \r\n\tReceived new transaction with hash %s\r\n", tx.Hash())
+}
+
 func Init() error {
 	// init randomx vm
 	var flags = []randomx.Flag{randomx.FlagDefault}
@@ -64,6 +63,7 @@ func Init() error {
 	xvm, _ = randomx.NewRxVM(rxDs, flags...)
 	// randomx.SetVMDataset(xvm, dataset)
 	xvm.CalcHashFirst([]byte("FIRST"))
+	fmt.Printf("Miner init done with params:\t\r\n, %b\r\n", myCache)
 	return nil
 }
 
@@ -155,11 +155,12 @@ func Run() {
 				}
 
 				// 1000000 and 1 ~ avg 60 sec searching
+				fmt.Printf(" \tsearching block... \r\n")
 				var h, f, sol = xvm.Search(
 					templateBlock.ToBytes(),
 					m.HeaderTemplate.Difficulty,
 					1000000,
-					100000,
+					1,
 					templateBlock.GetNonceBytes(),
 				)
 				if f {
@@ -306,3 +307,5 @@ func MineBlock(latest *block.Block, addr types.Address) {
 	}
 	fmt.Println(head)
 }
+
+// https://github.com/ethereum/go-ethereum/blob/master/miner/payload_building.go#L208

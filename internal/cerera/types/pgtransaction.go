@@ -43,7 +43,8 @@ func NewTransactionEnrich(nonce uint64,
 	})
 }
 
-func NewTransaction(nonce uint64,
+func NewTransaction(
+	nonce uint64,
 	to Address,
 	amount *big.Int,
 	gasLimit uint64,

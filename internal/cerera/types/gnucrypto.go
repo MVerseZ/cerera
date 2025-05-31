@@ -12,6 +12,7 @@ import (
 	"math/big"
 
 	"github.com/cerera/internal/cerera/common"
+
 	"golang.org/x/crypto/blake2b"
 )
 

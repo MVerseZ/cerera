@@ -259,6 +259,10 @@ func (v *D5Vault) Size() int64 {
 
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
 
+	// legacy type is like p2p transaction
+	// if reciever does not exist - > create shadow
+	// if reciever exist - > update
+
 	// decrement first
 	// wtf big int sub only?
 
