@@ -95,7 +95,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 		p:      poolInstance,
 		v:      &vault,
 		proc:   Process{},
-		status: [8]byte{0xf, 0x4, 0x2, 0xb, 0x0, 0x3, 0x1, 0x7},
+		status: [8]byte{0xf, val.Status(), poolInstance.Status, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 
@@ -148,6 +148,7 @@ func main() {
 		log.Printf("Failed to initialize Cerera: %v", err)
 		os.Exit(1)
 	}
+	fmt.Printf("\t<--------Cerera Status: %x-------->\r\n", app.status)
 
 	// Ожидание завершения
 	<-ctx.Done()

@@ -43,6 +43,7 @@ type Validator interface {
 	SetUp(chainId *big.Int)
 	Signer() types.Signer
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) (*types.GTransaction, error)
+	Status() byte
 	ValidateRawTransaction(tx *types.GTransaction) bool
 	// validate and execute transaction
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
@@ -203,6 +204,10 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 		return nil, NotEnoughtInputs
 	}
 	return signTx, nil
+}
+
+func (v *DDDDDValidator) Status() byte {
+	return 0xa
 }
 
 func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {

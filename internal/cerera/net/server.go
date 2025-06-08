@@ -23,12 +23,21 @@ type Node struct {
 	h       host.Host
 	address types.Address
 	ch      chan []byte
+	mu      sync.Mutex
 
-	BroadcastHeartBeetTimer time.Ticker
+	BroadcastHeartBeetTimer *time.Ticker
+	FallBackCounter         int
 }
 
 func NewNode(h host.Host, addr types.Address) *Node {
-	node := &Node{h, addr, make(chan []byte), *time.NewTicker(5 * time.Minute)}
+	node := &Node{}
+	node.h = h
+	node.address = addr
+	node.ch = make(chan []byte)
+	// node.mu = sync.Mutex{}
+	node.BroadcastHeartBeetTimer = time.NewTicker(47 * time.Second)
+	node.FallBackCounter = 0
+	//node := &Node{h, addr, make(chan []byte), ,*time.NewTicker(47 * time.Second), 0}
 	return node
 }
 
@@ -55,12 +64,13 @@ func StartNode(addr string, laddr types.Address) *Node {
 		panic(err)
 	}
 	defer h.Close()
+	noda := NewNode(h, laddr)
 
 	fullAddr := getHostAddress(h)
 	fmt.Printf("I am %s\n", fullAddr)
 	fmt.Printf("Host ID is %s\n", h.ID())
 
-	go discoverPeers(ctx, h)
+	go discoverPeers(ctx, h, noda)
 
 	ps, err := pubsub.NewGossipSub(ctx, h)
 	if err != nil {
@@ -71,8 +81,7 @@ func StartNode(addr string, laddr types.Address) *Node {
 		panic(err)
 	}
 
-	var node = NewNode(h, laddr)
-	go node.streamStateTo(ctx, topic)
+	go noda.streamStateTo(ctx, topic)
 
 	sub, err := topic.Subscribe()
 	if err != nil {
@@ -80,9 +89,8 @@ func StartNode(addr string, laddr types.Address) *Node {
 	}
 	printMessagesFrom(ctx, sub)
 
-	return node
+	return noda
 }
-
 func getHostAddress(ha host.Host) string {
 	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID()))
 	addr := ha.Addrs()[0]
@@ -116,7 +124,7 @@ func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
 	return kademliaDHT
 }
 
-func discoverPeers(ctx context.Context, h host.Host) {
+func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 	kademliaDHT := initDHT(ctx, h)
 	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, routingDiscovery, topicName)
@@ -124,7 +132,7 @@ func discoverPeers(ctx context.Context, h host.Host) {
 	// Look for others who have announced and attempt to connect to them
 	anyConnected := false
 	for !anyConnected {
-		// fmt.Println("Searching for peers...")
+		fmt.Println("Searching for peers...")
 		peerChan, err := routingDiscovery.FindPeers(ctx, topicName)
 		if err != nil {
 			panic(err)
@@ -136,6 +144,14 @@ func discoverPeers(ctx context.Context, h host.Host) {
 			err := h.Connect(ctx, peer)
 			if err != nil {
 				// fmt.Printf("Failed connecting to %s, error: %s\n", peer.ID, err)
+				n.mu.Lock()
+				defer n.mu.Unlock()
+				n.FallBackCounter++
+				if n.FallBackCounter > 9 {
+					fmt.Printf("Max connections errors reached: %d\r\n", n.FallBackCounter)
+					anyConnected = true
+					break
+				}
 			} else {
 				fmt.Println("Connected to:", peer.ID)
 				anyConnected = true
@@ -143,6 +159,7 @@ func discoverPeers(ctx context.Context, h host.Host) {
 		}
 	}
 	fmt.Println("Peer discovery complete")
+	fmt.Println(n.FallBackCounter)
 }
 
 func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
@@ -156,7 +173,7 @@ func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 		case d := <-n.ch:
 			fmt.Printf("recieved channel: %s\r\n", d)
 		case <-n.BroadcastHeartBeetTimer.C:
-			var msg = "PING"
+			var msg = n.address.String() + "_PING"
 			if err := topic.Publish(ctx, []byte(msg)); err != nil {
 				fmt.Println("### Publish error:", err)
 			}
@@ -170,6 +187,6 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(m.ReceivedFrom, ": ", string(m.Message.Data))
+		fmt.Printf("%s: \r\n\t%s,\r\n\tat %s\r\n", m.ReceivedFrom, string(m.Message.Data), time.Now().Format("2006-01-02 15:04:05:05.000000000"))
 	}
 }

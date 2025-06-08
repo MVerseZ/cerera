@@ -30,6 +30,7 @@ type Vault interface {
 	GetOwner() *types.StateAccount
 	Size() int64
 	Sync(saBytes []byte)
+	Status() byte
 	VerifyAccount(address types.Address, pass string) (types.Address, error)
 }
 
@@ -39,6 +40,7 @@ type D5Vault struct {
 	path      string
 	rootHash  common.Hash
 	inMem     bool
+	status    byte
 }
 
 var vlt D5Vault
@@ -123,6 +125,7 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 		vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
 		SaveToVault(faucetAddr.Bytes())
 	}
+	vlt.status = 0xa
 
 	return &vlt, nil
 }
@@ -338,6 +341,10 @@ func (v *D5Vault) GetOwner() *types.StateAccount {
 func (v *D5Vault) Sync(saBytes []byte) {
 	var sa = types.BytesToStateAccount(saBytes)
 	v.accounts.Append(sa.Address, sa)
+}
+
+func (v *D5Vault) Status() byte {
+	return v.status
 }
 
 func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address, error) {
