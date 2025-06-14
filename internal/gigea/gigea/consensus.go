@@ -1,6 +1,12 @@
 package gigea
 
-import "github.com/cerera/internal/cerera/types"
+import (
+	"fmt"
+
+	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/net"
+	"github.com/cerera/internal/cerera/types"
+)
 
 type Consensus struct {
 	Nonce  uint64
@@ -23,4 +29,14 @@ func Init(lAddr types.Address) error {
 
 func SetStatus(s int) {
 	C.Status = s
+}
+
+func (c *Consensus) Notify(h common.Hash) {
+	fmt.Printf("Consensus status:\r\n\t%d\r\n", c.Status)
+	fmt.Printf("\t%s\r\n", h)
+	net.CereraNode.Alarm([]byte(h.String()))
+}
+
+func (e *Engine) Register(a interface{}) {
+
 }

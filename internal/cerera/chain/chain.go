@@ -251,7 +251,6 @@ func (bc *Chain) Start() {
 		select {
 		case newBlock := <-gigea.E.BlockPipe:
 			fmt.Printf("Approved block!! : %s\r\n", newBlock.GetHash())
-			fmt.Printf("SKIPPED : %s\r\n", newBlock.GetHash())
 			for _, tx := range newBlock.Transactions {
 				// fmt.Printf("Tx: %s\r\n", tx.Hash())
 				p.RemoveFromPool(tx.Hash())
@@ -263,8 +262,8 @@ func (bc *Chain) Start() {
 			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 			// 	err := SaveToVault(*newBlock)
 			bc.Size += newBlock.Header().Size
-			bc.data = append(bc.data, &newBlock)
-			bc.currentBlock = &newBlock
+			bc.data = append(bc.data, newBlock)
+			bc.currentBlock = newBlock
 			bc.mu.Unlock()
 		case <-bc.maintainTicker.C:
 			fmt.Println("tick maintain")
@@ -310,13 +309,6 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 		bc.currentBlock.Head.Index, bc.currentBlock.GetHash())
 	fmt.Printf("Incoming index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
 
-	// if newBlock.Head.ChainId.Cmp(big.NewInt(0)) == 0 {
-	// 	// replace all
-	// 	ClearVault()
-	// 	bc.data = nil
-	// }
-	// bc.DataChannel <- newBlock.ToBytes()
-
 	for _, v := range bc.data {
 		v.Confirmations += 1
 	}
@@ -342,6 +334,8 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	bc.info.Total = bc.info.Total + 1
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 	bc.info.AvgTime = bc.avgTime
+
+	go func() { bc.DataChannel <- newBlock.ToBytes() }()
 }
 
 func (bc *Chain) Idle() {

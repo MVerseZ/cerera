@@ -19,6 +19,8 @@ import (
 
 const protocolID = "/cerera-p2p/1.0.0"
 
+var CereraNode *Node
+
 type Node struct {
 	h       host.Host
 	address types.Address
@@ -35,7 +37,7 @@ func NewNode(h host.Host, addr types.Address) *Node {
 	node.address = addr
 	node.ch = make(chan []byte)
 	// node.mu = sync.Mutex{}
-	node.BroadcastHeartBeetTimer = time.NewTicker(47 * time.Second)
+	node.BroadcastHeartBeetTimer = time.NewTicker(5 * time.Minute)
 	node.FallBackCounter = 0
 	//node := &Node{h, addr, make(chan []byte), ,*time.NewTicker(47 * time.Second), 0}
 	return node
@@ -64,13 +66,13 @@ func StartNode(addr string, laddr types.Address) *Node {
 		panic(err)
 	}
 	defer h.Close()
-	noda := NewNode(h, laddr)
+	CereraNode = NewNode(h, laddr)
 
 	fullAddr := getHostAddress(h)
 	fmt.Printf("I am %s\n", fullAddr)
 	fmt.Printf("Host ID is %s\n", h.ID())
 
-	go discoverPeers(ctx, h, noda)
+	go discoverPeers(ctx, h, CereraNode)
 
 	ps, err := pubsub.NewGossipSub(ctx, h)
 	if err != nil {
@@ -81,7 +83,7 @@ func StartNode(addr string, laddr types.Address) *Node {
 		panic(err)
 	}
 
-	go noda.streamStateTo(ctx, topic)
+	go CereraNode.streamStateTo(ctx, topic)
 
 	sub, err := topic.Subscribe()
 	if err != nil {
@@ -89,7 +91,7 @@ func StartNode(addr string, laddr types.Address) *Node {
 	}
 	printMessagesFrom(ctx, sub)
 
-	return noda
+	return CereraNode
 }
 func getHostAddress(ha host.Host) string {
 	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID()))
@@ -144,14 +146,12 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 			err := h.Connect(ctx, peer)
 			if err != nil {
 				// fmt.Printf("Failed connecting to %s, error: %s\n", peer.ID, err)
-				n.mu.Lock()
-				defer n.mu.Unlock()
 				n.FallBackCounter++
-				if n.FallBackCounter > 9 {
-					fmt.Printf("Max connections errors reached: %d\r\n", n.FallBackCounter)
-					anyConnected = true
-					break
-				}
+				// if n.FallBackCounter > 50 {
+				// 	fmt.Printf("Max connections errors reached: %d\r\n", n.FallBackCounter)
+				// 	anyConnected = true
+				// 	break
+				// }
 			} else {
 				fmt.Println("Connected to:", peer.ID)
 				anyConnected = true
@@ -162,6 +162,16 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 	fmt.Println(n.FallBackCounter)
 }
 
+func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription) {
+	for {
+		m, err := sub.Next(ctx)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("%s: \r\n\t%s,\r\n\t%s\r\n", m.ReceivedFrom, string(m.Message.Data), time.Now().Format("2006-01-02 15:04:05:05.000000000"))
+	}
+}
+
 func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 	// reader := bufio.NewReader(os.Stdin)
 	for {
@@ -170,8 +180,11 @@ func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 		// if err != nil {
 		// 	panic(err)
 		// }
-		case d := <-n.ch:
+		case d := <-n.ch: // channel from miner with blocks
 			fmt.Printf("recieved channel: %s\r\n", d)
+			if err := topic.Publish(ctx, d); err != nil {
+				fmt.Println("### Publish error:", err)
+			}
 		case <-n.BroadcastHeartBeetTimer.C:
 			var msg = n.address.String() + "_PING"
 			if err := topic.Publish(ctx, []byte(msg)); err != nil {
@@ -181,12 +194,6 @@ func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 	}
 }
 
-func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription) {
-	for {
-		m, err := sub.Next(ctx)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("%s: \r\n\t%s,\r\n\tat %s\r\n", m.ReceivedFrom, string(m.Message.Data), time.Now().Format("2006-01-02 15:04:05:05.000000000"))
-	}
+func (n *Node) Alarm(data []byte) {
+	n.ch <- data
 }

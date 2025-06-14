@@ -9,7 +9,7 @@ import (
 func GenesisHead(chainId int) *Header {
 	var genesisHeader = &Header{
 		Ctx:        17,
-		Difficulty: 111111111111111, //uint64(111111111111111), // 4 trailng zeros
+		Difficulty: 1111111111111111, //uint64(111111111111111), // 4 trailng zeros
 		Extra:      [8]byte{0x1, 0xf, 0x0, 0x0, 0x0, 0x0, 0xd, 0xe},
 		Height:     0,
 		Timestamp:  uint64(time.Now().UnixMilli()),

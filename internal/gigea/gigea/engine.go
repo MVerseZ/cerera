@@ -1,6 +1,8 @@
 package gigea
 
 import (
+	"fmt"
+
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
@@ -12,7 +14,7 @@ type TxTree struct {
 type Engine struct {
 	TxFunnel     chan *types.GTransaction // input tx funnel
 	BlockFunnel  chan *block.Block        // input block funnel
-	BlockPipe    chan block.Block
+	BlockPipe    chan *block.Block
 	Transaions   TxTree
 	Owner        types.Address
 	Transactions *TxMerkleTree
@@ -23,7 +25,7 @@ func (e *Engine) Start(lAddr types.Address) {
 	// pipes
 	e.BlockFunnel = make(chan *block.Block)
 	e.TxFunnel = make(chan *types.GTransaction)
-	e.BlockPipe = make(chan block.Block)
+	e.BlockPipe = make(chan *block.Block)
 
 	e.List = make([]types.GTransaction, 0)
 
@@ -54,9 +56,13 @@ func (e *Engine) Listen() {
 			// case b := <-e.BlockFunnel:
 			// fmt.Printf("New block arrived %s\r\n", b.Hash())
 			// e.Validate(b)
+		case b := <-e.BlockFunnel:
+			fmt.Printf("New block arrived to GIGEA: %s\r\n", b.GetHash())
+			C.Notify(b.GetHash())
+			continue
 		}
+		errc <- nil
 	}
-	errc <- nil
 }
 
 func (e *Engine) Pack(tx *types.GTransaction) {

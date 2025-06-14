@@ -89,8 +89,13 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 		go miner.Run()
 	}
 
+	var chain = chain.GetBlockChain()
+
+	gigea.E.Register(chain)
+	gigea.E.Register(miner.GetMiner())
+
 	return &Cerera{
-		bc:     chain.GetBlockChain(),
+		bc:     chain,
 		g:      &val,
 		p:      poolInstance,
 		v:      &vault,
