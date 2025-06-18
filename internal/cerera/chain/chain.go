@@ -341,7 +341,7 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	bc.info.AvgTime = bc.avgTime
 
 	go func() { bc.OutBoundEvents <- newBlock.ToBytes() }()
-	go func() { bc.DataChannel <- newBlock.ToBytes() }()
+	// go func() { bc.DataChannel <- newBlock.ToBytes() }()
 }
 
 func (bc *Chain) Idle() {

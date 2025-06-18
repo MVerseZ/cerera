@@ -186,9 +186,6 @@ func Run() {
 			return
 		default:
 			// fmt.Printf("Miner status: %s\r\n\tC-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.T, m.minerMetrics.A, m.minerMetrics.F)
-			if m.status == "FND" {
-				m.UpdateTemplate()
-			}
 			if m.status == "PREPARED" {
 				m.SetStatus("RUN")
 			}
@@ -271,7 +268,7 @@ func Run() {
 
 func (m *Miner) UpdateTemplate() {
 	latest := m.chain.GetLatestBlock()
-	if latest.Head.Height != m.HeaderTemplate.Height {
+	if latest.Head.Height >= m.HeaderTemplate.Height {
 		m.HeaderTemplate = &block.Header{
 			Ctx:        17,
 			Difficulty: latest.Head.Difficulty,
