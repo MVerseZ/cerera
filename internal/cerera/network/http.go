@@ -291,7 +291,7 @@ func Execute(method string, params []interface{}) interface{} {
 				var cereraClientAddress = types.HexToAddress(addrStr)
 				if vldtr.CheckAddress(cereraClientAddress) {
 					fmt.Printf("Address: %s\r\n", cereraClientAddress)
-					bc.Idle()
+					// bc.Idle()
 					Result = fmt.Sprintf("LATEST#%d", bc.GetLatestBlock().Head.Index)
 				} else {
 					Result = "DONE"
@@ -309,7 +309,7 @@ func Execute(method string, params []interface{}) interface{} {
 	case "cerera.consensus.done":
 		Result = "DONE"
 	case "cerera.consensus.ready":
-		bc.Resume()
+		// bc.Resume()
 		// guest use latest block for sync
 		// Result = bc.GetLatestBlock().Hash()
 	case "cerera.consensus.block":

@@ -270,18 +270,18 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	// wtf big int sub only?
 
 	fmt.Printf("___VAULT_OPERATIONS___\r\n\tupdate balance of %s\r\n", to)
-	fmt.Printf("\tupdate balance from %s\r\n", from)
+	// fmt.Printf("\tupdate balance from %s\r\n", from)
 	var sa = v.Get(from)
-	fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
-	fmt.Printf("\tamount to transfer: %d\r\n", cnt)
+	// fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
+	// fmt.Printf("\tamount to transfer: %d\r\n", cnt)
 	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
 	// increment second
 	var saDest = v.Get(to)
 	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
 	saDest.AddInput(txHash, cnt)
-	fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
-		sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
-	fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
+	// fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
+	// 	sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
+	// fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
 	// when increment, add input to account - tx hash
 	// saDest.Inputs = append(saDest.Inputs, txHash)
@@ -298,18 +298,18 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
 
 	fmt.Printf("___VAULT_OPERATIONS___\r\n\tupdate balance of %s\r\n", to)
-	fmt.Printf("\tupdate balance from %s\r\n", coinbase.GetCoinbaseAddress().String())
+	// fmt.Printf("\tupdate balance from %s\r\n", coinbase.GetCoinbaseAddress().String())
 	var sa = v.Get(coinbase.GetFaucetAddress())
-	fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
-	fmt.Printf("\tamount to transfer: %d\r\n", cnt)
+	// fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
+	// fmt.Printf("\tamount to transfer: %d\r\n", cnt)
 	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
 	// increment second
 	var saDest = v.Get(to)
 	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
 	saDest.AddInput(txHash, cnt)
-	fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
-		sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
-	fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
+	// fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
+	// sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
+	// fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
 	// when increment, add input to account - tx hash
 	// saDest.Inputs = append(saDest.Inputs, txHash)

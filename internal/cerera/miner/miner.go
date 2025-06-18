@@ -169,33 +169,33 @@ func Run() {
 		// 	m.PreparedTransactions = append(m.PreparedTransactions, &incomingTransaction)
 		// case <-m.BlockChan:
 		// 	fmt.Println("block in")
+		// 	if m.status == "FND" {
+		// 		m.SetStatus("RUN")
+		// 	}
 		// 	latest = m.chain.GetLatestBlock() // Обновляем latest при получении нового блока
+		case <-m.chain.OutBoundEvents:
+			m.UpdateTemplate()
+			m.SetStatus("RUN")
 		case incomingTransaction := <-m.TxChan:
-			m.status = "REFRESH"
-			fmt.Printf("Miner status: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
+			m.SetStatus("REFRESH")
 			m.minerMetrics.UpdateT()
 			fmt.Printf("\tTx from miner observer: %s\r\n", incomingTransaction.Hash())
 			m.PreparedTransactions = append(m.PreparedTransactions, incomingTransaction)
 		case <-m.Quit:
-			m.status = "STOP"
-			fmt.Printf("Miner status: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
+			m.SetStatus("STOP")
 			return
 		default:
 			// fmt.Printf("Miner status: %s\r\n\tC-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.T, m.minerMetrics.A, m.minerMetrics.F)
+			if m.status == "FND" {
+				m.UpdateTemplate()
+			}
 			if m.status == "PREPARED" {
-				fmt.Printf("Miner status: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
-				m.status = "RUN"
+				m.SetStatus("RUN")
 			}
 			if m.status == "REFRESH" {
-				fmt.Printf("Miner status: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
-				m.status = "RUN"
-			}
-			if m.status == "FND" {
-				fmt.Printf("Miner status: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
-				m.status = "RUN"
+				m.SetStatus("RUN")
 			}
 			if m.status == "RUN" {
-				fmt.Printf("Miner status: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
 				templateBlock := block.NewBlockWithHeader(m.HeaderTemplate)
 				cbTx := types.NewCoinBaseTransaction(
 					m.HeaderTemplate.Nonce,                // nonce
@@ -218,7 +218,7 @@ func Run() {
 				// 1000000 and 1 ~ avg 60 sec searching
 				var blockBytes, difficulty, maxTimes, jump, nonceBytes = templateBlock.ToBytes(), m.HeaderTemplate.Difficulty, uint64(100000000000), uint32(100000), templateBlock.GetNonceBytes()
 				fmt.Printf(" \tsearching block... \r\n")
-				// fmt.Printf(" \t\twith params:\r\n\t\tlen bytes: %d\r\n\t\tdifficulty: %d\r\n\t\tnonce: %x\r\n", len(templateBlock.ToBytes()), m.HeaderTemplate.Difficulty, templateBlock.GetNonceBytes())
+				fmt.Printf(" \t\twith params:\r\n\t\tlen bytes: %d\r\n\t\tdifficulty: %d\r\n\t\tnonce: %x\r\n\t\theight: %d\r\n", len(templateBlock.ToBytes()), m.HeaderTemplate.Difficulty, templateBlock.GetNonceBytes(), templateBlock.Head.Height)
 				var h, f, sol = xvm.Search(blockBytes, difficulty, maxTimes, jump, nonceBytes)
 
 				if f {
@@ -242,15 +242,15 @@ func Run() {
 					bb, _ := json.Marshal(templateBlock)
 					templateBlock.Head.Size = len(bb)
 					fmt.Printf("\tfound hash:%s\r\n", common.BytesToHash(h))
+					m.SetStatus("FND")
 					for _, ttx := range templateBlock.Transactions {
 						m.pool.RemoveFromPool(ttx.Hash())
 					}
 					// m.chain.UpdateChain(templateBlock)
-					m.status = "FND"
-					m.UpdateTemplate()
-					go func() { gigea.E.BlockFunnel <- templateBlock }()
+					// go func() {
+					gigea.E.BlockFunnel <- templateBlock
 
-					continue
+					// }()
 					// latest = m.chain.GetLatestBlock() // Обновляем latest после нахождения блока
 				} else {
 					// Если поиск прерван
@@ -261,6 +261,7 @@ func Run() {
 					// time.Sleep(1 * time.Nanosecond)
 					// fmt.Printf("\tchange diff to %d\r\n", m.HeaderTemplate.Difficulty )
 				}
+				continue
 			}
 			time.Sleep(1 * time.Millisecond)
 
@@ -270,27 +271,35 @@ func Run() {
 
 func (m *Miner) UpdateTemplate() {
 	latest := m.chain.GetLatestBlock()
-	m.HeaderTemplate = &block.Header{
-		Ctx:        17,
-		Difficulty: latest.Head.Difficulty,
-		Extra:      [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Height:     latest.Head.Height + 1,
-		Index:      latest.Head.Index + 1,
-		GasLimit:   250000,
-		GasUsed:    1,
-		ChainId:    m.chain.GetChainId(),
-		Node:       m.chain.GetCurrentChainOwnerAddress(),
-		Size:       0,
-		V:          [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0},
-		Nonce:      latest.Head.Nonce,
-		PrevHash:   latest.Hash,
-		Root:       latest.Head.Root,
+	if latest.Head.Height != m.HeaderTemplate.Height {
+		m.HeaderTemplate = &block.Header{
+			Ctx:        17,
+			Difficulty: latest.Head.Difficulty,
+			Extra:      [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+			Height:     latest.Head.Height + 1,
+			Index:      latest.Head.Index + 1,
+			GasLimit:   250000,
+			GasUsed:    1,
+			ChainId:    m.chain.GetChainId(),
+			Node:       m.chain.GetCurrentChainOwnerAddress(),
+			Size:       0,
+			V:          [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0},
+			Nonce:      latest.Head.Nonce,
+			PrevHash:   latest.Hash,
+			Root:       latest.Head.Root,
+		}
+		m.PreparedTransactions = make([]*types.GTransaction, 0)
 	}
-	m.PreparedTransactions = make([]*types.GTransaction, 0)
 }
 
 func (m *Miner) Stop() {
 	close(m.Quit)
+}
+
+func (m *Miner) SetStatus(status string) {
+	fmt.Printf("Miner status old: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
+	m.status = status
+	fmt.Printf("Miner status new: %s::C-%d || T-%d || A-%d || F-%d\r\n", m.status, m.minerMetrics.C, m.minerMetrics.TxsApprovedCnt, m.minerMetrics.AllOpCnt, m.minerMetrics.FoundBlockCnt)
 }
 
 func Start(latest *block.Block, chId *big.Int, difficulty uint64) {

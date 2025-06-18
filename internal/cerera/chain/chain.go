@@ -11,12 +11,12 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/gigea/gigea"
 
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
-	"github.com/cerera/internal/gigea/gigea"
 )
 
 type BlockChainStatus struct {
@@ -37,13 +37,14 @@ type Chain struct {
 
 	mu   sync.Mutex
 	info BlockChainStatus
+
 	data []*block.Block
 	t    *trie.MerkleTree
 
 	// tickers
 	maintainTicker *time.Ticker
-	blockTicker    *time.Ticker
 	DataChannel    chan []byte
+	OutBoundEvents chan []byte
 	Size           int
 
 	Difficulty uint64
@@ -142,13 +143,13 @@ func InitBlockChain(cfg *config.Config) error {
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      big.NewInt(1),
 		currentBlock:   dataBlocks[len(dataBlocks)-1],
-		blockTicker:    time.NewTicker(BLOCKTIMER),
 		maintainTicker: time.NewTicker(time.Duration(5 * time.Minute)),
 		info:           stats,
 		data:           dataBlocks,
 		currentAddress: cfg.NetCfg.ADDR,
 		t:              t,
 		DataChannel:    make(chan []byte),
+		OutBoundEvents: make(chan []byte),
 		Size:           genesisBlock.Header().Size,
 		Difficulty:     genesisBlock.Head.Difficulty,
 		lastBlockTime:  time.Now().Unix(),
@@ -184,6 +185,8 @@ func (bc *Chain) GetInfo() BlockChainStatus {
 	return bc.info
 }
 func (bc *Chain) GetLatestBlock() *block.Block {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
 	return bc.currentBlock
 }
 
@@ -266,7 +269,16 @@ func (bc *Chain) Start() {
 			bc.currentBlock = newBlock
 			bc.mu.Unlock()
 		case <-bc.maintainTicker.C:
-			fmt.Println("tick maintain")
+			fmt.Println("Chain tick maintain")
+			continue
+		case b := <-gigea.C.Chain:
+			bc.mu.TryLock()
+			if b.GetHash() == bc.info.Latest {
+				continue
+			}
+			fmt.Println("UPDATE CHAIN")
+			bc.UpdateChain(b)
+			bc.mu.Unlock()
 			continue
 		}
 	}
@@ -275,12 +287,6 @@ func (bc *Chain) Start() {
 
 func (bc *Chain) Mine(latest *block.Block) {
 	fmt.Println("MINE ON CHAIN")
-}
-
-// change block generation time
-// val multiply by milliseconds (ms)
-func (bc *Chain) ChangeBlockInterval(val int) {
-	bc.blockTicker.Reset(time.Duration(time.Duration(val) * time.Millisecond))
 }
 
 /*
@@ -304,10 +310,9 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	if bc.blockCount > 0 {
 		bc.avgTime = float64(bc.totalTime) / float64(bc.blockCount)
 	}
-	fmt.Printf(" \taverage time between blocks: %.2f seconds\r\n", bc.avgTime)
-	fmt.Printf("Current index: %d with hash: %s\r\n",
-		bc.currentBlock.Head.Index, bc.currentBlock.GetHash())
-	fmt.Printf("Incoming index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
+	// fmt.Printf(" \taverage time between blocks: %.2f seconds\r\n", bc.avgTime)
+	fmt.Printf("\tCurrent index: %d with hash: %s\r\n\tIncoming index: %d with hash: %s\r\n",
+		bc.currentBlock.Head.Index, bc.currentBlock.GetHash(), newBlock.Head.Index, newBlock.GetHash())
 
 	for _, v := range bc.data {
 		v.Confirmations += 1
@@ -315,13 +320,13 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 
 	bc.data = append(bc.data, newBlock)
 	bc.currentBlock = newBlock
-	fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
+	// fmt.Printf("Update index: %d with hash: %s\r\n", newBlock.Head.Index, newBlock.GetHash())
 
 	// bc.currentBlock = newBlock
 	err := SaveToVault(*newBlock)
 	if err == nil {
 		var rewardAddress = newBlock.Head.Node
-		fmt.Printf("Reward to: %s\r\n", rewardAddress)
+		fmt.Printf("\t\tReward to: %s\r\n", rewardAddress)
 	}
 
 	// execute block transactions
@@ -335,6 +340,7 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
 	bc.info.AvgTime = bc.avgTime
 
+	go func() { bc.OutBoundEvents <- newBlock.ToBytes() }()
 	go func() { bc.DataChannel <- newBlock.ToBytes() }()
 }
 
@@ -344,24 +350,17 @@ func (bc *Chain) Idle() {
 	bc.autoGen = false
 }
 
-func (bc *Chain) Resume() {
-	bc.mu.Lock()
-	bc.autoGen = true
-	bc.mu.Unlock()
-	for {
-		select {
-		case <-bc.blockTicker.C:
-			// var latest = bc.GetLatestBlock()
-			// if bc.autoGen {
-			// bc.TryAutoGen(latest)
-			// gigea.E.Mine()
-			// }
-			continue
-		case <-bc.maintainTicker.C:
-			continue
-		}
-	}
-}
+// func (bc *Chain) Resume() {
+// 	bc.mu.Lock()
+// 	defer bc.mu.Unlock()
+// 	for {
+// 		select {
+// 		case <-bc.maintainTicker.C:
+// 			continue
+// 		}
+// 	}
+// }
+
 func (bc *Chain) GetChainId() int {
 	return bc.chainId
 }

@@ -29,6 +29,7 @@ type Node struct {
 
 	BroadcastHeartBeetTimer *time.Ticker
 	FallBackCounter         int
+	connectionPool          map[types.Address]bool
 }
 
 func NewNode(h host.Host, addr types.Address) *Node {
@@ -181,7 +182,7 @@ func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 		// 	panic(err)
 		// }
 		case d := <-n.ch: // channel from miner with blocks
-			fmt.Printf("recieved channel: %s\r\n", d)
+			fmt.Println("recieved channel")
 			if err := topic.Publish(ctx, d); err != nil {
 				fmt.Println("### Publish error:", err)
 			}

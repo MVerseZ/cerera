@@ -90,31 +90,32 @@ func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 	// if send to address not generated - > send only to input
 	// executed transaction adds to txs trie struct
 	var localVault = storage.GetVault()
-	var gas = tx.Gas()
+	// var gas = tx.Gas()
 	var val = tx.Value()
 	var out = coinbase.GetCoinbaseBalance()
 	var delta = big.NewInt(0).Sub(out, val)
 	if delta.Cmp(big.NewInt(0)) < 0 {
 		return EmptyCoinbase
 	} else {
-		fmt.Printf(
-			"APPROVED_TX_TYPE:%d\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%f\r\n\t  current balance=%d\r\n",
-			tx.Type(),
-			tx.Hash(),
-			gas,
-			types.BigIntToFloat(val),
-			out,
-		)
-		fmt.Printf("\t\t reaylly signed?%t\r\n", tx.IsSigned())
+		// fmt.Printf(
+		// 	"APPROVED_TX_TYPE:%d\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%f\r\n\t  current balance=%d\r\n",
+		// 	tx.Type(),
+		// 	tx.Hash(),
+		// 	gas,
+		// 	types.BigIntToFloat(val),
+		// 	out,
+		// )
+		fmt.Println("Execute tx")
+		// fmt.Printf("\t\t reaylly signed?%t\r\n", tx.IsSigned())
 		switch tx.Type() {
 		case types.LegacyTxType:
-			fmt.Printf("\t\t legacy from %s\r\n", tx.From())
+			// fmt.Printf("\t\t legacy from %s\r\n", tx.From())
 			localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 		case types.FaucetTxType:
-			fmt.Printf("\t\t faucet from %s\r\n", tx.From())
+			// fmt.Printf("\t\t faucet from %s\r\n", tx.From())
 			localVault.DropFaucet(*tx.To(), val, tx.Hash())
 		case types.CoinbaseTxType:
-			fmt.Printf("\t\t coinbase from %s\r\n", tx.From())
+			// fmt.Printf("\t\t coinbase from %s\r\n", tx.From())
 			localVault.UpdateBalance(coinbase.GetCoinbaseAddress(), *tx.To(), val, tx.Hash())
 		default:
 			fmt.Printf("\t\t unknown from %s\r\n", tx.From())

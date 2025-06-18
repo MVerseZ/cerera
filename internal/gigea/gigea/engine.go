@@ -2,6 +2,7 @@ package gigea
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/types"
@@ -11,14 +12,17 @@ import (
 type TxTree struct {
 }
 
+var E Engine
+
 type Engine struct {
-	TxFunnel     chan *types.GTransaction // input tx funnel
-	BlockFunnel  chan *block.Block        // input block funnel
-	BlockPipe    chan *block.Block
-	Transaions   TxTree
-	Owner        types.Address
-	Transactions *TxMerkleTree
-	List         []types.GTransaction
+	TxFunnel       chan *types.GTransaction // input tx funnel
+	BlockFunnel    chan *block.Block        // input block funnel
+	BlockPipe      chan *block.Block
+	Transaions     TxTree
+	Owner          types.Address
+	Transactions   *TxMerkleTree
+	List           []types.GTransaction
+	MaintainTicker *time.Ticker
 }
 
 func (e *Engine) Start(lAddr types.Address) {
@@ -30,6 +34,7 @@ func (e *Engine) Start(lAddr types.Address) {
 	e.List = make([]types.GTransaction, 0)
 
 	e.Owner = lAddr
+	e.MaintainTicker = time.NewTicker(3 * time.Minute)
 	// var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
 	// var list []types.Content
 	// list = append(list, firstTx)
@@ -58,7 +63,20 @@ func (e *Engine) Listen() {
 			// e.Validate(b)
 		case b := <-e.BlockFunnel:
 			fmt.Printf("New block arrived to GIGEA: %s\r\n", b.GetHash())
-			C.Notify(b.GetHash())
+			C.Notify(b)
+			continue
+		case <-e.MaintainTicker.C:
+			fmt.Printf("Maintain GIGEA\r\n\tCSP:[address: %s, state: %s]\r\n", G.address, G.state)
+			if G.state != Leader {
+				if len(C.Voters) <= 1 {
+					G.state = Candidate
+					fmt.Printf("No connections detected, changing state to Candidate\r\n")
+				}
+				if len(C.Voters) <= 1 && G.state == Candidate {
+					G.state = Leader
+					fmt.Printf("No connections detected, changing state to Leader\r\n")
+				}
+			}
 			continue
 		}
 		errc <- nil
@@ -102,5 +120,9 @@ func (e *Engine) Pack(tx *types.GTransaction) {
 	// }
 
 	// traverse(e.Transactions.Root)
+
+}
+
+func (e *Engine) Register(a interface{}) {
 
 }
