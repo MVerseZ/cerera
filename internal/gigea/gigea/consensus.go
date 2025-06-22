@@ -78,7 +78,8 @@ func SetStatus(s int) {
 
 func (c *Consensus) Notify(b *block.Block) { // TODO may be better solution for delegate
 	fmt.Printf("Consensus status:\r\n\t%d, %s\r\n", c.Status, G.state)
-	// go func() {
-	C.Chain <- b
+	if G.state == Leader || G.state == Miner {
+		C.Chain <- b
+	}
 	// net.CereraNode.Alarm(b.ToBytes())
 }

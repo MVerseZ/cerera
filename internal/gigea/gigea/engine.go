@@ -23,6 +23,9 @@ type Engine struct {
 	Transactions   *TxMerkleTree
 	List           []types.GTransaction
 	MaintainTicker *time.Ticker
+
+	// Consensus manager
+	ConsensusManager *ConsensusManager
 }
 
 func (e *Engine) Start(lAddr types.Address) {
@@ -34,7 +37,13 @@ func (e *Engine) Start(lAddr types.Address) {
 	e.List = make([]types.GTransaction, 0)
 
 	e.Owner = lAddr
-	e.MaintainTicker = time.NewTicker(3 * time.Minute)
+	e.MaintainTicker = time.NewTicker(1 * time.Second)
+
+	// Initialize consensus manager with default peers
+	peers := []types.Address{lAddr} // Start with just this node
+	e.ConsensusManager = NewConsensusManager(ConsensusTypePBFT, lAddr, peers, e)
+	e.ConsensusManager.Start()
+
 	// var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
 	// var list []types.Content
 	// list = append(list, firstTx)
@@ -56,6 +65,10 @@ func (e *Engine) Listen() {
 		select {
 		case tx := <-e.TxFunnel:
 			e.Pack(tx)
+			// Submit transaction to consensus
+			if e.ConsensusManager != nil {
+				e.ConsensusManager.SubmitRequest(fmt.Sprintf("transaction:%s", tx.Hash().Hex()))
+			}
 			// e.Transaions.
 			// fmt.Println(tx.Hash())
 			// case b := <-e.BlockFunnel:
@@ -67,14 +80,46 @@ func (e *Engine) Listen() {
 			continue
 		case <-e.MaintainTicker.C:
 			fmt.Printf("Maintain GIGEA\r\n\tCSP:[address: %s, state: %s]\r\n", G.address, G.state)
-			if G.state != Leader {
-				if len(C.Voters) <= 1 {
-					G.state = Candidate
-					fmt.Printf("No connections detected, changing state to Candidate\r\n")
+
+			// Update consensus state based on consensus manager
+			if e.ConsensusManager != nil {
+				consensusInfo := e.ConsensusManager.GetConsensusInfo()
+				fmt.Printf("Consensus Info: %+v\r\n", consensusInfo)
+
+				// Update GIGEA state based on consensus
+				if e.ConsensusManager.IsLeader() {
+					if G.state != Leader {
+						G.state = Leader
+						fmt.Printf("Consensus manager indicates this node is leader, changing state to Leader\r\n")
+					}
+				} else {
+					if len(C.Voters) <= 1 {
+						if G.state != Candidate {
+							G.state = Candidate
+							fmt.Printf("No connections detected, changing state to Candidate\r\n")
+						}
+						if len(C.Voters) <= 1 && G.state == Candidate {
+							G.state = Leader
+							fmt.Printf("No connections detected, changing state to Leader\r\n")
+						}
+					} else {
+						if G.state != Follower {
+							G.state = Follower
+							fmt.Printf("Consensus manager indicates this node is not leader, changing state to Follower\r\n")
+						}
+					}
 				}
-				if len(C.Voters) <= 1 && G.state == Candidate {
-					G.state = Leader
-					fmt.Printf("No connections detected, changing state to Leader\r\n")
+			} else {
+				// Fallback to original logic
+				if G.state != Leader {
+					if len(C.Voters) <= 1 {
+						G.state = Candidate
+						fmt.Printf("No connections detected, changing state to Candidate\r\n")
+					}
+					if len(C.Voters) <= 1 && G.state == Candidate {
+						G.state = Leader
+						fmt.Printf("No connections detected, changing state to Leader\r\n")
+					}
 				}
 			}
 			continue
@@ -125,4 +170,44 @@ func (e *Engine) Pack(tx *types.GTransaction) {
 
 func (e *Engine) Register(a interface{}) {
 
+}
+
+// SetConsensusType sets the consensus algorithm type
+func (e *Engine) SetConsensusType(consensusType ConsensusType) {
+	if e.ConsensusManager != nil {
+		e.ConsensusManager.SwitchConsensus(consensusType)
+	}
+}
+
+// GetConsensusInfo returns consensus information
+func (e *Engine) GetConsensusInfo() map[string]interface{} {
+	if e.ConsensusManager != nil {
+		return e.ConsensusManager.GetConsensusInfo()
+	}
+	return map[string]interface{}{
+		"error": "Consensus manager not initialized",
+	}
+}
+
+// AddPeer adds a peer to the consensus
+func (e *Engine) AddPeer(peer types.Address) {
+	if e.ConsensusManager != nil {
+		e.ConsensusManager.AddPeer(peer)
+	}
+	// Also add to existing C.Voters for backward compatibility
+	C.Voters = append(C.Voters, peer)
+}
+
+// RemovePeer removes a peer from the consensus
+func (e *Engine) RemovePeer(peer types.Address) {
+	if e.ConsensusManager != nil {
+		e.ConsensusManager.RemovePeer(peer)
+	}
+	// Also remove from existing C.Voters for backward compatibility
+	for i, voter := range C.Voters {
+		if voter == peer {
+			C.Voters = append(C.Voters[:i], C.Voters[i+1:]...)
+			break
+		}
+	}
 }
