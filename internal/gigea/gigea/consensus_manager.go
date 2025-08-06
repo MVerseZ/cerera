@@ -41,6 +41,9 @@ type ConsensusManager struct {
 	PBFTNode *PBFTNode
 	RaftNode *RaftNode
 
+	// Network manager
+	NetworkManager *NetworkManager
+
 	// Engine reference
 	engine *Engine
 
@@ -57,15 +60,20 @@ func NewConsensusManager(consensusType ConsensusType, nodeID types.Address, peer
 		engine:        engine,
 	}
 
+	// Create network manager
+	// port := 30000 + int(nodeID[0]) // Simple port calculation
+	port := engine.Port
+	cm.NetworkManager = NewNetworkManager(nodeID, port)
+
 	// Initialize consensus algorithms based on type
 	switch consensusType {
 	case ConsensusTypePBFT:
-		cm.PBFTNode = NewPBFTNode(nodeID, peers, engine)
+		cm.PBFTNode = NewPBFTNode(nodeID, peers, engine, cm.NetworkManager)
 	case ConsensusTypeRaft:
-		cm.RaftNode = NewRaftNode(nodeID, peers, engine)
+		cm.RaftNode = NewRaftNode(nodeID, peers, engine, cm.NetworkManager)
 	case ConsensusTypeHybrid:
-		cm.PBFTNode = NewPBFTNode(nodeID, peers, engine)
-		cm.RaftNode = NewRaftNode(nodeID, peers, engine)
+		cm.PBFTNode = NewPBFTNode(nodeID, peers, engine, cm.NetworkManager)
+		cm.RaftNode = NewRaftNode(nodeID, peers, engine, cm.NetworkManager)
 	}
 
 	return cm
@@ -75,6 +83,20 @@ func NewConsensusManager(consensusType ConsensusType, nodeID types.Address, peer
 func (cm *ConsensusManager) Start() {
 	fmt.Printf("Starting consensus manager with type: %s\n", cm.ConsensusType.String())
 
+	// Start network manager first
+	if err := cm.NetworkManager.Start(); err != nil {
+		fmt.Printf("Failed to start network manager: %v\n", err)
+		return
+	}
+
+	// Add peers to network manager
+	for _, peer := range cm.Peers {
+		if peer != cm.NodeID {
+			cm.NetworkManager.AddPeer(peer)
+		}
+	}
+
+	// Start consensus algorithms
 	switch cm.ConsensusType {
 	case ConsensusTypePBFT:
 		if cm.PBFTNode != nil {
@@ -244,14 +266,14 @@ func (cm *ConsensusManager) SwitchConsensus(newType ConsensusType) {
 	// Initialize new consensus
 	switch newType {
 	case ConsensusTypePBFT:
-		cm.PBFTNode = NewPBFTNode(cm.NodeID, cm.Peers, cm.engine)
+		cm.PBFTNode = NewPBFTNode(cm.NodeID, cm.Peers, cm.engine, cm.NetworkManager)
 		cm.RaftNode = nil
 	case ConsensusTypeRaft:
-		cm.RaftNode = NewRaftNode(cm.NodeID, cm.Peers, cm.engine)
+		cm.RaftNode = NewRaftNode(cm.NodeID, cm.Peers, cm.engine, cm.NetworkManager)
 		cm.PBFTNode = nil
 	case ConsensusTypeHybrid:
-		cm.PBFTNode = NewPBFTNode(cm.NodeID, cm.Peers, cm.engine)
-		cm.RaftNode = NewRaftNode(cm.NodeID, cm.Peers, cm.engine)
+		cm.PBFTNode = NewPBFTNode(cm.NodeID, cm.Peers, cm.engine, cm.NetworkManager)
+		cm.RaftNode = NewRaftNode(cm.NodeID, cm.Peers, cm.engine, cm.NetworkManager)
 	}
 
 	// Start new consensus
@@ -272,10 +294,16 @@ func (cm *ConsensusManager) AddPeer(peer types.Address) {
 
 	cm.Peers = append(cm.Peers, peer)
 
+	// Add to network manager
+	if cm.NetworkManager != nil {
+		cm.NetworkManager.AddPeer(peer)
+	}
+
 	// Update consensus algorithms
 	if cm.PBFTNode != nil {
 		// For PBFT, we would need to update the replicas list
 		// This is a simplified implementation
+		cm.PBFTNode.Replicas = append(cm.PBFTNode.Replicas, peer)
 		fmt.Printf("Added peer %s to PBFT consensus\n", peer.Hex())
 	}
 
@@ -299,6 +327,11 @@ func (cm *ConsensusManager) RemovePeer(peer types.Address) {
 		}
 	}
 
+	// Remove from network manager
+	if cm.NetworkManager != nil {
+		cm.NetworkManager.RemovePeer(peer)
+	}
+
 	// Update consensus algorithms
 	if cm.PBFTNode != nil {
 		fmt.Printf("Removed peer %s from PBFT consensus\n", peer.Hex())
@@ -318,6 +351,7 @@ func (cm *ConsensusManager) GetConsensusInfo() map[string]interface{} {
 		"leader":    cm.GetLeader().Hex(),
 		"peerCount": len(cm.Peers),
 		"peers":     make([]string, len(cm.Peers)),
+		"voters":    C.Voters,
 	}
 
 	// Add peer addresses
@@ -345,4 +379,24 @@ func (cm *ConsensusManager) GetConsensusInfo() map[string]interface{} {
 	}
 
 	return info
+}
+
+// GetNetworkInfo returns network information
+func (cm *ConsensusManager) GetNetworkInfo() map[string]interface{} {
+	if cm.NetworkManager == nil {
+		return map[string]interface{}{
+			"error": "Network manager not initialized",
+		}
+	}
+
+	return map[string]interface{}{
+		"nodeID":            cm.NodeID.Hex(),
+		"listenAddr":        cm.NetworkManager.ListenAddr,
+		"port":              cm.NetworkManager.Port,
+		"isRunning":         cm.NetworkManager.IsRunning,
+		"totalPeers":        len(cm.NetworkManager.GetPeers()),
+		"connectedPeers":    len(cm.NetworkManager.GetConnectedPeers()),
+		"peers":             cm.NetworkManager.GetPeers(),
+		"connectedPeerList": cm.NetworkManager.GetConnectedPeers(),
+	}
 }

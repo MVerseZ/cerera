@@ -40,6 +40,9 @@ type PBFTNode struct {
 	CommitChan     chan *message.Commit
 	ViewChangeChan chan *message.ViewChange
 
+	// Network manager
+	NetworkManager *NetworkManager
+
 	// Mutex for thread safety
 	mu sync.RWMutex
 
@@ -48,10 +51,10 @@ type PBFTNode struct {
 }
 
 // NewPBFTNode creates a new PBFT node
-func NewPBFTNode(nodeID types.Address, replicas []types.Address, engine *Engine) *PBFTNode {
+func NewPBFTNode(nodeID types.Address, replicas []types.Address, engine *Engine, networkManager *NetworkManager) *PBFTNode {
 	f := (len(replicas) - 1) / 3 // maximum faulty nodes
 
-	return &PBFTNode{
+	pbft := &PBFTNode{
 		NodeID:         nodeID,
 		ViewID:         0,
 		Sequence:       0,
@@ -72,10 +75,36 @@ func NewPBFTNode(nodeID types.Address, replicas []types.Address, engine *Engine)
 		ViewChangeChan: make(chan *message.ViewChange, 100),
 		engine:         engine,
 	}
+
+	// Create network manager
+	// port := 30000 + int(nodeID[0]) // Simple port calculation
+	// pbft.NetworkManager = NewNetworkManager(nodeID, port)
+	pbft.NetworkManager = networkManager
+
+	// Set up network callbacks
+	pbft.NetworkManager.OnPrePrepare = pbft.handlePrePrepareMessage
+	pbft.NetworkManager.OnPrepare = pbft.handlePrepareMessage
+	pbft.NetworkManager.OnCommit = pbft.handleCommitMessage
+	pbft.NetworkManager.OnViewChange = pbft.handleViewChangeMessage
+
+	return pbft
 }
 
 // Start starts the PBFT consensus
 func (p *PBFTNode) Start() {
+	// Start network manager
+	if err := p.NetworkManager.Start(); err != nil {
+		fmt.Printf("Failed to start network manager: %v\n", err)
+		return
+	}
+
+	// Add peers to network manager
+	for _, replica := range p.Replicas {
+		if replica != p.NodeID {
+			p.NetworkManager.AddPeer(replica)
+		}
+	}
+
 	go p.handleRequests()
 	go p.handlePrePrepare()
 	go p.handlePrepare()
@@ -238,6 +267,17 @@ func (p *PBFTNode) handleViewChange() {
 	}
 }
 
+// handleViewChangeMessage processes a view change message from network
+func (p *PBFTNode) handleViewChangeMessage(viewChange *message.ViewChange) {
+	// Handle view change logic
+	fmt.Printf("Received view change request to view %d from %d\n", viewChange.NewViewID, viewChange.NodeID)
+
+	// TODO: Implement view change logic
+	// 1. Validate view change message
+	// 2. Collect view change messages from other replicas
+	// 3. Start new view when enough messages are collected
+}
+
 // hasEnoughPrepares checks if we have enough prepare messages
 func (p *PBFTNode) hasEnoughPrepares(digest string) bool {
 	p.mu.RLock()
@@ -306,23 +346,32 @@ func (p *PBFTNode) generateDigest(req *message.Request) string {
 
 // broadcastPrePrepare broadcasts a pre-prepare message
 func (p *PBFTNode) broadcastPrePrepare(prePrepare *message.PrePrepare) {
-	message.CreateConMsg(message.MTPrePrepare, prePrepare)
-	// TODO: Implement actual broadcasting
-	fmt.Printf("Broadcasting pre-prepare: %+v\n", prePrepare)
+	if p.NetworkManager != nil {
+		p.NetworkManager.SendPrePrepare(prePrepare)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Broadcasting pre-prepare: %+v\n", prePrepare)
+	}
 }
 
 // broadcastPrepare broadcasts a prepare message
 func (p *PBFTNode) broadcastPrepare(prepare *message.Prepare) {
-	message.CreateConMsg(message.MTPrepare, prepare)
-	// TODO: Implement actual broadcasting
-	fmt.Printf("Broadcasting prepare: %+v\n", prepare)
+	if p.NetworkManager != nil {
+		p.NetworkManager.SendPrepare(prepare)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Broadcasting prepare: %+v\n", prepare)
+	}
 }
 
 // broadcastCommit broadcasts a commit message
 func (p *PBFTNode) broadcastCommit(commit *message.Commit) {
-	message.CreateConMsg(message.MTCommit, commit)
-	// TODO: Implement actual broadcasting
-	fmt.Printf("Broadcasting commit: %+v\n", commit)
+	if p.NetworkManager != nil {
+		p.NetworkManager.SendCommit(commit)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Broadcasting commit: %+v\n", commit)
+	}
 }
 
 // SubmitRequest submits a client request to the consensus

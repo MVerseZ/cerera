@@ -66,7 +66,7 @@ func Init(lAddr types.Address) error {
 	}
 	G = CSP{state: Follower, address: &lAddr}
 	C.Voters = append(C.Voters, lAddr)
-	E = Engine{}
+	E = Engine{Port: 32000}
 	E.Start(lAddr)
 	Status = []byte{0x0, 0x0, 0x0, 0x0, 0x0}
 	return nil

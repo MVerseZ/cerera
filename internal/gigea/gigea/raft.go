@@ -75,6 +75,9 @@ type RaftNode struct {
 	AppendEntriesRespChan chan *AppendEntriesResponse
 	ClientRequestChan     chan *ClientRequest
 
+	// Network manager
+	NetworkManager *NetworkManager
+
 	// Mutex for thread safety
 	mu sync.RWMutex
 
@@ -119,8 +122,8 @@ type ClientRequest struct {
 }
 
 // NewRaftNode creates a new Raft node
-func NewRaftNode(nodeID types.Address, peers []types.Address, engine *Engine) *RaftNode {
-	return &RaftNode{
+func NewRaftNode(nodeID types.Address, peers []types.Address, engine *Engine, nm *NetworkManager) *RaftNode {
+	raft := &RaftNode{
 		NodeID:                nodeID,
 		CurrentTerm:           0,
 		VotedFor:              nil,
@@ -141,10 +144,36 @@ func NewRaftNode(nodeID types.Address, peers []types.Address, engine *Engine) *R
 		ClientRequestChan:     make(chan *ClientRequest, 100),
 		engine:                engine,
 	}
+
+	// Create network manager
+	// port := 30000 + int(nodeID[0]) // Simple port calculation
+	// raft.NetworkManager = NewNetworkManager(nodeID, port)
+	raft.NetworkManager = nm
+
+	// Set up network callbacks
+	raft.NetworkManager.OnRequestVote = raft.handleRequestVoteFromNetwork
+	raft.NetworkManager.OnRequestVoteResp = raft.handleRequestVoteResponseFromNetwork
+	raft.NetworkManager.OnAppendEntries = raft.handleAppendEntriesFromNetwork
+	raft.NetworkManager.OnAppendEntriesResp = raft.handleAppendEntriesResponseFromNetwork
+
+	return raft
 }
 
 // Start starts the Raft consensus
 func (r *RaftNode) Start() {
+	// Start network manager
+	if err := r.NetworkManager.Start(); err != nil {
+		fmt.Printf("Failed to start network manager: %v\n", err)
+		return
+	}
+
+	// Add peers to network manager
+	for _, peer := range r.Peers {
+		if peer != r.NodeID {
+			r.NetworkManager.AddPeer(peer)
+		}
+	}
+
 	// Initialize nextIndex and matchIndex for all peers
 	for _, peer := range r.Peers {
 		if peer != r.NodeID {
@@ -448,26 +477,34 @@ func (r *RaftNode) sendRequestVote(peer types.Address, votes map[types.Address]b
 		lastLogTerm = r.Log[lastLogIndex-1].Term
 	}
 
-	_ = &RequestVoteRequest{
+	req := &RequestVoteRequest{
 		Term:         r.CurrentTerm,
 		CandidateID:  r.NodeID,
 		LastLogIndex: lastLogIndex,
 		LastLogTerm:  lastLogTerm,
 	}
 
-	// TODO: Implement actual network communication
-	fmt.Printf("Sending request vote to %s\n", peer.Hex())
+	if r.NetworkManager != nil {
+		r.NetworkManager.SendRequestVote(req, peer)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Sending request vote to %s\n", peer.Hex())
+	}
 }
 
 // sendRequestVoteResponse sends a request vote response
 func (r *RaftNode) sendRequestVoteResponse(peer types.Address, granted bool) {
-	_ = &RequestVoteResponse{
+	resp := &RequestVoteResponse{
 		Term:        r.CurrentTerm,
 		VoteGranted: granted,
 	}
 
-	// TODO: Implement actual network communication
-	fmt.Printf("Sending request vote response to %s: %t\n", peer.Hex(), granted)
+	if r.NetworkManager != nil {
+		r.NetworkManager.SendRequestVoteResponse(resp, peer)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Sending request vote response to %s: %t\n", peer.Hex(), granted)
+	}
 }
 
 // sendAppendEntries sends append entries to a peer
@@ -483,7 +520,7 @@ func (r *RaftNode) sendAppendEntries(peer types.Address) {
 		prevLogTerm = r.Log[prevLogIndex-1].Term
 	}
 
-	_ = &AppendEntriesRequest{
+	req := &AppendEntriesRequest{
 		Term:         r.CurrentTerm,
 		LeaderID:     r.NodeID,
 		PrevLogIndex: prevLogIndex,
@@ -492,19 +529,27 @@ func (r *RaftNode) sendAppendEntries(peer types.Address) {
 		LeaderCommit: r.CommitIndex,
 	}
 
-	// TODO: Implement actual network communication
-	fmt.Printf("Sending append entries to %s\n", peer.Hex())
+	if r.NetworkManager != nil {
+		r.NetworkManager.SendAppendEntries(req, peer)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Sending append entries to %s\n", peer.Hex())
+	}
 }
 
 // sendAppendEntriesResponse sends an append entries response
 func (r *RaftNode) sendAppendEntriesResponse(peer types.Address, success bool) {
-	_ = &AppendEntriesResponse{
+	resp := &AppendEntriesResponse{
 		Term:    r.CurrentTerm,
 		Success: success,
 	}
 
-	// TODO: Implement actual network communication
-	fmt.Printf("Sending append entries response to %s: %t\n", peer.Hex(), success)
+	if r.NetworkManager != nil {
+		r.NetworkManager.SendAppendEntriesResponse(resp, peer)
+	} else {
+		// Fallback to console output
+		fmt.Printf("Sending append entries response to %s: %t\n", peer.Hex(), success)
+	}
 }
 
 // applyCommittedEntries applies committed entries to the state machine
@@ -573,5 +618,42 @@ func (r *RaftNode) GetConsensusState() map[string]interface{} {
 		"peers":       len(r.Peers),
 		"leaderID":    r.LeaderID,
 		"votedFor":    r.VotedFor,
+	}
+}
+
+// Network message handlers
+func (r *RaftNode) handleRequestVoteFromNetwork(req *RequestVoteRequest) {
+	// Send to internal channel for processing
+	select {
+	case r.RequestVoteChan <- req:
+	default:
+		fmt.Printf("Request vote channel full, dropping message\n")
+	}
+}
+
+func (r *RaftNode) handleRequestVoteResponseFromNetwork(resp *RequestVoteResponse) {
+	// Send to internal channel for processing
+	select {
+	case r.RequestVoteRespChan <- resp:
+	default:
+		fmt.Printf("Request vote response channel full, dropping message\n")
+	}
+}
+
+func (r *RaftNode) handleAppendEntriesFromNetwork(req *AppendEntriesRequest) {
+	// Send to internal channel for processing
+	select {
+	case r.AppendEntriesChan <- req:
+	default:
+		fmt.Printf("Append entries channel full, dropping message\n")
+	}
+}
+
+func (r *RaftNode) handleAppendEntriesResponseFromNetwork(resp *AppendEntriesResponse) {
+	// Send to internal channel for processing
+	select {
+	case r.AppendEntriesRespChan <- resp:
+	default:
+		fmt.Printf("Append entries response channel full, dropping message\n")
 	}
 }

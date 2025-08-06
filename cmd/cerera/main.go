@@ -11,7 +11,6 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/miner"
 	"github.com/cerera/internal/cerera/net"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
@@ -82,17 +81,17 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	}
 
 	// Инициализация майнера
-	if err := miner.Init(); err != nil {
-		return nil, fmt.Errorf("failed to init miner: %w", err)
-	}
-	if mine {
-		go miner.Run()
-	}
+	// if err := miner.Init(); err != nil {
+	// 	return nil, fmt.Errorf("failed to init miner: %w", err)
+	// }
+	// if mine {
+	// 	go miner.Run()
+	// }
 
 	var chain = chain.GetBlockChain()
 
 	gigea.E.Register(chain)
-	gigea.E.Register(miner.GetMiner())
+	// gigea.E.Register(miner.GetMiner())
 
 	return &Cerera{
 		bc:     chain,
@@ -116,7 +115,7 @@ func setupLogging() error {
 
 // parseFlags разбирает аргументы командной строки.
 func parseFlags() (config.Config, string, string, int, bool, bool) {
-	addr := flag.String("addr", "", "p2p address for connection")
+	addr := flag.String("addr", "31000", "p2p address for connection")
 	keyPath := flag.String("key", "", "path to pem key")
 	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")

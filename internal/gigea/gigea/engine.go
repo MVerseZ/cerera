@@ -26,6 +26,8 @@ type Engine struct {
 
 	// Consensus manager
 	ConsensusManager *ConsensusManager
+
+	Port int
 }
 
 func (e *Engine) Start(lAddr types.Address) {
@@ -37,11 +39,11 @@ func (e *Engine) Start(lAddr types.Address) {
 	e.List = make([]types.GTransaction, 0)
 
 	e.Owner = lAddr
-	e.MaintainTicker = time.NewTicker(1 * time.Second)
+	e.MaintainTicker = time.NewTicker(1 * time.Minute)
 
 	// Initialize consensus manager with default peers
 	peers := []types.Address{lAddr} // Start with just this node
-	e.ConsensusManager = NewConsensusManager(ConsensusTypePBFT, lAddr, peers, e)
+	e.ConsensusManager = NewConsensusManager(ConsensusTypeRaft, lAddr, peers, e)
 	e.ConsensusManager.Start()
 
 	// var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
@@ -56,6 +58,7 @@ func (e *Engine) Start(lAddr types.Address) {
 	// 	panic(err)
 	// }
 	// fmt.Printf("Root hash: %s\r\n", common.BytesToHash(e.Transactions.MerkleRoot()))
+	fmt.Println("Engine started")
 	go e.Listen()
 }
 
@@ -82,33 +85,38 @@ func (e *Engine) Listen() {
 			fmt.Printf("Maintain GIGEA\r\n\tCSP:[address: %s, state: %s]\r\n", G.address, G.state)
 
 			// Update consensus state based on consensus manager
+			// var flag = false
+			// if e.ConsensusManager != nil && !flag {
+			// 	consensusInfo := e.ConsensusManager.GetConsensusInfo()
+			// 	fmt.Printf("\tConsensus Info: \r\n\t%+v\r\n", consensusInfo)
+
+			// 	// Update GIGEA state based on consensus
+			// 	if e.ConsensusManager.IsLeader() {
+			// 		if G.state != Leader {
+			// 			G.state = Leader
+			// 			fmt.Printf("Consensus manager indicates this node is leader, changing state to Leader\r\n")
+			// 		}
+			// 	} else {
+			// 		if len(C.Voters) <= 1 {
+			// 			if G.state != Candidate {
+			// 				G.state = Candidate
+			// 				fmt.Printf("No connections detected, changing state to Candidate\r\n")
+			// 			}
+			// 			if len(C.Voters) <= 1 && G.state == Candidate {
+			// 				G.state = Leader
+			// 				fmt.Printf("No connections detected, changing state to Leader\r\n")
+			// 			}
+			// 		} else {
+			// 			if G.state != Follower {
+			// 				G.state = Follower
+			// 				fmt.Printf("Consensus manager indicates this node is not leader, changing state to Follower\r\n")
+			// 			}
+			// 		}
+			// 	}
+			// }
 			if e.ConsensusManager != nil {
 				consensusInfo := e.ConsensusManager.GetConsensusInfo()
-				fmt.Printf("Consensus Info: %+v\r\n", consensusInfo)
-
-				// Update GIGEA state based on consensus
-				if e.ConsensusManager.IsLeader() {
-					if G.state != Leader {
-						G.state = Leader
-						fmt.Printf("Consensus manager indicates this node is leader, changing state to Leader\r\n")
-					}
-				} else {
-					if len(C.Voters) <= 1 {
-						if G.state != Candidate {
-							G.state = Candidate
-							fmt.Printf("No connections detected, changing state to Candidate\r\n")
-						}
-						if len(C.Voters) <= 1 && G.state == Candidate {
-							G.state = Leader
-							fmt.Printf("No connections detected, changing state to Leader\r\n")
-						}
-					} else {
-						if G.state != Follower {
-							G.state = Follower
-							fmt.Printf("Consensus manager indicates this node is not leader, changing state to Follower\r\n")
-						}
-					}
-				}
+				fmt.Printf("\tConsensus Info: \r\n\t%+v\r\n", consensusInfo)
 			} else {
 				// Fallback to original logic
 				if G.state != Leader {
@@ -189,6 +197,16 @@ func (e *Engine) GetConsensusInfo() map[string]interface{} {
 	}
 }
 
+// GetNetworkInfo returns network information
+func (e *Engine) GetNetworkInfo() map[string]interface{} {
+	if e.ConsensusManager != nil {
+		return e.ConsensusManager.GetNetworkInfo()
+	}
+	return map[string]interface{}{
+		"error": "Consensus manager not initialized",
+	}
+}
+
 // AddPeer adds a peer to the consensus
 func (e *Engine) AddPeer(peer types.Address) {
 	if e.ConsensusManager != nil {
@@ -196,6 +214,29 @@ func (e *Engine) AddPeer(peer types.Address) {
 	}
 	// Also add to existing C.Voters for backward compatibility
 	C.Voters = append(C.Voters, peer)
+}
+
+// AddPeerId adds a peer to the pre-consensus
+func (e *Engine) AddPeerId(peerId string) {
+	fmt.Println(peerId)
+}
+
+func (e *Engine) UpdatePeer(peer types.Address) {
+	if e.ConsensusManager != nil {
+		e.ConsensusManager.AddPeer(peer)
+	}
+	// Also update in existing C.Voters for backward compatibility
+	isPresent := false
+	for i, voter := range C.Voters {
+		if voter == peer {
+			C.Voters[i] = peer
+			isPresent = true
+			break
+		}
+	}
+	if !isPresent {
+		C.Voters = append(C.Voters, peer)
+	}
 }
 
 // RemovePeer removes a peer from the consensus
@@ -210,4 +251,20 @@ func (e *Engine) RemovePeer(peer types.Address) {
 			break
 		}
 	}
+}
+
+// GetConnectedPeers returns connected peers
+func (e *Engine) GetConnectedPeers() []types.Address {
+	if e.ConsensusManager != nil && e.ConsensusManager.NetworkManager != nil {
+		return e.ConsensusManager.NetworkManager.GetConnectedPeers()
+	}
+	return []types.Address{}
+}
+
+// GetTotalPeers returns total peers
+func (e *Engine) GetTotalPeers() []types.Address {
+	if e.ConsensusManager != nil && e.ConsensusManager.NetworkManager != nil {
+		return e.ConsensusManager.NetworkManager.GetPeers()
+	}
+	return []types.Address{}
 }
