@@ -12,6 +12,7 @@ type coinbaseData struct {
 	address         types.Address
 	coinbaseAccount types.StateAccount
 	balance         *big.Int
+	mu              sync.RWMutex // Mutex for thread-safe operations
 }
 
 // Create a global instance of coinbaseData
@@ -56,13 +57,13 @@ func InitOperationData() error {
 	}
 
 	fc := types.StateAccount{
-		Address:  addr,
+		Address:  faucetAddr,
 		Balance:  FaucetInitialBalance,
 		Bloom:    []byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		CodeHash: []byte{},
 		Name:     "FAUCET",
 		Nonce:    1,
-		Root:     common.HexToHash(AddressHex),
+		Root:     common.HexToHash(FaucetAddressHex),
 		Status:   "OP_ACC_F",
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
@@ -73,7 +74,7 @@ func InitOperationData() error {
 	Faucet = coinbaseData{
 		coinbaseAccount: fc,
 		address:         faucetAddr,
-		balance:         big.NewInt(0),
+		balance:         FaucetInitialBalance,
 	}
 	return nil
 }
@@ -85,21 +86,31 @@ func GetCoinbaseAddress() types.Address {
 
 // GetCoinbaseBalance returns the global Coinbase balance.
 func GetCoinbaseBalance() *big.Int {
-	return Coinbase.balance
+	Coinbase.mu.RLock()
+	defer Coinbase.mu.RUnlock()
+	return new(big.Int).Set(Coinbase.balance) // Return a copy to prevent external modification
 }
 
 func CoinBaseStateAccount() types.StateAccount {
+	Coinbase.mu.RLock()
+	defer Coinbase.mu.RUnlock()
 	return Coinbase.coinbaseAccount
 }
 
 func RewardBlock() *big.Int {
+	Coinbase.mu.Lock()
+	defer Coinbase.mu.Unlock()
 	Coinbase.balance = big.NewInt(0).Sub(Coinbase.balance, blockReward)
-	return blockReward
+	Coinbase.coinbaseAccount.Balance = Coinbase.balance
+	return new(big.Int).Set(blockReward) // Return a copy
 }
 
 func DropFaucet(faucetValue *big.Int) *big.Int {
+	Coinbase.mu.Lock()
+	defer Coinbase.mu.Unlock()
 	Coinbase.balance = Coinbase.balance.Sub(Coinbase.balance, faucetValue)
-	return faucetValue
+	Coinbase.coinbaseAccount.Balance = Coinbase.balance
+	return new(big.Int).Set(faucetValue) // Return a copy
 }
 
 func CreateCoinBaseTransation(nonce uint64, addr types.Address) types.GTransaction {
@@ -107,13 +118,24 @@ func CreateCoinBaseTransation(nonce uint64, addr types.Address) types.GTransacti
 }
 
 func FaucetAccount() types.StateAccount {
+	Faucet.mu.RLock()
+	defer Faucet.mu.RUnlock()
 	return Faucet.coinbaseAccount
 }
 
 func GetFaucetAddress() types.Address {
 	return Faucet.address
 }
+
+// GetFaucetBalance returns the current faucet balance safely
+func GetFaucetBalance() *big.Int {
+	Faucet.mu.RLock()
+	defer Faucet.mu.RUnlock()
+	return new(big.Int).Set(Faucet.balance) // Return a copy to prevent external modification
+}
 func FaucetTransaction(nonce uint64, destAddr types.Address, cnt float64) *types.GTransaction {
+	Faucet.mu.Lock()
+	defer Faucet.mu.Unlock()
 
 	var tx = types.NewFaucetTransaction(
 		nonce,
@@ -122,5 +144,6 @@ func FaucetTransaction(nonce uint64, destAddr types.Address, cnt float64) *types
 	)
 	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(cnt))
 	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(1000))
+	Faucet.coinbaseAccount.Balance = Faucet.balance
 	return tx
 }

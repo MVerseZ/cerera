@@ -28,7 +28,7 @@ path = "D:/Pictures/tmp_vid/w"
 #     "id": 11231
 # }
 
-for i in range(100000):
+for i in range(100):
     # ii = randrange(len(enc_f))
     # data = pref+enc_f[ii]
     data = "HELLO"

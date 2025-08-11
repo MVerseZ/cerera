@@ -23,9 +23,11 @@ func TestNetworkManager(t *testing.T) {
 	}
 	defer nm.Stop()
 
-	// Add peers
-	nm.AddPeer(node2)
-	nm.AddPeer(node3)
+	// Add peers with PeerInfo
+	peerInfo2 := NewPeerInfo(node2, "localhost:30002")
+	peerInfo3 := NewPeerInfo(node3, "localhost:30003")
+	nm.AddPeer(peerInfo2)
+	nm.AddPeer(peerInfo3)
 
 	// Wait a bit for initialization
 	time.Sleep(100 * time.Millisecond)
@@ -51,14 +53,19 @@ func TestPBFTConsensusWithNetwork(t *testing.T) {
 	node2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
 	node3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	peers := []types.Address{node1, node2, node3}
+	// Create PeerInfo list
+	peers := []*PeerInfo{
+		NewPeerInfo(node1, "localhost:30001"),
+		NewPeerInfo(node2, "localhost:30002"),
+		NewPeerInfo(node3, "localhost:30003"),
+	}
 
 	// Create engine
 	engine := &Engine{}
 	engine.Start(node1)
 
 	// Create PBFT consensus manager
-	consensusManager := NewConsensusManager(ConsensusTypePBFT, node1, peers, engine)
+	consensusManager := NewConsensusManager(ConsensusTypeSimple, node1, peers, engine)
 	consensusManager.Start()
 
 	// Wait a bit for initialization
@@ -93,14 +100,19 @@ func TestRaftConsensusWithNetwork(t *testing.T) {
 	node2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
 	node3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	peers := []types.Address{node1, node2, node3}
+	// Create PeerInfo list
+	peers := []*PeerInfo{
+		NewPeerInfo(node1, "localhost:30001"),
+		NewPeerInfo(node2, "localhost:30002"),
+		NewPeerInfo(node3, "localhost:30003"),
+	}
 
 	// Create engine
 	engine := &Engine{}
 	engine.Start(node1)
 
 	// Create Raft consensus manager
-	consensusManager := NewConsensusManager(ConsensusTypeRaft, node1, peers, engine)
+	consensusManager := NewConsensusManager(ConsensusTypeSimple, node1, peers, engine)
 	consensusManager.Start()
 
 	// Wait a bit for initialization
@@ -135,14 +147,19 @@ func TestHybridConsensusWithNetwork(t *testing.T) {
 	node2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
 	node3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	peers := []types.Address{node1, node2, node3}
+	// Create PeerInfo list
+	peers := []*PeerInfo{
+		NewPeerInfo(node1, "localhost:30001"),
+		NewPeerInfo(node2, "localhost:30002"),
+		NewPeerInfo(node3, "localhost:30003"),
+	}
 
 	// Create engine
 	engine := &Engine{}
 	engine.Start(node1)
 
 	// Create Hybrid consensus manager
-	consensusManager := NewConsensusManager(ConsensusTypeHybrid, node1, peers, engine)
+	consensusManager := NewConsensusManager(ConsensusTypeCustom, node1, peers, engine)
 	consensusManager.Start()
 
 	// Wait a bit for initialization
@@ -176,14 +193,17 @@ func TestNetworkPeerManagement(t *testing.T) {
 	node1 := types.HexToAddress("0x1111111111111111111111111111111111111111")
 	node2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
 
-	peers := []types.Address{node1}
+	// Create PeerInfo list
+	peers := []*PeerInfo{
+		NewPeerInfo(node1, "localhost:30001"),
+	}
 
 	// Create engine
 	engine := &Engine{}
 	engine.Start(node1)
 
 	// Create consensus manager
-	consensusManager := NewConsensusManager(ConsensusTypePBFT, node1, peers, engine)
+	consensusManager := NewConsensusManager(ConsensusTypeSimple, node1, peers, engine)
 	consensusManager.Start()
 
 	// Wait a bit for initialization
@@ -191,8 +211,9 @@ func TestNetworkPeerManagement(t *testing.T) {
 
 	fmt.Printf("Initial peer count: %d\n", len(consensusManager.Peers))
 
-	// Add a peer
-	consensusManager.AddPeer(node2)
+	// Add a peer with PeerInfo
+	peerInfo2 := NewPeerInfo(node2, "localhost:30002")
+	consensusManager.AddPeer(peerInfo2)
 	time.Sleep(100 * time.Millisecond)
 
 	fmt.Printf("After adding peer: %d\n", len(consensusManager.Peers))
@@ -262,7 +283,8 @@ func BenchmarkNetworkMessageSending(b *testing.B) {
 	nm.Start()
 	defer nm.Stop()
 
-	nm.AddPeer(node2)
+	peerInfo := NewPeerInfo(node2, "localhost:30002")
+	nm.AddPeer(peerInfo)
 	time.Sleep(100 * time.Millisecond)
 
 	b.ResetTimer()
@@ -276,11 +298,15 @@ func BenchmarkPBFTConsensusWithNetwork(b *testing.B) {
 	node2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
 	node3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	peers := []types.Address{node1, node2, node3}
+	peers := []*PeerInfo{
+		NewPeerInfo(node1, "localhost:30001"),
+		NewPeerInfo(node2, "localhost:30002"),
+		NewPeerInfo(node3, "localhost:30003"),
+	}
 	engine := &Engine{}
 	engine.Start(node1)
 
-	consensusManager := NewConsensusManager(ConsensusTypePBFT, node1, peers, engine)
+	consensusManager := NewConsensusManager(ConsensusTypeSimple, node1, peers, engine)
 	consensusManager.Start()
 
 	time.Sleep(100 * time.Millisecond)
@@ -296,11 +322,15 @@ func BenchmarkRaftConsensusWithNetwork(b *testing.B) {
 	node2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
 	node3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	peers := []types.Address{node1, node2, node3}
+	peers := []*PeerInfo{
+		NewPeerInfo(node1, "localhost:30001"),
+		NewPeerInfo(node2, "localhost:30002"),
+		NewPeerInfo(node3, "localhost:30003"),
+	}
 	engine := &Engine{}
 	engine.Start(node1)
 
-	consensusManager := NewConsensusManager(ConsensusTypeRaft, node1, peers, engine)
+	consensusManager := NewConsensusManager(ConsensusTypeSimple, node1, peers, engine)
 	consensusManager.Start()
 
 	time.Sleep(100 * time.Millisecond)

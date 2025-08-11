@@ -1,59 +1,116 @@
-# GIGEA Consensus Algorithms
+# GIGEA Consensus System
 
-This document describes the implementation of PBFT (Practical Byzantine Fault Tolerance) and Raft consensus algorithms in the GIGEA engine.
+This document describes the new template-based consensus system in the GIGEA engine.
 
 ## Overview
 
-The GIGEA engine now supports multiple consensus algorithms:
+The GIGEA engine now uses a flexible, template-based consensus architecture that allows for easy implementation of different consensus algorithms. The system currently includes:
 
-1. **PBFT (Practical Byzantine Fault Tolerance)** - Byzantine fault-tolerant consensus
-2. **Raft** - Leader-based consensus with log replication
-3. **Hybrid** - Combination of both algorithms
+1. **Simple Consensus** - A basic leader-based consensus for demonstration
+2. **Custom Consensus** - Template for implementing your own consensus algorithms
 
 ## Architecture
 
+### Consensus Template Interface
+
+All consensus algorithms implement the `ConsensusAlgorithm` interface:
+
+```go
+type ConsensusAlgorithm interface {
+    // Lifecycle methods
+    Start(ctx context.Context) error
+    Stop() error
+    IsRunning() bool
+
+    // Core consensus methods
+    SubmitRequest(operation string) error
+    ProposeBlock(block interface{}) error
+    
+    // State methods
+    IsLeader() bool
+    GetLeader() types.Address
+    GetCurrentTerm() int64
+    GetNodeState() string
+    
+    // Peer management
+    AddPeer(peer types.Address) error
+    RemovePeer(peer types.Address) error
+    GetPeers() []types.Address
+    
+    // Information methods
+    GetConsensusInfo() map[string]interface{}
+    GetMetrics() map[string]interface{}
+    
+    // Configuration
+    UpdateConfig(config ConsensusConfig) error
+    GetConfig() ConsensusConfig
+}
+```
+
 ### Consensus Manager
 
-The `ConsensusManager` acts as a central coordinator for different consensus algorithms:
+The `ConsensusManager` manages consensus algorithm instances:
 
 ```go
 type ConsensusManager struct {
     ConsensusType ConsensusType
     NodeID        types.Address
     Peers         []types.Address
-    PBFTNode      *PBFTNode
-    RaftNode      *RaftNode
+    consensus     ConsensusAlgorithm
     engine        *Engine
 }
 ```
 
-### PBFT Implementation
+### Base Consensus Node
 
-The PBFT implementation follows the three-phase protocol:
+The `BaseConsensusNode` provides common functionality for consensus implementations:
 
-1. **Pre-Prepare**: Primary assigns sequence number and broadcasts pre-prepare message
-2. **Prepare**: Replicas broadcast prepare messages after receiving pre-prepare
-3. **Commit**: Replicas broadcast commit messages after receiving 2f+1 prepare messages
+- State management (running, term, leader, etc.)
+- Event handling system
+- Metrics collection
+- Thread-safe operations
+- Configuration management
 
-Key features:
-- Byzantine fault tolerance (tolerates up to f faulty nodes in 3f+1 total nodes)
-- View change mechanism for primary failure
-- Message logging and verification
-- Request execution after consensus
+## Simple Consensus Implementation
 
-### Raft Implementation
-
-The Raft implementation follows the standard Raft protocol:
-
-1. **Leader Election**: Nodes compete for leadership using randomized timeouts
-2. **Log Replication**: Leader replicates log entries to followers
-3. **Safety**: Ensures log consistency across all nodes
+The `SimpleConsensus` demonstrates how to implement the consensus interface:
 
 Key features:
 - Leader election with randomized timeouts
-- Log replication with append entries RPCs
-- Term-based state management
-- Heartbeat mechanism for leader detection
+- Basic request processing
+- Heartbeat mechanism
+- Event-driven architecture
+- Thread-safe operations
+
+## Creating Custom Consensus Algorithms
+
+To implement your own consensus algorithm:
+
+1. **Implement the Interface**: Create a struct that implements `ConsensusAlgorithm`
+2. **Extend Base Node**: Optionally embed `BaseConsensusNode` for common functionality
+3. **Register Algorithm**: Add your algorithm to the `ConsensusManager`
+
+### Example Implementation
+
+```go
+type MyConsensus struct {
+    *BaseConsensusNode
+    // Your custom fields
+}
+
+func NewMyConsensus(config ConsensusConfig, networkManager *NetworkManager, engine *Engine) *MyConsensus {
+    base := NewBaseConsensusNode(config, networkManager, engine)
+    return &MyConsensus{
+        BaseConsensusNode: base,
+        // Initialize your fields
+    }
+}
+
+// Implement required methods...
+func (mc *MyConsensus) Start(ctx context.Context) error {
+    // Your implementation
+}
+```
 
 ## Usage
 
@@ -64,156 +121,104 @@ Key features:
 engine := &Engine{}
 engine.Start(nodeAddress)
 
-// Create consensus manager
-peers := []types.Address{node1, node2, node3}
-consensusManager := NewConsensusManager(ConsensusTypePBFT, nodeAddress, peers, engine)
+// Consensus manager is automatically created with SimpleConsensus
+consensusManager := NewConsensusManager(ConsensusTypeSimple, nodeAddress, peers, engine)
 consensusManager.Start()
 ```
 
 ### Switching Consensus Algorithms
 
 ```go
-// Switch from PBFT to Raft
-consensusManager.SwitchConsensus(ConsensusTypeRaft)
-
-// Switch to hybrid mode
-consensusManager.SwitchConsensus(ConsensusTypeHybrid)
+// Switch to a different consensus algorithm
+consensusManager.SwitchConsensus(ConsensusTypeCustom)
 ```
 
 ### Submitting Requests
 
 ```go
-// Submit a transaction or operation
-consensusManager.SubmitRequest("transaction:0x123...")
-```
-
-### Getting Consensus State
-
-```go
-// Get current consensus information
-info := consensusManager.GetConsensusInfo()
-fmt.Printf("Consensus Info: %+v\n", info)
-```
-
-## Integration with GIGEA Engine
-
-The consensus algorithms are integrated into the existing GIGEA engine:
-
-### Engine Integration
-
-```go
-type Engine struct {
-    // ... existing fields ...
-    ConsensusManager *ConsensusManager
+// Submit a request to the consensus
+err := consensusManager.SubmitRequest("transfer:alice->bob:100")
+if err != nil {
+    log.Printf("Failed to submit request: %v", err)
 }
 ```
 
-### Automatic State Management
-
-The engine automatically updates its state based on consensus:
-
-- If consensus indicates this node is leader → `Leader` state
-- If consensus indicates this node is not leader → `Follower` state
-- Fallback to original logic for backward compatibility
-
-### Transaction Processing
-
-Transactions are automatically submitted to consensus:
+### Getting Consensus Information
 
 ```go
-case tx := <-e.TxFunnel:
-    e.Pack(tx)
-    // Submit transaction to consensus
-    if e.ConsensusManager != nil {
-        e.ConsensusManager.SubmitRequest(fmt.Sprintf("transaction:%s", tx.Hash().Hex()))
-    }
+// Get current consensus state
+info := consensusManager.GetConsensusInfo()
+fmt.Printf("Current leader: %s\n", info["leader"])
+fmt.Printf("Node state: %s\n", info["state"])
+fmt.Printf("Current term: %d\n", info["term"])
+```
+
+## Event Handling
+
+The consensus system supports event-driven architecture through the `ConsensusEventHandler` interface:
+
+```go
+type ConsensusEventHandler interface {
+    OnLeaderElected(nodeID types.Address, term int64)
+    OnLeaderLost(nodeID types.Address, term int64)
+    OnRequestCommitted(operation string, result interface{})
+    OnPeerAdded(peer types.Address)
+    OnPeerRemoved(peer types.Address)
+    OnConsensusError(err error)
+}
 ```
 
 ## Configuration
 
-### Consensus Types
+Consensus algorithms can be configured using the `ConsensusConfig` struct:
 
 ```go
-const (
-    ConsensusTypePBFT   ConsensusType = iota
-    ConsensusTypeRaft
-    ConsensusTypeHybrid
-)
+config := DefaultConsensusConfig(nodeID)
+config.HeartbeatInterval = 50 * time.Millisecond
+config.ElectionTimeout = 500 * time.Millisecond
+config.MaxRetries = 5
+
+// Update algorithm configuration
+consensusManager.consensus.UpdateConfig(config)
 ```
 
-### PBFT Configuration
+## Metrics
 
-- **Fault Tolerance**: Automatically calculated as `(len(replicas) - 1) / 3`
-- **Message Logs**: Pre-prepare, prepare, and commit message logs
-- **View Management**: Automatic view changes on primary failure
+The system provides comprehensive metrics:
 
-### Raft Configuration
-
-- **Heartbeat Interval**: 100ms (configurable)
-- **Election Timeout**: 150-300ms randomized (configurable)
-- **Log Management**: Persistent log with term-based consistency
-
-## Testing
-
-Run the consensus tests:
-
-```bash
-go test ./internal/gigea/gigea -v -run TestPBFTConsensus
-go test ./internal/gigea/gigea -v -run TestRaftConsensus
-go test ./internal/gigea/gigea -v -run TestHybridConsensus
+```go
+metrics := consensusManager.consensus.GetMetrics()
+fmt.Printf("Requests processed: %d\n", metrics["requests_processed"])
+fmt.Printf("Leadership changes: %d\n", metrics["leadership_changes"])
+fmt.Printf("Start time: %v\n", metrics["start_time"])
 ```
 
-Run performance benchmarks:
+## Benefits of the Template System
 
-```bash
-go test ./internal/gigea/gigea -bench=BenchmarkPBFTConsensus
-go test ./internal/gigea/gigea -bench=BenchmarkRaftConsensus
-```
+1. **Flexibility**: Easy to implement different consensus algorithms
+2. **Consistency**: Common interface ensures interoperability
+3. **Extensibility**: Base classes provide common functionality
+4. **Testability**: Each algorithm can be tested independently
+5. **Maintainability**: Clean separation of concerns
+6. **Performance**: Optimized for different use cases
 
-## Network Communication
+## Migration Guide
 
-**Note**: The current implementation includes placeholder network communication. To enable full distributed consensus:
+If you were using the old PBFT or Raft implementations:
 
-1. Implement actual network broadcasting in `broadcastPrePrepare`, `broadcastPrepare`, `broadcastCommit`
-2. Implement network message handling for incoming consensus messages
-3. Add proper peer discovery and connection management
-4. Implement message serialization and deserialization
+1. **Update Consensus Type**: Change from `ConsensusTypePBFT`/`ConsensusTypeRaft` to `ConsensusTypeSimple`
+2. **Update Method Calls**: Use the new consensus interface methods
+3. **Event Handling**: Implement `ConsensusEventHandler` for custom event processing
+4. **Configuration**: Use the new `ConsensusConfig` system
 
-## Limitations
+## Future Extensions
 
-1. **Network Communication**: Currently uses placeholder network communication
-2. **Persistence**: Logs are not persisted to disk
-3. **View Changes**: PBFT view change mechanism is simplified
-4. **Configuration Changes**: Raft configuration changes are not implemented
-5. **Security**: Cryptographic signatures are not implemented
+The template system supports easy addition of new consensus algorithms:
 
-## Future Enhancements
+- **PBFT**: Byzantine fault-tolerant consensus
+- **Raft**: Log replication with leader election  
+- **PoS**: Proof of Stake consensus
+- **HotStuff**: Modern BFT consensus
+- **Custom**: Your domain-specific consensus
 
-1. **Full Network Implementation**: Complete the network communication layer
-2. **Persistence**: Add disk-based log persistence
-3. **Security**: Implement cryptographic signatures and verification
-4. **Configuration Management**: Add dynamic configuration changes
-5. **Performance Optimization**: Optimize message handling and state management
-6. **Monitoring**: Add metrics and monitoring capabilities
-
-## API Reference
-
-### ConsensusManager
-
-- `NewConsensusManager(consensusType, nodeID, peers, engine)` - Create new manager
-- `Start()` - Start consensus algorithms
-- `SubmitRequest(operation)` - Submit operation to consensus
-- `GetConsensusState()` - Get current consensus state
-- `IsLeader()` - Check if this node is leader
-- `GetLeader()` - Get current leader address
-- `SwitchConsensus(newType)` - Switch consensus algorithm
-- `AddPeer(peer)` - Add new peer
-- `RemovePeer(peer)` - Remove peer
-- `GetConsensusInfo()` - Get detailed consensus information
-
-### Engine Integration
-
-- `SetConsensusType(consensusType)` - Set consensus algorithm
-- `GetConsensusInfo()` - Get consensus information
-- `AddPeer(peer)` - Add peer to consensus
-- `RemovePeer(peer)` - Remove peer from consensus 
+Each can be implemented by following the `ConsensusAlgorithm` interface and extending `BaseConsensusNode`. 

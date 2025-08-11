@@ -31,7 +31,7 @@ for i in range(int(text)):
         print(f"Created account {i}: {acc['result']['address']}")
     else:
         print(f"Failed to create account {i}: {r.text}")
-    time.sleep(0.1)  # Small delay to avoid overwhelming the server
+    time.sleep(0.01)  # Small delay to avoid overwhelming the server
 
 # Step 3: Create receiver accounts
 print("Account receivers...")
@@ -54,7 +54,7 @@ for i in range(int(text)):
         print(f"Created receiver account {i}: {acc['result']['address']}")
     else:
         print(f"Failed to create receiver account {i}: {r.text}")
-    time.sleep(0.1)
+    time.sleep(0.01)
 
 # Step 4: Send funds from sender accounts to receiver accounts
 print("Sending funds from senders to receivers...")
@@ -82,6 +82,6 @@ else:
             print(f"Sent 1.5 from {sender['address']} to {receiver['address']}: {r.text}")
         else:
             print(f"Failed to send from {sender['address']} to {receiver['address']}: {r.text}")
-        time.sleep(0.2)  # Slightly longer delay for transactions
+        time.sleep(0.02)  # Slightly longer delay for transactions
 
 print("Process completed!")

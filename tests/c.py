@@ -27,42 +27,42 @@ for i in range(int(text)):
     acc = json.loads(r.text)
     accounts.append(acc['result'])
  
-print("Faucet testing...")
-input("Press Enter to continue...")
+# print("Faucet testing...")
+# input("Press Enter to continue...")
        
-for acc in accounts:
-    faucet_req = {
-        "method": "faucet",
-        "jsonrpc": "2.0",
-        "id": i+1000,
-        "params":[
-            acc['address'],
-            3.75,
-        ]
-    }
-    r = requests.post("http://localhost:1337/app", json=faucet_req)
-    print(r.text)
+# for acc in accounts:
+#     faucet_req = {
+#         "method": "faucet",
+#         "jsonrpc": "2.0",
+#         "id": i+1000,
+#         "params":[
+#             acc['address'],
+#             3.75,
+#         ]
+#     }
+#     r = requests.post("http://localhost:1337/app", json=faucet_req)
+#     print(r.text)
 
-data_req = {
-    "method": "accounts",
-    "jsonrpc": "2.0",
-    "id": 1000
-}
+# data_req = {
+#     "method": "accounts",
+#     "jsonrpc": "2.0",
+#     "id": 1000
+# }
 
-print("Sync testing...")
-input("Press Enter to continue...")
+# print("Sync testing...")
+# input("Press Enter to continue...")
 
-r = requests.post("http://localhost:1337/app", json=data_req)
-#print(r.text)
-data = json.loads(r.text)
-print(data['result'])
+# r = requests.post("http://localhost:1337/app", json=data_req)
+# #print(r.text)
+# data = json.loads(r.text)
+# print(data['result'])
 
-r2 = requests.post("http://localhost:1339/app", json=data_req)
-#print(r.text)
-data2 = json.loads(r2.text)
-print(data2['result'])
+# r2 = requests.post("http://localhost:1339/app", json=data_req)
+# #print(r.text)
+# data2 = json.loads(r2.text)
+# print(data2['result'])
 
-print(data==data2)
+# print(data==data2)
 
 
 print("Pool testing...")

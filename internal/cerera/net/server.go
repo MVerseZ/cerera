@@ -2,6 +2,7 @@ package net
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -19,7 +20,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-const protocolID = "/cerera-p2p/1.0.0"
+// reserved for future direct streams
+// const protocolID = "/cerera-p2p/1.0.0"
 
 var CereraNode *Node
 
@@ -28,11 +30,11 @@ type Node struct {
 	address types.Address
 	ch      chan []byte
 	sch     chan []byte
-	mu      sync.Mutex
+	// mu sync.Mutex
 
 	BroadcastHeartBeetTimer *time.Ticker
 	FallBackCounter         int
-	connectionPool          map[types.Address]bool
+	// connectionPool map[types.Address]bool
 }
 
 func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
@@ -53,10 +55,13 @@ func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 				fmt.Println("### Publish error:", err)
 			}
 		case <-n.BroadcastHeartBeetTimer.C:
-			var msg = n.address.String() + "_PING"
-			if err := topic.Publish(ctx, []byte(msg)); err != nil {
-				fmt.Println("### Publish error:", err)
-			}
+			// // Silence if setup consensus
+			// if gigea.E.ConsensusManager != nil && gigea.E.ConsensusManager. {
+			// 	var msg = n.address.String() + "_PING"
+			// 	if err := topic.Publish(ctx, []byte(msg)); err != nil {
+			// 		fmt.Println("### Publish error:", err)
+			// 	}
+			// }
 		}
 	}
 }
@@ -80,6 +85,26 @@ func NewNode(h host.Host, addr types.Address) *Node {
 
 var topicName = "Cerera_topic"
 
+// BroadcastConsensusRequest publishes a consensus request over pubsub so other nodes
+// can forward it into their consensus engine. Format: "<addr>_CONS_REQ:<operation>".
+func BroadcastConsensusRequest(operation string) {
+	if CereraNode == nil {
+		return
+	}
+	msg := fmt.Sprintf("%s_CONS_REQ:%s", CereraNode.address.String(), operation)
+	CereraNode.sch <- []byte(msg)
+}
+
+// BroadcastConsensusResponse publishes a consensus response/ack over pubsub.
+// Format: "<addr>_CONS_RESP:<payload>".
+func BroadcastConsensusResponse(payload string) {
+	if CereraNode == nil {
+		return
+	}
+	msg := fmt.Sprintf("%s_CONS_RESP:%s", CereraNode.address.String(), payload)
+	CereraNode.sch <- []byte(msg)
+}
+
 func StartNode(addr string, laddr types.Address) *Node {
 	fmt.Printf("addr: %s\r\nladdr:%s\r\n", addr, laddr)
 	ctx := context.Background()
@@ -95,6 +120,13 @@ func StartNode(addr string, laddr types.Address) *Node {
 	}
 	defer h.Close()
 	CereraNode = NewNode(h, laddr)
+
+	// Inject consensus publisher into gigea so consensus can use pubsub directly
+	gigea.SetConsensusPublisher(func(msg string) {
+		if CereraNode != nil {
+			CereraNode.sch <- []byte(msg)
+		}
+	})
 
 	fullAddr := getHostAddress(h)
 	fmt.Printf("I am %s\n", fullAddr)
@@ -203,6 +235,83 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 			if strings.Contains(msgData, "_PING") {
 				newAddr := strings.Split(msgData, "_PING")[0]
 				gigea.E.UpdatePeer(types.HexToAddress(newAddr))
+			}
+
+			// Bridge consensus messages from pubsub into the consensus engine
+			if strings.Contains(msgData, "_CONS_REQ:") {
+				parts := strings.SplitN(msgData, "_CONS_REQ:", 2)
+				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
+					op := strings.TrimSpace(parts[1])
+					gigea.E.ConsensusManager.SubmitRequest(op)
+				}
+			}
+			if strings.Contains(msgData, "_CONS_HB:") {
+				// Heartbeat message from leader with JSON payload
+				parts := strings.SplitN(msgData, "_CONS_HB:", 2)
+				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
+					payload := strings.TrimSpace(parts[1])
+					var hb struct {
+						Term   int64  `json:"term"`
+						Leader string `json:"leader"`
+					}
+					if err := json.Unmarshal([]byte(payload), &hb); err == nil {
+						leaderAddr := types.HexToAddress(hb.Leader)
+						gigea.NotifyHeartbeat(hb.Term, leaderAddr)
+					}
+				}
+			}
+			if strings.Contains(msgData, "_CONS_RESP:") {
+				// Currently no-op; reserved for future consensus response handling
+			}
+
+			// Voting: handle vote requests
+			if strings.Contains(msgData, "_CONS_VOTE_REQ:") {
+				parts := strings.SplitN(msgData, "_CONS_VOTE_REQ:", 2)
+				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
+					payload := strings.TrimSpace(parts[1])
+					var vr struct {
+						Term      int64  `json:"term"`
+						Candidate string `json:"candidate"`
+					}
+					if err := json.Unmarshal([]byte(payload), &vr); err == nil {
+						gigea.NotifyVoteRequest(vr.Term, types.HexToAddress(vr.Candidate))
+					}
+				}
+			}
+
+			// Voting: handle vote responses
+			if strings.Contains(msgData, "_CONS_VOTE_RESP:") {
+				parts := strings.SplitN(msgData, "_CONS_VOTE_RESP:", 2)
+				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
+					payload := strings.TrimSpace(parts[1])
+					var vrs struct {
+						Term    int64  `json:"term"`
+						Voter   string `json:"voter"`
+						Granted bool   `json:"granted"`
+					}
+					if err := json.Unmarshal([]byte(payload), &vrs); err == nil {
+						gigea.NotifyVoteResponse(vrs.Term, types.HexToAddress(vrs.Voter), vrs.Granted)
+					}
+				}
+			}
+
+			// Leader announcement
+			if strings.Contains(msgData, "_CONS_LEADER:") {
+				parts := strings.SplitN(msgData, "_CONS_LEADER:", 2)
+				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
+					payload := strings.TrimSpace(parts[1])
+					var la struct {
+						Term   int64  `json:"term"`
+						Leader string `json:"leader"`
+					}
+					if err := json.Unmarshal([]byte(payload), &la); err == nil {
+						gigea.NotifyLeaderAnnouncement(la.Term, types.HexToAddress(la.Leader))
+					}
+				}
+			}
+			// Topology change
+			if strings.Contains(msgData, "_CONS_TOPOLOGY:") {
+				fmt.Printf("Topology change detected: \tinfo:\n\t%v\n\tstate:%v\n", gigea.E.ConsensusManager.GetConsensusInfo(), gigea.E.ConsensusManager.GetConsensusState())
 			}
 		}
 	}

@@ -18,11 +18,12 @@ type Engine struct {
 	TxFunnel       chan *types.GTransaction // input tx funnel
 	BlockFunnel    chan *block.Block        // input block funnel
 	BlockPipe      chan *block.Block
-	Transaions     TxTree
+	Txs            TxTree
 	Owner          types.Address
 	Transactions   *TxMerkleTree
 	List           []types.GTransaction
 	MaintainTicker *time.Ticker
+	stopCh         chan struct{} // Channel to signal shutdown
 
 	// Consensus manager
 	ConsensusManager *ConsensusManager
@@ -35,6 +36,7 @@ func (e *Engine) Start(lAddr types.Address) {
 	e.BlockFunnel = make(chan *block.Block)
 	e.TxFunnel = make(chan *types.GTransaction)
 	e.BlockPipe = make(chan *block.Block)
+	e.stopCh = make(chan struct{})
 
 	e.List = make([]types.GTransaction, 0)
 
@@ -42,101 +44,48 @@ func (e *Engine) Start(lAddr types.Address) {
 	e.MaintainTicker = time.NewTicker(1 * time.Minute)
 
 	// Initialize consensus manager with default peers
-	peers := []types.Address{lAddr} // Start with just this node
-	e.ConsensusManager = NewConsensusManager(ConsensusTypeRaft, lAddr, peers, e)
+	peers := []*PeerInfo{{
+		CereraAddress: lAddr,
+		NetworkAddr:   fmt.Sprintf("localhost:%d", e.Port),
+	}} // Start with just this node
+	e.ConsensusManager = NewConsensusManager(ConsensusTypeSimple, lAddr, peers, e)
 	e.ConsensusManager.Start()
-
-	// var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
-	// var list []types.Content
-	// list = append(list, firstTx)
-	// var err error
-	// fmt.Printf("Coinbase tx hash: %s\r\n", firstTx.Hash())
-	// var b, _ = firstTx.CalculateHash()
-	// fmt.Printf("Coinbase tx hash: %s\r\n", common.BytesToHash(b))
-	// e.Transactions, err = NewTree(list)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("Root hash: %s\r\n", common.BytesToHash(e.Transactions.MerkleRoot()))
 	fmt.Println("Engine started")
 	go e.Listen()
 }
 
 func (e *Engine) Listen() {
-	var errc chan error
-	for errc == nil {
+	for {
 		select {
 		case tx := <-e.TxFunnel:
-			e.Pack(tx)
+			if err := e.Pack(tx); err != nil {
+				fmt.Printf("Error packing transaction: %v\r\n", err)
+				continue
+			}
 			// Submit transaction to consensus
 			if e.ConsensusManager != nil {
 				e.ConsensusManager.SubmitRequest(fmt.Sprintf("transaction:%s", tx.Hash().Hex()))
 			}
-			// e.Transaions.
-			// fmt.Println(tx.Hash())
-			// case b := <-e.BlockFunnel:
-			// fmt.Printf("New block arrived %s\r\n", b.Hash())
-			// e.Validate(b)
 		case b := <-e.BlockFunnel:
 			fmt.Printf("New block arrived to GIGEA: %s\r\n", b.GetHash())
 			C.Notify(b)
-			continue
 		case <-e.MaintainTicker.C:
 			fmt.Printf("Maintain GIGEA\r\n\tCSP:[address: %s, state: %s]\r\n", G.address, G.state)
 
-			// Update consensus state based on consensus manager
-			// var flag = false
-			// if e.ConsensusManager != nil && !flag {
-			// 	consensusInfo := e.ConsensusManager.GetConsensusInfo()
-			// 	fmt.Printf("\tConsensus Info: \r\n\t%+v\r\n", consensusInfo)
-
-			// 	// Update GIGEA state based on consensus
-			// 	if e.ConsensusManager.IsLeader() {
-			// 		if G.state != Leader {
-			// 			G.state = Leader
-			// 			fmt.Printf("Consensus manager indicates this node is leader, changing state to Leader\r\n")
-			// 		}
-			// 	} else {
-			// 		if len(C.Voters) <= 1 {
-			// 			if G.state != Candidate {
-			// 				G.state = Candidate
-			// 				fmt.Printf("No connections detected, changing state to Candidate\r\n")
-			// 			}
-			// 			if len(C.Voters) <= 1 && G.state == Candidate {
-			// 				G.state = Leader
-			// 				fmt.Printf("No connections detected, changing state to Leader\r\n")
-			// 			}
-			// 		} else {
-			// 			if G.state != Follower {
-			// 				G.state = Follower
-			// 				fmt.Printf("Consensus manager indicates this node is not leader, changing state to Follower\r\n")
-			// 			}
-			// 		}
-			// 	}
-			// }
 			if e.ConsensusManager != nil {
 				consensusInfo := e.ConsensusManager.GetConsensusInfo()
 				fmt.Printf("\tConsensus Info: \r\n\t%+v\r\n", consensusInfo)
 			} else {
-				// Fallback to original logic
-				if G.state != Leader {
-					if len(C.Voters) <= 1 {
-						G.state = Candidate
-						fmt.Printf("No connections detected, changing state to Candidate\r\n")
-					}
-					if len(C.Voters) <= 1 && G.state == Candidate {
-						G.state = Leader
-						fmt.Printf("No connections detected, changing state to Leader\r\n")
-					}
-				}
+				fmt.Printf("\tConsensus Info: \r\n\t%s\r\n", "Consensus manager not initialized or not running")
 			}
-			continue
+		case <-e.stopCh:
+			fmt.Println("Engine stopping...")
+			return
 		}
-		errc <- nil
 	}
 }
 
-func (e *Engine) Pack(tx *types.GTransaction) {
+func (e *Engine) Pack(tx *types.GTransaction) error {
 	var err error
 	// fmt.Printf("Rebuild with hash: %s\r\n", tx.Hash())
 	if len(e.List) == 0 {
@@ -146,38 +95,26 @@ func (e *Engine) Pack(tx *types.GTransaction) {
 	e.List = append(e.List, *tx)
 	e.Transactions, err = NewTree(e.List)
 	if err != nil {
-		panic(err)
+		fmt.Printf("Error creating transaction tree: %v\r\n", err)
+		return err
 	}
 
-	// var v, err = e.Transactions.VerifyTree()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("Verify after pack: %t\r\n", v)
-
-	// vv, err := e.Transactions.VerifyContent(tx)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("Verify tx after pack: %t\r\n", vv)
-	// fmt.Printf("Root node: %s\r\n", common.BytesToHash(e.Transactions.MerkleRoot()))
-
-	// var traverse func(node *Node)
-	// traverse = func(node *Node) {
-	// 	if node == nil {
-	// 		return
-	// 	}
-	// 	fmt.Println(node.String()) // Process the node (e.g., print it)
-	// 	traverse(node.Left)
-	// 	traverse(node.Right)
-	// }
-
-	// traverse(e.Transactions.Root)
-
+	return nil
 }
 
 func (e *Engine) Register(a interface{}) {
 
+}
+
+// Stop gracefully shuts down the engine
+func (e *Engine) Stop() {
+	if e.MaintainTicker != nil {
+		e.MaintainTicker.Stop()
+	}
+	if e.ConsensusManager != nil && e.ConsensusManager.NetworkManager != nil {
+		e.ConsensusManager.NetworkManager.Stop()
+	}
+	close(e.stopCh)
 }
 
 // SetConsensusType sets the consensus algorithm type
@@ -210,7 +147,11 @@ func (e *Engine) GetNetworkInfo() map[string]interface{} {
 // AddPeer adds a peer to the consensus
 func (e *Engine) AddPeer(peer types.Address) {
 	if e.ConsensusManager != nil {
-		e.ConsensusManager.AddPeer(peer)
+		peerInfo := &PeerInfo{
+			CereraAddress: peer,
+			NetworkAddr:   fmt.Sprintf(":%d", e.Port), // Use current node's network address
+		}
+		e.ConsensusManager.AddPeer(peerInfo)
 	}
 	// Also add to existing C.Voters for backward compatibility
 	C.Voters = append(C.Voters, peer)
@@ -223,7 +164,11 @@ func (e *Engine) AddPeerId(peerId string) {
 
 func (e *Engine) UpdatePeer(peer types.Address) {
 	if e.ConsensusManager != nil {
-		e.ConsensusManager.AddPeer(peer)
+		peerInfo := &PeerInfo{
+			CereraAddress: peer,
+			NetworkAddr:   fmt.Sprintf("localhost:%d", e.Port), // Use current node's port
+		}
+		e.ConsensusManager.AddPeer(peerInfo)
 	}
 	// Also update in existing C.Voters for backward compatibility
 	isPresent := false

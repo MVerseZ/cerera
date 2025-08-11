@@ -32,11 +32,9 @@ const (
 	MsgTypeViewChange MessageType = "view_change"
 	MsgTypeNewView    MessageType = "new_view"
 
-	// Raft Message Types
-	MsgTypeRequestVote       MessageType = "request_vote"
-	MsgTypeRequestVoteResp   MessageType = "request_vote_resp"
-	MsgTypeAppendEntries     MessageType = "append_entries"
-	MsgTypeAppendEntriesResp MessageType = "append_entries_resp"
+	// Simple Consensus Message Types
+	MsgTypeConsensusRequest  MessageType = "consensus_request"
+	MsgTypeConsensusResponse MessageType = "consensus_response"
 
 	// General Message Types
 	MsgTypePing      MessageType = "ping"
@@ -46,9 +44,15 @@ const (
 	MsgTypeHeartbeat MessageType = "heartbeat"
 )
 
+// PeerInfo represents a peer with both Cerera address and network address
+type PeerInfo struct {
+	CereraAddress types.Address
+	NetworkAddr   string // IP:port format
+}
+
 // Peer represents a network peer
 type Peer struct {
-	Address     types.Address
+	Info        *PeerInfo
 	Conn        net.Conn
 	LastSeen    time.Time
 	IsConnected bool
@@ -76,10 +80,8 @@ type NetworkManager struct {
 	OnPrepare           func(*message.Prepare)
 	OnCommit            func(*message.Commit)
 	OnViewChange        func(*message.ViewChange)
-	OnRequestVote       func(*RequestVoteRequest)
-	OnRequestVoteResp   func(*RequestVoteResponse)
-	OnAppendEntries     func(*AppendEntriesRequest)
-	OnAppendEntriesResp func(*AppendEntriesResponse)
+	OnConsensusRequest  func(string)
+	OnConsensusResponse func(string)
 
 	// State
 	IsRunning bool
@@ -272,28 +274,16 @@ func (nm *NetworkManager) routeMessage(msg *NetworkMessage) {
 			nm.OnViewChange(&viewChange)
 		}
 
-	case MsgTypeRequestVote:
-		var reqVote RequestVoteRequest
-		if err := json.Unmarshal(msg.Payload, &reqVote); err == nil && nm.OnRequestVote != nil {
-			nm.OnRequestVote(&reqVote)
+	case MsgTypeConsensusRequest:
+		var request string
+		if err := json.Unmarshal(msg.Payload, &request); err == nil && nm.OnConsensusRequest != nil {
+			nm.OnConsensusRequest(request)
 		}
 
-	case MsgTypeRequestVoteResp:
-		var reqVoteResp RequestVoteResponse
-		if err := json.Unmarshal(msg.Payload, &reqVoteResp); err == nil && nm.OnRequestVoteResp != nil {
-			nm.OnRequestVoteResp(&reqVoteResp)
-		}
-
-	case MsgTypeAppendEntries:
-		var appendEntries AppendEntriesRequest
-		if err := json.Unmarshal(msg.Payload, &appendEntries); err == nil && nm.OnAppendEntries != nil {
-			nm.OnAppendEntries(&appendEntries)
-		}
-
-	case MsgTypeAppendEntriesResp:
-		var appendEntriesResp AppendEntriesResponse
-		if err := json.Unmarshal(msg.Payload, &appendEntriesResp); err == nil && nm.OnAppendEntriesResp != nil {
-			nm.OnAppendEntriesResp(&appendEntriesResp)
+	case MsgTypeConsensusResponse:
+		var response string
+		if err := json.Unmarshal(msg.Payload, &response); err == nil && nm.OnConsensusResponse != nil {
+			nm.OnConsensusResponse(response)
 		}
 
 	case MsgTypePing:
@@ -385,7 +375,7 @@ func (nm *NetworkManager) broadcastToPeers(message []byte) {
 		if peer.Conn != nil && peer.IsConnected {
 			_, err := peer.Conn.Write(message)
 			if err != nil {
-				fmt.Printf("Error broadcasting to peer %s: %v\n", peer.Address.Hex(), err)
+				fmt.Printf("Error broadcasting to peer %s: %v\n", peer.Info.NetworkAddr, err)
 				peer.IsConnected = false
 			}
 		}
@@ -396,7 +386,7 @@ func (nm *NetworkManager) broadcastToPeers(message []byte) {
 // connectToPeer connects to a peer
 func (nm *NetworkManager) connectToPeer(peerAddr types.Address) error {
 	// For now, assume peers are on localhost with different ports
-	// In a real implementation, you'd have peer discovery
+	// In a real implementation, you'd have peer discovery and use actual network addresses
 	peerPort := nm.Port + int(peerAddr[0]) // Simple port calculation
 	peerAddrStr := fmt.Sprintf("localhost:%d", peerPort)
 
@@ -405,8 +395,13 @@ func (nm *NetworkManager) connectToPeer(peerAddr types.Address) error {
 		return err
 	}
 
+	peerInfo := &PeerInfo{
+		CereraAddress: peerAddr,
+		NetworkAddr:   peerAddrStr,
+	}
+
 	peer := &Peer{
-		Address:     peerAddr,
+		Info:        peerInfo,
 		Conn:        conn,
 		LastSeen:    time.Now(),
 		IsConnected: true,
@@ -430,7 +425,10 @@ func (nm *NetworkManager) updatePeer(addr types.Address, conn net.Conn) {
 	peer, exists := nm.Peers[addr]
 	if !exists {
 		peer = &Peer{
-			Address:     addr,
+			Info: &PeerInfo{
+				CereraAddress: addr,
+				NetworkAddr:   nm.ListenAddr, // Use current node's network address
+			},
 			LastSeen:    time.Now(),
 			IsConnected: true,
 		}
@@ -483,13 +481,13 @@ func (nm *NetworkManager) broadcastHeartbeat() {
 }
 
 // AddPeer adds a peer to the network
-func (nm *NetworkManager) AddPeer(addr types.Address) {
+func (nm *NetworkManager) AddPeer(peerInfo *PeerInfo) {
 	nm.PeersMutex.Lock()
 	defer nm.PeersMutex.Unlock()
 
-	if _, exists := nm.Peers[addr]; !exists {
-		nm.Peers[addr] = &Peer{
-			Address:     addr,
+	if _, exists := nm.Peers[peerInfo.CereraAddress]; !exists {
+		nm.Peers[peerInfo.CereraAddress] = &Peer{
+			Info:        peerInfo,
 			LastSeen:    time.Now(),
 			IsConnected: false,
 		}
@@ -516,7 +514,7 @@ func (nm *NetworkManager) GetPeers() []types.Address {
 
 	peers := make([]types.Address, 0, len(nm.Peers))
 	for _, peer := range nm.Peers {
-		peers = append(peers, peer.Address)
+		peers = append(peers, peer.Info.CereraAddress)
 	}
 
 	return peers
@@ -530,7 +528,7 @@ func (nm *NetworkManager) GetConnectedPeers() []types.Address {
 	peers := make([]types.Address, 0)
 	for _, peer := range nm.Peers {
 		if peer.IsConnected {
-			peers = append(peers, peer.Address)
+			peers = append(peers, peer.Info.CereraAddress)
 		}
 	}
 
@@ -580,21 +578,13 @@ func (nm *NetworkManager) SendViewChange(viewChange *message.ViewChange) {
 	nm.BroadcastMessage(MsgTypeViewChange, viewChange)
 }
 
-// Raft Message Senders
-func (nm *NetworkManager) SendRequestVote(req *RequestVoteRequest, to types.Address) {
-	nm.SendMessage(MsgTypeRequestVote, req, to)
+// Simple Consensus Message Senders
+func (nm *NetworkManager) SendConsensusRequest(request string, to types.Address) {
+	nm.SendMessage(MsgTypeConsensusRequest, request, to)
 }
 
-func (nm *NetworkManager) SendRequestVoteResponse(resp *RequestVoteResponse, to types.Address) {
-	nm.SendMessage(MsgTypeRequestVoteResp, resp, to)
-}
-
-func (nm *NetworkManager) SendAppendEntries(req *AppendEntriesRequest, to types.Address) {
-	nm.SendMessage(MsgTypeAppendEntries, req, to)
-}
-
-func (nm *NetworkManager) SendAppendEntriesResponse(resp *AppendEntriesResponse, to types.Address) {
-	nm.SendMessage(MsgTypeAppendEntriesResp, resp, to)
+func (nm *NetworkManager) SendConsensusResponse(response string, to types.Address) {
+	nm.SendMessage(MsgTypeConsensusResponse, response, to)
 }
 
 // General Message Senders
@@ -626,4 +616,12 @@ func (nm *NetworkManager) intToBytes(n int) []byte {
 
 func (nm *NetworkManager) bytesToInt(bytes []byte) int {
 	return int(bytes[0])<<24 | int(bytes[1])<<16 | int(bytes[2])<<8 | int(bytes[3])
+}
+
+// NewPeerInfo creates a new PeerInfo from Cerera address and network address
+func NewPeerInfo(cereraAddr types.Address, networkAddr string) *PeerInfo {
+	return &PeerInfo{
+		CereraAddress: cereraAddr,
+		NetworkAddr:   networkAddr,
+	}
 }
