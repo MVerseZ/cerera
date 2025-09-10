@@ -58,3 +58,27 @@ func NotifyLeaderAnnouncement(term int64, leader types.Address) {
 		la.NotifyLeaderAnnouncement(term, leader)
 	}
 }
+
+// NotifyTopologyChange forwards a topology change notification to the running consensus
+func NotifyTopologyChange(term int64, nodeID types.Address, peerCount int) {
+	if E.ConsensusManager == nil || E.ConsensusManager.consensus == nil {
+		return
+	}
+	if tc, ok := E.ConsensusManager.consensus.(interface {
+		NotifyTopologyChange(int64, types.Address, int)
+	}); ok {
+		tc.NotifyTopologyChange(term, nodeID, peerCount)
+	}
+}
+
+// NotifyTopologySync forwards a topology synchronization message to the running consensus
+func NotifyTopologySync(term int64, nodeID types.Address, peers []types.Address, voters []types.Address, requestSync bool) {
+	if E.ConsensusManager == nil || E.ConsensusManager.consensus == nil {
+		return
+	}
+	if ts, ok := E.ConsensusManager.consensus.(interface {
+		NotifyTopologySync(int64, types.Address, []types.Address, []types.Address, bool)
+	}); ok {
+		ts.NotifyTopologySync(term, nodeID, peers, voters, requestSync)
+	}
+}

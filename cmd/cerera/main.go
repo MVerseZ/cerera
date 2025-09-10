@@ -17,7 +17,7 @@ import (
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
-	"github.com/cerera/internal/gigea/gigea"
+	"github.com/cerera/internal/gigea"
 )
 
 // Process управляет жизненным циклом приложения.

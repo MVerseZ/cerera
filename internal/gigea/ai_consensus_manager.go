@@ -15,6 +15,7 @@ type ConsensusType int
 const (
 	ConsensusTypeSimple ConsensusType = iota
 	ConsensusTypeCustom
+	ConsensusTypeGigea
 )
 
 func (ct ConsensusType) String() string {
@@ -114,6 +115,8 @@ func NewConsensusManager(consensusType ConsensusType, nodeID types.Address, peer
 		// For custom consensus, you would implement your own ConsensusAlgorithm
 		// For now, fallback to simple consensus
 		cm.consensus = NewSimpleConsensus(config, cm.NetworkManager, engine)
+	case ConsensusTypeGigea:
+		cm.consensus = NewGigeaConsensus(config, cm.NetworkManager, engine)
 	default:
 		// Default to simple consensus
 		cm.consensus = NewSimpleConsensus(config, cm.NetworkManager, engine)

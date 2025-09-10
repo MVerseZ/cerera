@@ -3,7 +3,6 @@ package chain
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"sync"
 	"time"
@@ -11,9 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/gigea/gigea"
 
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
@@ -99,27 +96,27 @@ func InitBlockChain(cfg *config.Config) error {
 			InitChainVault(genesisBlock)
 		}
 
-		switch stat := gigea.C.Status; stat {
-		case 1:
-			// local mode
-			var readBlock, err = SyncVault()
-			if err != nil {
-				panic(err)
-			}
+		// switch stat := gigea.C.Status; stat {
+		// case 1:
+		// 	// local mode
+		// 	var readBlock, err = SyncVault()
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
 
-			dataBlocks = append(dataBlocks, readBlock...)
-			// validate added blocks
-			lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
-			if errorBlock != nil {
-				log.Printf("ERROR BLOCK! %s\r\n", errorBlock)
-			}
-			dataBlocks = dataBlocks[:lastCorrect]
-			fmt.Printf("Start chain from %d block\r\n", lastCorrect)
+		// 	dataBlocks = append(dataBlocks, readBlock...)
+		// 	// validate added blocks
+		// 	lastCorrect, errorBlock := ValidateBlocks(dataBlocks)
+		// 	if errorBlock != nil {
+		// 		log.Printf("ERROR BLOCK! %s\r\n", errorBlock)
+		// 	}
+		// 	dataBlocks = dataBlocks[:lastCorrect]
+		// 	fmt.Printf("Start chain from %d block\r\n", lastCorrect)
 
-		case 2:
-			// network mode
-			panic("gigea.blockchain.status")
-		}
+		// case 2:
+		// 	// network mode
+		// 	panic("gigea.blockchain.status")
+		// }
 	}
 
 	for _, v := range dataBlocks {
@@ -243,8 +240,8 @@ func (bc *Chain) GetBlockHeader(blockHash string) *block.Header {
 
 func (bc *Chain) Start() {
 	fmt.Printf("Chain started with: %d, chain owner: %s, total: %d\r\n", bc.chainId, bc.currentAddress, bc.info.Total)
-	var p = pool.Get()
-	var v = validator.Get()
+	// var p = pool.Get()
+	// var v = validator.Get()
 	var errc chan error
 	// if bc.autoGen {
 	// 	var latest = bc.GetLatestBlock()
@@ -252,34 +249,34 @@ func (bc *Chain) Start() {
 	// }
 	for errc == nil {
 		select {
-		case newBlock := <-gigea.E.BlockPipe:
-			fmt.Printf("Approved block!! : %s\r\n", newBlock.GetHash())
-			for _, tx := range newBlock.Transactions {
-				// fmt.Printf("Tx: %s\r\n", tx.Hash())
-				p.RemoveFromPool(tx.Hash())
-				v.ExecuteTransaction(tx)
-			}
-			bc.mu.TryLock()
-			bc.info.Latest = newBlock.GetHash()
-			bc.info.Total = bc.info.Total + 1
-			bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-			// 	err := SaveToVault(*newBlock)
-			bc.Size += newBlock.Header().Size
-			bc.data = append(bc.data, newBlock)
-			bc.currentBlock = newBlock
-			bc.mu.Unlock()
+		// case newBlock := <-gigea.E.BlockPipe:
+		// 	fmt.Printf("Approved block!! : %s\r\n", newBlock.GetHash())
+		// 	for _, tx := range newBlock.Transactions {
+		// 		// fmt.Printf("Tx: %s\r\n", tx.Hash())
+		// 		p.RemoveFromPool(tx.Hash())
+		// 		v.ExecuteTransaction(tx)
+		// 	}
+		// 	bc.mu.TryLock()
+		// 	bc.info.Latest = newBlock.GetHash()
+		// 	bc.info.Total = bc.info.Total + 1
+		// 	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
+		// 	// 	err := SaveToVault(*newBlock)
+		// 	bc.Size += newBlock.Header().Size
+		// 	bc.data = append(bc.data, newBlock)
+		// 	bc.currentBlock = newBlock
+		// 	bc.mu.Unlock()
 		case <-bc.maintainTicker.C:
 			fmt.Println("Chain tick maintain")
 			continue
-		case b := <-gigea.C.Chain:
-			bc.mu.TryLock()
-			if b.GetHash() == bc.info.Latest {
-				continue
-			}
-			fmt.Println("UPDATE CHAIN")
-			bc.UpdateChain(b)
-			bc.mu.Unlock()
-			continue
+			// case b := <-gigea.C.Chain:
+			// 	bc.mu.TryLock()
+			// 	if b.GetHash() == bc.info.Latest {
+			// 		continue
+			// 	}
+			// 	fmt.Println("UPDATE CHAIN")
+			// 	bc.UpdateChain(b)
+			// 	bc.mu.Unlock()
+			// 	continue
 		}
 	}
 	errc <- nil

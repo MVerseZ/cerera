@@ -35,8 +35,9 @@ type SimpleConsensus struct {
 	votesReceived map[types.Address]bool
 
 	// Voting state
-	votedFor      types.Address
-	lastVotedTerm int64
+	votedFor       types.Address
+	lastVotedTerm  int64
+	lastVotedStamp time.Time
 
 	// Stab state
 
@@ -171,6 +172,9 @@ func (sc *SimpleConsensus) AddPeer(peer types.Address) error {
 	sc.config.Peers = append(sc.config.Peers, peer)
 	sc.emitPeerAdded(peer)
 
+	// Always notify about topology change when adding a new peer
+	sc.notifyTopologyChange()
+
 	// Reset leadership for all nodes when topology changes
 	// This ensures proper re-election with the new peer count
 	if currentLeader != (types.Address{}) {
@@ -188,9 +192,6 @@ func (sc *SimpleConsensus) AddPeer(peer types.Address) error {
 
 		// Reset election timer to start new election cycle
 		sc.resetElectionTimer()
-
-		// Notify other peers about topology change to trigger re-election
-		sc.notifyTopologyChange()
 
 		fmt.Printf("Added peer %s, resetting leadership. New term: %d\n", peer.Hex(), sc.currentTerm)
 	} else {
@@ -420,10 +421,12 @@ func (sc *SimpleConsensus) becomeLeader() {
 	sc.UpdateMetric("leadership_changes", changes)
 
 	// Announce leadership to converge network
+	sc.lastVotedStamp = time.Now()
 	if PublishConsensus != nil {
 		ann := map[string]interface{}{
 			"term":   sc.currentTerm,
 			"leader": sc.config.NodeID.Hex(),
+			"time":   sc.electionTimer,
 		}
 		content, _ := json.Marshal(ann)
 		PublishConsensus(fmt.Sprintf("%s_CONS_LEADER:%s", sc.config.NodeID.String(), string(content)))
@@ -437,8 +440,8 @@ func (sc *SimpleConsensus) sendHeartbeat() {
 	// Publish heartbeat via pubsub transport
 	fmt.Printf("Leader %s sending heartbeat (term %d)\n", sc.config.NodeID.Hex(), sc.currentTerm)
 	if PublishConsensus != nil {
-		content := sc.generateHeartbeatContent()
-		PublishConsensus(fmt.Sprintf("%s_CONS_HB:%s", sc.config.NodeID.String(), string(content)))
+		// content := sc.generateHeartbeatContent()
+		// PublishConsensus(fmt.Sprintf("%s_CONS_HB:%s", sc.config.NodeID.String(), string(content)))
 	}
 }
 
@@ -579,6 +582,7 @@ func (sc *SimpleConsensus) generateHeartbeatContent() json.RawMessage {
 	var data = map[string]interface{}{}
 	data["term"] = sc.currentTerm
 	data["leader"] = sc.config.NodeID.Hex()
+	data["t"] = sc.lastVotedStamp
 	content, _ := json.Marshal(data)
 	return content
 }
@@ -640,8 +644,11 @@ func (sc *SimpleConsensus) notifyTopologyChange() {
 			"timestamp":  time.Now(),
 		}
 		content, _ := json.Marshal(event)
-		PublishConsensus(fmt.Sprintf("%s_CONS_TOPOLOGY:%s", sc.config.NodeID.String(), string(content)))
+		message := fmt.Sprintf("%s_CONS_TOPOLOGY:%s", sc.config.NodeID.String(), string(content))
+		PublishConsensus(message)
 
 		fmt.Printf("Notified peers about topology change (term %d, %d peers)\n", sc.currentTerm, len(sc.config.Peers))
+	} else {
+		fmt.Printf("DEBUG: PublishConsensus is nil, cannot send topology change notification\n")
 	}
 }

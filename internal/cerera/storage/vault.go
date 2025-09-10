@@ -195,14 +195,24 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 //	args: mnemonic:string, pass:string (see Create, not required)
 //	return: address:types.Address, master key:string, public key:string, error:error
 func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, string, error) {
+	// Validate input parameters
+	if mnemonic == "" {
+		return types.EmptyAddress(), "", "", errors.New("mnemonic phrase cannot be empty")
+	}
+
 	// entropy := bip39.EntropyFromMnemonic(mnemonic)
 	seed := bip39.NewSeed(mnemonic, pass)
-	masterKey, _ := bip32.NewMasterKey(seed)
-	publicKey := masterKey.PublicKey()
-	addr, err := v.accounts.FindAddrByPub(publicKey.B58Serialize())
-	if err == nil {
-		return types.EmptyAddress(), "", "", err
+	masterKey, err := bip32.NewMasterKey(seed)
+	if err != nil {
+		return types.EmptyAddress(), "", "", fmt.Errorf("failed to create master key: %w", err)
 	}
+	publicKey := masterKey.PublicKey()
+
+	addr, err := v.accounts.FindAddrByPub(publicKey.B58Serialize())
+	if err != nil {
+		return types.EmptyAddress(), "", "", fmt.Errorf("account not found: %w", err)
+	}
+
 	return addr, masterKey.B58Serialize(), publicKey.B58Serialize(), nil
 }
 
@@ -227,7 +237,10 @@ func (v *D5Vault) GetPos(pos int64) *types.StateAccount {
 //	args: public key:string
 //	return: bytes representation of public key:[]byte
 func (v *D5Vault) GetKey(signKey string) []byte {
-	pubKey, _ := bip32.B58Deserialize(signKey)
+	pubKey, err := bip32.B58Deserialize(signKey)
+	if err != nil || pubKey == nil {
+		return []byte{0x0, 0x0, 0xf, 0xf}
+	}
 
 	var fp = v.accounts.GetKBytes(pubKey)
 
@@ -349,8 +362,11 @@ func (v *D5Vault) Status() byte {
 
 func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address, error) {
 	var acc = v.accounts.GetAccount(addr)
+	if acc == nil {
+		return types.EmptyAddress(), errors.New("account not found")
+	}
 	if acc.Passphrase == common.BytesToHash([]byte(pass)) {
 		return acc.Address, nil
 	}
-	return types.EmptyAddress(), errors.New("wrong credentials!")
+	return types.EmptyAddress(), errors.New("wrong credentials")
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
-	"github.com/cerera/internal/gigea/gigea"
+	"github.com/cerera/internal/gigea"
 )
 
 var Result interface{}

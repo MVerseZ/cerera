@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/gigea/gigea"
+	"github.com/cerera/internal/gigea"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -215,7 +215,7 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 				// }
 			} else {
 				fmt.Println("Connected to:", peer.ID)
-				// n.sch <- []byte(fmt.Sprintf("%s_CONS", n.address.String()))
+				n.sch <- []byte(fmt.Sprintf("%s_CONS_JOIN", n.address.String()))
 				anyConnected = true
 			}
 		}
@@ -266,6 +266,7 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 
 			// Voting: handle vote requests
 			if strings.Contains(msgData, "_CONS_VOTE_REQ:") {
+				fmt.Printf("Received message from %s: \r\n\t%s,\r\n\t%s\r\n", m.ReceivedFrom, msgData, time.Now().Format("2006-01-02 15:04:05:05.000000000"))
 				parts := strings.SplitN(msgData, "_CONS_VOTE_REQ:", 2)
 				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
 					payload := strings.TrimSpace(parts[1])
@@ -281,6 +282,7 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 
 			// Voting: handle vote responses
 			if strings.Contains(msgData, "_CONS_VOTE_RESP:") {
+				fmt.Printf("Received message from %s: \r\n\t%s,\r\n\t%s\r\n", m.ReceivedFrom, msgData, time.Now().Format("2006-01-02 15:04:05:05.000000000"))
 				parts := strings.SplitN(msgData, "_CONS_VOTE_RESP:", 2)
 				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
 					payload := strings.TrimSpace(parts[1])
@@ -311,7 +313,26 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 			}
 			// Topology change
 			if strings.Contains(msgData, "_CONS_TOPOLOGY:") {
-				fmt.Printf("Topology change detected: \tinfo:\n\t%v\n\tstate:%v\n", gigea.E.ConsensusManager.GetConsensusInfo(), gigea.E.ConsensusManager.GetConsensusState())
+				parts := strings.SplitN(msgData, "_CONS_TOPOLOGY:", 2)
+				if len(parts) == 2 && gigea.E.ConsensusManager != nil {
+					payload := strings.TrimSpace(parts[1])
+					var tc struct {
+						Term   int64  `json:"term"`
+						NodeID string `json:"node_id"`
+						Peers  int    `json:"peer_count"`
+					}
+					if err := json.Unmarshal([]byte(payload), &tc); err == nil {
+						fmt.Println(tc.NodeID)
+					}
+				}
+				fmt.Printf("Topology change detected:\r\n\tlocal:\n\t%v\n\tstate:%v\n",
+					gigea.E.ConsensusManager.GetConsensusInfo(),
+					gigea.E.ConsensusManager.GetConsensusState(),
+				)
+			}
+			if strings.Contains(msgData, "_CONS_JOIN") {
+				newAddr := strings.Split(msgData, "_CONS_JOIN")[0]
+				gigea.E.AddPeer(types.HexToAddress(newAddr))
 			}
 		}
 	}

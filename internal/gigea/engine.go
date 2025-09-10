@@ -48,7 +48,7 @@ func (e *Engine) Start(lAddr types.Address) {
 		CereraAddress: lAddr,
 		NetworkAddr:   fmt.Sprintf("localhost:%d", e.Port),
 	}} // Start with just this node
-	e.ConsensusManager = NewConsensusManager(ConsensusTypeSimple, lAddr, peers, e)
+	e.ConsensusManager = NewConsensusManager(ConsensusTypeGigea, lAddr, peers, e)
 	e.ConsensusManager.Start()
 	fmt.Println("Engine started")
 	go e.Listen()
@@ -78,6 +78,7 @@ func (e *Engine) Listen() {
 			} else {
 				fmt.Printf("\tConsensus Info: \r\n\t%s\r\n", "Consensus manager not initialized or not running")
 			}
+
 		case <-e.stopCh:
 			fmt.Println("Engine stopping...")
 			return
@@ -153,13 +154,18 @@ func (e *Engine) AddPeer(peer types.Address) {
 		}
 		e.ConsensusManager.AddPeer(peerInfo)
 	}
-	// Also add to existing C.Voters for backward compatibility
-	C.Voters = append(C.Voters, peer)
-}
-
-// AddPeerId adds a peer to the pre-consensus
-func (e *Engine) AddPeerId(peerId string) {
-	fmt.Println(peerId)
+	// Also update in existing C.Voters for backward compatibility
+	isPresent := false
+	for i, voter := range C.Voters {
+		if voter == peer {
+			C.Voters[i] = peer
+			isPresent = true
+			break
+		}
+	}
+	if !isPresent {
+		C.Voters = append(C.Voters, peer)
+	}
 }
 
 func (e *Engine) UpdatePeer(peer types.Address) {

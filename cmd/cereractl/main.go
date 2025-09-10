@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cerera/internal/gigea/gigea"
+	"github.com/cerera/internal/gigea"
 )
 
 func main() {
