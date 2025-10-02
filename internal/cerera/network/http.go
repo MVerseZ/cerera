@@ -138,18 +138,35 @@ func Execute(method string, params []interface{}) interface{} {
 	case "faucet":
 		// faucet
 		to, ok1 := params[0].(string)
-		count, ok2 := params[1].(float64)
+		amount, ok2 := params[1].(float64)
 		if !ok1 || !ok2 {
 			Result = "Error"
 			return 0xf
 		}
-		// var txHash, err = vldtr.Faucet(to, int(count))
+		// basic validation: positive amount and sane upper bound
+		if amount <= 0 {
+			Result = "Amount must be > 0"
+			return 0xf
+		}
+		if amount > 1000000 { // temporary safety cap
+			Result = "Amount too large"
+			return 0xf
+		}
+		// parse and validate address
 		var addrTo = types.HexToAddress(to)
-		var coinbaseTx = coinbase.FaucetTransaction(gigea.C.Nonce, addrTo, count)
-		// vldtr.SignRawTransactionWithKey(coinbaseTx, coinbase.FaucetAccount().MPub)
-		// TODO potential
+		if (addrTo == types.Address{}) {
+			Result = "Invalid address"
+			return 0xf
+		}
+		// check faucet balance before constructing tx (no mutation here)
+		if coinbase.GetFaucetBalance().Cmp(types.FloatToBigInt(amount)) < 0 {
+			Result = "Insufficient faucet balance"
+			return 0xf
+		}
+		// construct faucet tx (state change will happen on application)
+		var coinbaseTx = coinbase.FaucetTransaction(gigea.GetAndIncrementNonce(), addrTo, amount)
+		// enqueue to mempool
 		go func() { p.Funnel <- []*types.GTransaction{coinbaseTx} }()
-		// go N.BroadcastTx(*coinbaseTx)
 		Result = coinbaseTx
 	case "getblockchaininfo", "cerera.getInfo":
 		// get info of (block)chain
@@ -185,8 +202,6 @@ func Execute(method string, params []interface{}) interface{} {
 		Result = p.GetInfo()
 	case "signrawtransactionwithkey", "cerera.signTransaction":
 		// sign transaction with key (signer will pay fees and value for transfer)
-		Result = "Method not supported"
-		return 0xe
 		// if len(params) > 1 {
 		// 	txHashStr, ok1 := params[0].(string)
 		// 	kStr, ok2 := params[1].(string)
@@ -205,6 +220,8 @@ func Execute(method string, params []interface{}) interface{} {
 		// 	Result = "Wrong count of params"
 		// 	return 0xf
 		// }
+		Result = "Method not supported"
+		return 0xe
 	case "send_tx", "cerera.sendTransaction":
 		// send transaction to address
 
@@ -227,7 +244,7 @@ func Execute(method string, params []interface{}) interface{} {
 			} else {
 				var addrTo = types.HexToAddress(addrStr)
 				var gasInt = int(gas)
-				tx, err := types.CreateUnbroadcastTransaction(gigea.C.Nonce, addrTo, count, uint64(gasInt), msg)
+				tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gasInt), msg)
 				if err != nil {
 					Result = err
 					return 0xf
@@ -240,19 +257,6 @@ func Execute(method string, params []interface{}) interface{} {
 				// go N.BroadcastTx(*tx)
 				p.Funnel <- []*types.GTransaction{tx}
 				Result = tx.Hash()
-				// // var tx = vldtr.PreSend(addrTo, count, uint64(gasInt), msg)
-				// if vldtr.ValidateRawTransaction(tx) {
-				// 	resTx, err := vldtr.SignRawTransactionWithKey(tx, kStr)
-				// 	if err != nil {
-				// 		Result = "Error while signing!"
-				// 		return 0xf
-				// 	}
-				// 	// p.AddRawTransaction(tx)
-				// 	p.Funnel <- []*types.GTransaction{resTx}
-				// 	Result = resTx.Hash()
-				// } else {
-				// 	Result = types.EmptyCodeHash
-				// }
 			}
 		}
 	case "get_tx", "cerera.getTransaction":

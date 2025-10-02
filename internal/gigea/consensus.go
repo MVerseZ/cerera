@@ -228,3 +228,19 @@ func RemoveNode(address types.Address) {
 		node.IsConnected = false
 	}
 }
+
+// GetAndIncrementNonce atomically gets the current nonce and increments it
+func GetAndIncrementNonce() uint64 {
+	mu.Lock()
+	defer mu.Unlock()
+	currentNonce := C.Nonce
+	C.Nonce++
+	return currentNonce
+}
+
+// GetNonce safely returns the current nonce without incrementing
+func GetNonce() uint64 {
+	mu.RLock()
+	defer mu.RUnlock()
+	return C.Nonce
+}

@@ -134,16 +134,10 @@ func GetFaucetBalance() *big.Int {
 	return new(big.Int).Set(Faucet.balance) // Return a copy to prevent external modification
 }
 func FaucetTransaction(nonce uint64, destAddr types.Address, cnt float64) *types.GTransaction {
-	Faucet.mu.Lock()
-	defer Faucet.mu.Unlock()
-
-	var tx = types.NewFaucetTransaction(
+	// Do not mutate faucet balance here; actual state changes must happen on tx application
+	return types.NewFaucetTransaction(
 		nonce,
 		destAddr,
 		types.FloatToBigInt(cnt),
 	)
-	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(cnt))
-	Faucet.balance = big.NewInt(0).Sub(Faucet.balance, types.FloatToBigInt(1000))
-	Faucet.coinbaseAccount.Balance = Faucet.balance
-	return tx
 }

@@ -1,5 +1,5 @@
 from random import randrange
-import cv2  # Not used in this script, can be removed unless you plan to add image processing
+#import cv2  # Not used in this script, can be removed unless you plan to add image processing
 import base64
 import time
 import requests

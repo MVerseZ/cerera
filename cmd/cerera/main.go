@@ -11,6 +11,7 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/miner"
 	"github.com/cerera/internal/cerera/net"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
@@ -81,12 +82,12 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	}
 
 	// Инициализация майнера
-	// if err := miner.Init(); err != nil {
-	// 	return nil, fmt.Errorf("failed to init miner: %w", err)
-	// }
-	// if mine {
-	// 	go miner.Run()
-	// }
+	if err := miner.Init(); err != nil {
+		return nil, fmt.Errorf("failed to init miner: %w", err)
+	}
+	if mine {
+		go miner.Run()
+	}
 
 	var chain = chain.GetBlockChain()
 
@@ -120,7 +121,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
 	http := flag.Int("http", 8080, "Порт для http сервера")
-	mine := flag.Bool("miner", false, "Флаг для добычи новых блоков")
+	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
 	inMem := flag.Bool("mem", true, "Хранение данных память/диск")
 	flag.Parse()
 

@@ -10,6 +10,9 @@ import (
 	"github.com/cerera/internal/cerera/types"
 )
 
+var BATCH_SIZE = 100
+var TMP []block.Block
+
 func InitChainVault(initBLock *block.Block) {
 	// Open file for writing, create if it doesn't exist
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -26,6 +29,7 @@ func InitChainVault(initBLock *block.Block) {
 	if _, errWrite := f.Write(buf); errWrite != nil {
 		panic(errWrite)
 	}
+	TMP = append(TMP, *initBLock)
 }
 
 // load from file
@@ -57,20 +61,32 @@ func SyncVault() ([]*block.Block, error) {
 }
 
 func SaveToVault(newBlock block.Block) error {
+	var totalSize int
+	for _, blk := range TMP {
+		totalSize += blk.Header().Size
+	}
+	if totalSize < BATCH_SIZE {
+		return nil
+	}
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	buf, err := json.Marshal(newBlock)
-	if err != nil {
-		return err
+	buf := make([]byte, 0)
+	for _, newBlock := range TMP {
+		blockData, err := json.Marshal(newBlock)
+		if err != nil {
+			return err
+		}
+		buf = append(buf, blockData...)
+		buf = append(buf, '\n') // Добавляем разделитель новой строки
 	}
-	buf = append(buf, '\n') // Добавляем разделитель новой строки
 	if _, err := f.Write(buf); err != nil {
 		return err
 	}
+	TMP = TMP[:0]
 	return nil
 }
 

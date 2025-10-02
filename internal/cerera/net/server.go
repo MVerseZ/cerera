@@ -198,7 +198,7 @@ func broadcastNodeList() {
 	if len(nodeList) > 0 {
 		msg := fmt.Sprintf("%s_NODES#%s", CereraNode.address.String(), strings.Join(nodeList, ","))
 		CereraNode.sch <- []byte(msg)
-		// fmt.Printf("Broadcasting node list: %d nodes\n", len(nodeList))
+		fmt.Printf("Broadcasting node list: %d nodes\n", len(nodeList))
 	}
 }
 
@@ -452,15 +452,15 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 				fmt.Printf("Received PING from %s\r\n", newAddr)
 			}
 			if strings.Contains(msgData, "_CONS_JOIN") {
-				fmt.Printf("Received CONS_JOIN from %s\r\n", m.ReceivedFrom)
+				// fmt.Printf("Received CONS_JOIN from %s\r\n", m.ReceivedFrom)
 				// Parse CONS_JOIN message: {address}_CONS_JOIN#{network_address}
 				if peerAddress, networkAddress, valid := parseConsensusJoinMessage(msgData); valid {
-					fmt.Printf("Peer address: %s, Network address: %s\r\n", peerAddress, networkAddress)
+					// fmt.Printf("Peer address: %s, Network address: %s\r\n", peerAddress, networkAddress)
 					// Add peer to consensus voters list and node list
 					addr := types.HexToAddress(peerAddress)
 					gigea.AddVoter(addr)
 					gigea.AddNode(addr, networkAddress)
-					fmt.Printf("Added peer %s to consensus voters and node list\r\n", peerAddress)
+					// fmt.Printf("Added peer %s to consensus voters and node list\r\n", peerAddress)
 
 					// Broadcast updated node list to all peers
 					go broadcastNodeList()
