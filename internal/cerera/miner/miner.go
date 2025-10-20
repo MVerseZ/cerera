@@ -1,159 +1,229 @@
 package miner
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/chain"
+	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
 )
 
-// Miner is a minimal block builder that:
-// - listens for new transactions from the mempool
-// - builds a block template based on the latest chain head
-// - assembles a block with coinbase + pending txs
-// - computes hash and submits the block to the chain (no PoW)
-type Miner struct {
-	chain  *chain.Chain
-	pool   *pool.Pool
-	status string
+const MINER_ID = "CERERA_MINER:937"
 
-	headerTemplate *block.Header
-	quit           chan struct{}
-	prepared       []*types.GTransaction
+type Miner interface {
+	GetID() string
+	Start()
+	Stop()
+	Status() byte
+	Update(tx *types.GTransaction)
 }
 
-var m *Miner
+type miner struct {
+	status   byte
+	config   *config.Config
+	chain    *chain.Chain
+	pool     pool.TxPool
+	mining   bool
+	stopChan chan struct{}
+}
 
-// MinerObserver subscribes to mempool updates.
-type MinerObserver struct{}
+func (m *miner) GetID() string {
+	return MINER_ID
+}
 
-func (MinerObserver) GetID() string { return "OBSERVER_MINER" }
+func (m *miner) Start() {
+	m.status = 0x1
+	m.mining = true
+	m.stopChan = make(chan struct{})
 
-func (MinerObserver) Update(tx *types.GTransaction) {
-	if m == nil {
+	fmt.Printf("[MINER] Starting miner with ID: %s\n", m.GetID())
+
+	// Получаем конфигурацию
+	m.config = config.GenerageConfig()
+	fmt.Printf("[MINER] Chain config loaded: ChainID=%d, Type=%s\n",
+		m.config.Chain.ChainID, m.config.Chain.Type)
+
+	// Получаем доступ к сервисам через реестр
+	registry, err := service.GetRegistry()
+	if err != nil {
+		fmt.Printf("[MINER] Error getting service registry: %v\n", err)
 		return
 	}
-	m.prepared = append(m.prepared, tx)
-}
 
-// Init initializes a singleton miner instance.
-func Init() error {
-	m = &Miner{
-		chain:    chain.GetBlockChain(),
-		pool:     pool.Get(),
-		status:   "ALLOC",
-		quit:     make(chan struct{}),
-		prepared: make([]*types.GTransaction, 0),
-	}
-	m.pool.Register(MinerObserver{})
-	m.updateTemplate()
-	m.status = "READY"
-	return nil
-}
-
-// Run starts a simple loop that periodically tries to assemble and submit a block.
-func Run() {
-	if m == nil {
+	// Получаем цепочку
+	_, ok := registry.GetService("chain")
+	if !ok {
+		fmt.Printf("[MINER] Chain service not found\n")
 		return
 	}
-	m.status = "RUN"
+	m.chain = chain.GetBlockChain()
+	fmt.Printf("[MINER] Chain service connected\n")
+
+	// Получаем пул транзакций
+	_, ok = registry.GetService("pool")
+	if !ok {
+		fmt.Printf("[MINER] Pool service not found\n")
+		return
+	}
+	m.pool = pool.Get()
+	fmt.Printf("[MINER] Pool service connected\n")
+
+	// Получаем последний блок
+	lastBlock := m.chain.GetLatestBlock()
+	fmt.Printf("[MINER] Last block: Height=%d, Hash=%s\n",
+		lastBlock.Header().Height, lastBlock.GetHash())
+
+	// Запускаем цикл майнинга
+	go m.miningLoop()
+}
+
+func (m *miner) Stop() {
+	m.status = 0x0
+	m.mining = false
+	if m.stopChan != nil {
+		close(m.stopChan)
+	}
+	fmt.Printf("[MINER] Stopped\n")
+}
+
+func (m *miner) miningLoop() {
+	ticker := time.NewTicker(1 * time.Second) // Майним каждые 7 секунд
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-m.quit:
-			m.status = "STOP"
-			return
-		case <-time.After(1 * time.Second):
-			m.updateTemplate()
-			if b := m.tryBuildBlock(); b != nil {
-				m.submitBlock(b)
+		case <-ticker.C:
+			if m.mining {
+				m.mineBlock()
 			}
+		case <-m.stopChan:
+			fmt.Printf("[MINER] Mining loop stopped\n")
+			return
 		}
 	}
 }
 
-// Stop stops miner loop.
-func Stop() {
-	if m == nil {
+func (m *miner) mineBlock() {
+	// fmt.Printf("[MINER] Starting scheduled block mining...\n")
+
+	// Получаем последний блок
+	lastBlock := m.chain.GetLatestBlock()
+	if lastBlock == nil {
+		fmt.Printf("[MINER] No last block found\n")
 		return
 	}
-	select {
-	case <-m.quit:
-		// already closed
-	default:
-		close(m.quit)
+
+	// Получаем транзакции из пула
+	pendingTxs := m.pool.GetPendingTransactions()
+	// fmt.Printf("[MINER] Found %d pending transactions\n", len(pendingTxs))
+
+	// Создаем новый блок
+	newBlock := m.createNewBlock(lastBlock, pendingTxs)
+	if newBlock == nil {
+		fmt.Printf("[MINER] Failed to create new block\n")
+		return
 	}
+
+	// Выполняем майнинг (поиск nonce)
+	m.performMining(newBlock)
+
+	// Добавляем блок в цепочку
+	m.chain.UpdateChain(newBlock)
+
+	// Очищаем пул от обработанных транзакций
+	m.clearProcessedTransactions(newBlock.Transactions)
 }
 
-func (m *Miner) updateTemplate() {
-	latest := m.chain.GetLatestBlock()
-	m.headerTemplate = &block.Header{
-		Ctx:        latest.Head.Ctx,
-		Difficulty: latest.Head.Difficulty,
-		Extra:      [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Height:     latest.Head.Height + 1,
-		Index:      latest.Head.Index + 1,
-		GasLimit:   latest.Head.GasLimit,
-		GasUsed:    0,
-		ChainId:    m.chain.GetChainId(),
-		Node:       m.chain.GetCurrentChainOwnerAddress(),
-		Size:       0,
-		V:          [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0},
-		Nonce:      latest.Head.Nonce + 1,
-		PrevHash:   latest.Hash,
-		Root:       latest.Head.Root,
+func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
+	// Создаем заголовок нового блока
+	newHeader := &block.Header{
+		Ctx:        lastBlock.Header().Ctx,
+		Difficulty: lastBlock.Header().Difficulty,
+		Extra:      [8]byte{0x1, 0xf, 0x0, 0x0, 0x0, 0x0, 0xd, 0xe},
+		Height:     lastBlock.Header().Height + 1,
+		Index:      lastBlock.Header().Index + 1,
+		GasLimit:   lastBlock.Header().GasLimit,
+		GasUsed:    0, // Будет рассчитано после обработки транзакций
+		ChainId:    m.config.Chain.ChainID,
+		Node:       m.config.NetCfg.ADDR, // Адрес майнера
+		Size:       0,                    // Будет рассчитано после создания блока
 		Timestamp:  uint64(time.Now().UnixMilli()),
+		V:          [8]byte{0xe, 0x0, 0xf, 0xf, 0xf, 0xf, 0x2, 0x1},
+		Nonce:      0, // Будет установлен при майнинге
+		PrevHash:   lastBlock.GetHash(),
+		Root:       common.EmptyHash(), // Будет рассчитан
+	}
+
+	// Создаем новый блок
+	newBlock := block.NewBlock(newHeader)
+	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastBlock.Header().Nonce, m.config.NetCfg.ADDR)
+	newBlock.Transactions = append(transactions, coinbaaseTransaction)
+
+	// Рассчитываем размер блока
+	blockBytes := newBlock.ToBytes()
+	newBlock.Head.Size = len(blockBytes)
+
+	// Рассчитываем использованный газ
+	var totalGasUsed float64
+	for _, tx := range newBlock.Transactions {
+		totalGasUsed += tx.Gas()
+	}
+	newBlock.Head.GasUsed = uint64(totalGasUsed)
+
+	return newBlock
+}
+
+func (m *miner) performMining(block *block.Block) {
+	// fmt.Printf("[MINER] Performing simplified mining for block Height=%d\n", block.Header().Height)
+
+	// Простой майнинг - просто устанавливаем случайный nonce
+	block.Header().Nonce = uint64(time.Now().UnixNano() % 1000000)
+
+	// Рассчитываем хеш блока
+	blockHash, err := block.CalculateHash()
+	if err != nil {
+		fmt.Printf("[MINER] Error calculating block hash: %v\n", err)
+		return
+	}
+
+	block.Hash = common.BytesToHash(blockHash)
+	// fmt.Printf("[MINER] Block mined with nonce: %d, hash: %x\n", block.Header().Nonce, blockHash)
+}
+
+func (m *miner) clearProcessedTransactions(processedTxs []types.GTransaction) {
+	for _, tx := range processedTxs {
+		if tx.Type() == types.CoinbaseTxType {
+			continue
+		}
+		err := m.pool.RemoveFromPool(tx.Hash())
+		if err != nil {
+			fmt.Printf("[MINER] Error removing transaction from pool: %v\n", err)
+		}
 	}
 }
 
-// tryBuildBlock assembles a block from the template, coinbase and pending txs.
-// No PoW: It simply computes logical hash and returns a ready block.
-func (m *Miner) tryBuildBlock() *block.Block {
-	if m.headerTemplate == nil {
-		return nil
-	}
-	b := block.NewBlockWithHeader(m.headerTemplate)
-
-	// Coinbase transaction
-	cbTx := types.NewCoinBaseTransaction(
-		m.headerTemplate.Nonce,
-		m.chain.GetCurrentChainOwnerAddress(),
-		coinbase.RewardBlock(),
-		100,
-		types.FloatToBigInt(1_000_000.0),
-		[]byte("COINBASE_TX"),
-	)
-	b.Transactions = append(b.Transactions, *cbTx)
-	b.Head.GasUsed += cbTx.Gas()
-
-	// Pending transactions from pool
-	pending := m.pool.GetPendingTransactions()
-	for i := range pending {
-		b.Transactions = append(b.Transactions, pending[i])
-		b.Head.GasUsed += pending[i].Gas()
-	}
-
-	// Fill computed fields
-	b.Head.Timestamp = uint64(time.Now().UnixMilli())
-	b.Hash = block.CrvBlockHash(*b)
-
-	bb, _ := json.Marshal(b)
-	b.Head.Size = len(bb)
-
-	return b
+func (m *miner) Status() byte {
+	return m.status
 }
 
-func (m *Miner) submitBlock(b *block.Block) {
-	fmt.Printf("miner: submit block idx=%d hash=%s txs=%d\n", b.Head.Index, b.GetHash(), len(b.Transactions))
-	for _, tx := range b.Transactions {
-		m.pool.RemoveFromPool(tx.Hash())
+func (m *miner) Update(tx *types.GTransaction) {
+	if m.status != 0x1 || !m.mining {
+		fmt.Printf("[MINER] Miner not active, ignoring transaction update\n")
+		return
 	}
-	m.chain.UpdateChain(b)
+
+	// fmt.Printf("[MINER] Received transaction update: %s (will be included in next mining cycle)\n", tx.Hash())
+
+	// Не рестартуем майнинг - ждем следующий цикл через 7 секунд
+	// Транзакция будет включена в следующий блок при следующем майнинге
 }
 
-// GetMiner returns the miner singleton.
-func GetMiner() interface{} { return m }
+func Init() (Miner, error) {
+	return &miner{status: 0x0}, nil
+}

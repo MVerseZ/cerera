@@ -1,12 +1,12 @@
 package network
 
 import (
+	"context"
 	"log"
 	"sync"
 
 	"github.com/btcsuite/websocket"
 	"github.com/cerera/internal/cerera/chain"
-	"github.com/cerera/internal/cerera/pool"
 )
 
 // WsManager manages WebSocket connections
@@ -34,11 +34,13 @@ func NewWsManager() *WsManager {
 }
 
 // Start runs the WebSocket manager
-func (manager *WsManager) Start() {
+func (manager *WsManager) Start(ctx context.Context) error {
 	var bc = chain.GetBlockChain()
-	var pul = pool.Get()
+	// var pul = pool.Get()
 	for {
 		select {
+		case <-ctx.Done():
+			return nil
 		case conn := <-manager.register:
 			manager.mutex.Lock()
 			manager.clients[conn] = true
@@ -76,17 +78,17 @@ func (manager *WsManager) Start() {
 				}
 			}
 			manager.mutex.Unlock()
-		case message := <-pul.DataChannel:
-			manager.mutex.Lock()
-			for conn := range manager.clients {
-				err := conn.WriteMessage(websocket.TextMessage, message)
-				if err != nil {
-					log.Println("Error writing message:", err)
-					conn.Close()
-					delete(manager.clients, conn)
-				}
-			}
-			manager.mutex.Unlock()
+			// case message := <-pul.DataChannel:
+			// 	manager.mutex.Lock()
+			// 	for conn := range manager.clients {
+			// 		err := conn.WriteMessage(websocket.TextMessage, message)
+			// 		if err != nil {
+			// 			log.Println("Error writing message:", err)
+			// 			conn.Close()
+			// 			delete(manager.clients, conn)
+			// 		}
+			// 	}
+			// 	manager.mutex.Unlock()
 			// case message := <-gigea.C.MetricChannel:
 			// 	manager.mutex.Lock()
 			// 	for conn := range manager.clients {

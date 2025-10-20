@@ -26,7 +26,11 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 	switch itx := tx.inner.(type) {
 	case *PGTransaction:
 		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		enc.Gas = (*common.Uint64)(&itx.Gas)
+		// PGTransaction.Gas is float64; encode as uint64 for JSON schema
+		{
+			u := common.Uint64(uint64(itx.Gas))
+			enc.Gas = &u
+		}
 		enc.GasPrice = (*common.Big)(itx.GasPrice)
 		enc.Value = (*common.Big)(itx.Value)
 		enc.Data = (*common.Bytes)(&itx.Data)
@@ -42,7 +46,11 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 		enc.V = (*Big)(v)
 	case *CBTransaction:
 		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		enc.Gas = (*common.Uint64)(&itx.Gas)
+		// CBTransaction.Gas is float64; encode as uint64 for JSON schema
+		{
+			u := common.Uint64(uint64(itx.Gas))
+			enc.Gas = &u
+		}
 		enc.GasPrice = (*common.Big)(itx.GasPrice)
 		enc.Value = (*common.Big)(itx.Value)
 		enc.Data = (*common.Bytes)(&itx.Data)
@@ -58,7 +66,11 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 		// enc.V = (*Big)(v)
 	case *FaucetTransaction:
 		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		enc.Gas = (*common.Uint64)(&itx.Gas)
+		// CBTransaction.Gas is float64; encode as uint64 for JSON schema
+		{
+			u := common.Uint64(uint64(itx.Gas))
+			enc.Gas = &u
+		}
 		enc.GasPrice = (*common.Big)(itx.GasPrice)
 		enc.Value = (*common.Big)(itx.Value)
 		enc.To = tx.To()
@@ -103,7 +115,8 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		if dec.Gas == nil {
 			return errors.New("missing required field 'gas' in transaction")
 		}
-		itx.Gas = uint64(*dec.Gas)
+		// JSON carries gas as uint64; convert to float64 for PGTransaction
+		itx.Gas = float64(*dec.Gas)
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
@@ -162,7 +175,8 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		if dec.Gas == nil {
 			return errors.New("missing required field 'gas' in transaction")
 		}
-		itx.Gas = uint64(*dec.Gas)
+		// JSON carries gas as uint64; convert to float64 for PGTransaction
+		itx.Gas = float64(*dec.Gas)
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")

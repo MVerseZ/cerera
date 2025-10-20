@@ -67,7 +67,7 @@ func TestSigningTx(t *testing.T) {
 		t.Errorf("different data!! Got %s want %s", itx.Data(), tx.Data())
 	}
 	if itx.Gas() != tx.Gas() {
-		t.Errorf("different gas!! Got %d want %d", itx.Gas(), tx.Gas())
+		t.Errorf("different gas!! Got %f want %f", itx.Gas(), tx.Gas())
 	}
 	if itx.GasPrice().Cmp(tx.GasPrice()) != 0 {
 		t.Errorf("different gas!! Got %d want %d", itx.GasPrice(), tx.GasPrice())

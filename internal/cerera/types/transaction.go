@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -44,7 +45,7 @@ type TxData interface {
 
 	// chainID() *big.Int
 	data() []byte
-	gas() uint64
+	gas() float64
 	gasPrice() *big.Int
 	value() *big.Int
 	nonce() uint64
@@ -107,8 +108,8 @@ func (s TxByNonce) Less(i, j int) bool { return s[i].Nonce() < s[j].Nonce() }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 func (tx *GTransaction) Cost() *big.Int {
-	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
-	total.Add(total, tx.Value())
+	gasAsInt := FloatToBigInt(tx.Gas())
+	total := new(big.Int).Mul(tx.GasPrice(), gasAsInt)
 	return total
 }
 
@@ -118,7 +119,7 @@ func NewTx(inner TxData) *GTransaction {
 	return tx
 }
 
-func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
+func CreateTransaction(nonce uint64, addressTo Address, count float64, gas float64, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
@@ -130,7 +131,7 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint6
 	return tx, nil
 }
 
-func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
+func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas float64, message string) (*GTransaction, error) {
 	// check max size of tx here
 	if len(message) < 1024 {
 		var tx = NewTransaction(
@@ -228,7 +229,7 @@ func (tx *GTransaction) Nonce() uint64 {
 	return tx.inner.nonce()
 }
 
-func (tx *GTransaction) Gas() uint64 {
+func (tx *GTransaction) Gas() float64 {
 	return tx.inner.gas()
 }
 
@@ -337,6 +338,10 @@ func (tx *GTransaction) From() Address {
 	}
 }
 
+func (tx *GTransaction) SetFrom(addr Address) {
+	tx.from.Store(sigCache{from: addr})
+}
+
 func (tx *GTransaction) UpdateDna(dna []byte) {
 	if len(dna) < 128 {
 		tx.dna = dna
@@ -362,9 +367,9 @@ func crvTxHash(t TxData) (h common.Hash) {
 	// hw, _ := blake2b.New256(nil)
 
 	tNonce := make([]byte, 8)
-	tGas := make([]byte, 16)
+	tGas := make([]byte, 8)
 	binary.BigEndian.PutUint64(tNonce, t.nonce())
-	binary.BigEndian.PutUint64(tGas, t.gas())
+	binary.BigEndian.PutUint64(tGas, math.Float64bits(t.gas()))
 
 	hw.Write(h[:0])
 	hw.Write(t.data())

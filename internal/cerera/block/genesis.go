@@ -9,10 +9,10 @@ import (
 func GenesisHead(chainId int) *Header {
 	var genesisHeader = &Header{
 		Ctx:        17,
-		Difficulty: 1111111111111111, //uint64(111111111111111), // 4 trailng zeros
+		Difficulty: 1, //uint64(111111111111111), // 4 trailng zeros
 		Extra:      [8]byte{0x1, 0xf, 0x0, 0x0, 0x0, 0x0, 0xd, 0xe},
 		Height:     0,
-		Timestamp:  uint64(time.Now().UnixMilli()),
+		Timestamp:  uint64(time.Date(2022, 6, 24, 0, 0, 0, 0, time.UTC).UnixMilli()),
 		GasLimit:   250000,
 		GasUsed:    249999,
 		ChainId:    chainId,

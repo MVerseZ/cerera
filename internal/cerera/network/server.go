@@ -296,7 +296,7 @@ func AddressToNodeId(addr types.Address) int {
 	return int(bgaddr.Int64())
 }
 
-func SetUpHttp(port int) {
+func SetUpHttp(ctx context.Context, cfg *config.Config, port int) error {
 	rpcRequestMetric := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "rpc_requests_hits",
@@ -319,10 +319,9 @@ func SetUpHttp(port int) {
 		// }
 	}()
 
-	var ctx = context.TODO()
-	defer ctx.Done()
-
 	fmt.Printf("Starting http server at port %d\r\n", port)
 	go http.HandleFunc("/", HandleRequest(ctx))
 	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
+
+	return nil
 }

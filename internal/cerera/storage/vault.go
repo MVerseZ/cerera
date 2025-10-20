@@ -1,11 +1,13 @@
 package storage
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/cerera/internal/cerera/common"
@@ -17,8 +19,10 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
+const VAULT_SERVICE_NAME = "D5_VAULT_CERERA_001_1_7"
+
 type Vault interface {
-	Create(name string, pass string) (string, string, string, *types.Address, error)
+	Create(pass string) (string, string, string, *types.Address, error)
 	Clear() error
 	Prepare()
 	Restore(mnemonic string, pass string) (types.Address, string, string, error)
@@ -29,9 +33,11 @@ type Vault interface {
 	GetKey(signKey string) []byte
 	GetOwner() *types.StateAccount
 	Size() int64
+	ServiceName() string
 	Sync(saBytes []byte)
 	Status() byte
 	VerifyAccount(address types.Address, pass string) (types.Address, error)
+	Exec(method string, params []interface{}) interface{}
 }
 
 type D5Vault struct {
@@ -41,6 +47,10 @@ type D5Vault struct {
 	rootHash  common.Hash
 	inMem     bool
 	status    byte
+
+	// channels
+	// stChan chan [32]byte
+	Service_Name string
 }
 
 var vlt D5Vault
@@ -57,7 +67,7 @@ func GetVault() *D5Vault {
 }
 
 // NewD5Vault initializes and returns a new vault instance.
-func NewD5Vault(cfg *config.Config) (Vault, error) {
+func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	gob.Register(types.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
@@ -65,6 +75,7 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 		accounts: GetAccountsTrie(),
 		rootHash: common.BytesToHash(coinbase.GetCoinbaseAddress().Bytes()),
 		inMem:    cfg.IN_MEM,
+		// stChan:   make(chan [32]byte),
 	}
 
 	entropy, _ := bip39.NewEntropy(256)
@@ -73,13 +84,15 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
 
-	fmt.Printf("Init vault with %s\r\n", rootHashAddress)
+	fmt.Printf("Init vault with %s\r\n\t%s\r\n", rootHashAddress, VAULT_SERVICE_NAME)
+	fmt.Println("==========================================")
+	fmt.Printf("%s\r\n", cfg.NetCfg.PRIV)
+	fmt.Println("==========================================")
 
 	rootSA := &types.StateAccount{
-		Address:  rootHashAddress,
-		Name:     rootHashAddress.String(),
-		Nonce:    1,
-		Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
+		Address: rootHashAddress,
+		Nonce:   1,
+		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
 		Root:     vlt.rootHash,
 		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
 		Status:   "OP_ACC_NODE",
@@ -90,6 +103,7 @@ func NewD5Vault(cfg *config.Config) (Vault, error) {
 		},
 		MPub: publicKey.B58Serialize(),
 	}
+	rootSA.SetBalance(coinbase.InitialNodeBalance)
 
 	vlt.initiator = rootSA
 
@@ -142,7 +156,7 @@ func (v *D5Vault) Clear() error {
 //
 //	args: name:string, pass:string
 //	return: master key:string, public key:string, mnemonic phrase:string, address:types.Address, error:error
-func (v *D5Vault) Create(name string, pass string) (string, string, string, *types.Address, error) {
+func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, error) {
 	entropy, _ := bip39.NewEntropy(256)
 	mnemonic, _ := bip39.NewMnemonic(entropy)
 	seed := bip39.NewSeed(mnemonic, pass)
@@ -157,18 +171,10 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 	address := types.PubkeyToAddress(*pubkey)
 	derBytes := types.EncodePrivateKeyToByte(privateKey)
 
-	var walletName string
-	if name != "" {
-		walletName = name
-	} else {
-		walletName = address.String()
-	}
-
 	newAccount := &types.StateAccount{
-		Address:  address,
-		Name:     walletName,
-		Nonce:    1,
-		Balance:  types.FloatToBigInt(100.0),
+		Address: address,
+		Nonce:   1,
+		//Balance:  types.FloatToBigInt(100.0),
 		Root:     v.rootHash,
 		CodeHash: derBytes,
 		Status:   "OP_ACC_NEW",
@@ -178,9 +184,9 @@ func (v *D5Vault) Create(name string, pass string) (string, string, string, *typ
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte(pass)),
-		Mnemonic:   mnemonic,
 		MPub:       publicKey.B58Serialize(),
 	}
+	newAccount.SetBalance(0.0)
 	v.accounts.Append(address, newAccount)
 
 	if !vlt.inMem {
@@ -275,65 +281,79 @@ func (v *D5Vault) Size() int64 {
 
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
 
-	// legacy type is like p2p transaction
-	// if reciever does not exist - > create shadow
-	// if reciever exist - > update
+	// Use big.Int arithmetic and ensure destination exists (shadow account)
+	if cnt == nil || cnt.Sign() <= 0 {
+		return
+	}
 
-	// decrement first
-	// wtf big int sub only?
+	var saFrom = v.Get(from)
+	if saFrom == nil {
+		return
+	}
 
-	fmt.Printf("___VAULT_OPERATIONS___\r\n\tupdate balance of %s\r\n", to)
-	// fmt.Printf("\tupdate balance from %s\r\n", from)
-	var sa = v.Get(from)
-	// fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
-	// fmt.Printf("\tamount to transfer: %d\r\n", cnt)
-	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
-	// increment second
 	var saDest = v.Get(to)
-	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+	if saDest == nil {
+		saDest = types.NewStateAccount(to, 0, v.rootHash)
+		v.accounts.Append(to, saDest)
+	}
+
+	// from = from - cnt
+	newFromBal := new(big.Int).Sub(saFrom.GetBalanceBI(), cnt)
+	saFrom.SetBalanceBI(newFromBal)
+
+	// to = to + cnt
+	newToBal := new(big.Int).Add(saDest.GetBalanceBI(), cnt)
+	saDest.SetBalanceBI(newToBal)
+
 	saDest.AddInput(txHash, cnt)
-	// fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
-	// 	sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
-	// fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
-	// when increment, add input to account - tx hash
-	// saDest.Inputs = append(saDest.Inputs, txHash)
-	// saDest = v.accounts.GetAccount(to)
-
-	// done
 	if !v.inMem {
 		UpdateVault(saDest.Bytes())
-		UpdateVault(sa.Bytes())
+		UpdateVault(saFrom.Bytes())
 	}
 }
 
 // faucet method without creating transaction
 func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
+	// Validate faucet request against limits
+	if err := coinbase.CheckFaucetLimits(to, cnt); err != nil {
+		return err
+	}
 
-	fmt.Printf("___VAULT_OPERATIONS___\r\n\tupdate balance of %s\r\n", to)
-	// fmt.Printf("\tupdate balance from %s\r\n", coinbase.GetCoinbaseAddress().String())
+	if cnt == nil || cnt.Sign() <= 0 {
+		return nil
+	}
+
 	var sa = v.Get(coinbase.GetFaucetAddress())
-	// fmt.Printf("\tbalance from: %d\r\n", sa.Balance)
-	// fmt.Printf("\tamount to transfer: %d\r\n", cnt)
-	sa.Balance = sa.Balance.Sub(sa.Balance, cnt)
-	// increment second
+	if sa == nil {
+		return errors.New("faucet account not found")
+	}
+
+	// Check if faucet has enough balance
+	if sa.GetBalanceBI().Cmp(cnt) < 0 {
+		return errors.New("faucet insufficient balance")
+	}
+
 	var saDest = v.Get(to)
-	saDest.Balance = saDest.Balance.Add(saDest.Balance, cnt)
+	if saDest == nil {
+		saDest = types.NewStateAccount(to, 0, v.rootHash)
+		v.accounts.Append(to, saDest)
+	}
+
+	// faucet = faucet - cnt
+	sa.SetBalanceBI(new(big.Int).Sub(sa.GetBalanceBI(), cnt))
+	// to = to + cnt
+	saDest.SetBalanceBI(new(big.Int).Add(saDest.GetBalanceBI(), cnt))
+
 	saDest.AddInput(txHash, cnt)
-	// fmt.Printf("\ttotal : \r\n\t\t%s ---> %s\r\n\t\t%d ---> %d\r\n",
-	// sa.Address.Hex(), saDest.Address.Hex(), sa.Balance, saDest.Balance)
-	// fmt.Printf("\tInputs len now: %d\r\n", len(saDest.Inputs.M))
 
-	// when increment, add input to account - tx hash
-	// saDest.Inputs = append(saDest.Inputs, txHash)
-	// saDest = v.accounts.GetAccount(to)
+	// Record the faucet request for tracking
+	coinbase.RecordFaucetRequest(to, cnt)
 
-	// done
 	if !v.inMem {
 		UpdateVault(saDest.Bytes())
 		UpdateVault(sa.Bytes())
 	}
-	// coinbase.TotalValue.Sub(coinbase.TotalValue, types.FloatToBigInt(float64(cntval)))
 
 	return nil
 }
@@ -369,4 +389,94 @@ func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address,
 		return acc.Address, nil
 	}
 	return types.EmptyAddress(), errors.New("wrong credentials")
+}
+
+func (v *D5Vault) ServiceName() string {
+	return VAULT_SERVICE_NAME
+}
+
+func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
+	switch method {
+	case "getAll":
+		return v.GetAll()
+	case "getCount":
+		return v.GetCount()
+	case "create":
+		passphraseStr, ok1 := params[0].(string)
+		if !ok1 {
+			return nil
+		}
+		mk, pk, m, addr, err := v.Create(passphraseStr)
+		if err != nil {
+			return nil
+		}
+		type res struct {
+			Address  *types.Address `json:"address,omitempty"`
+			Priv     string         `json:"priv,omitempty"`
+			Pub      string         `json:"pub,omitempty"`
+			Mnemonic string         `json:"mnemonic,omitempty"`
+		}
+		Result := &res{
+			Address:  addr,
+			Priv:     mk,
+			Pub:      pk,
+			Mnemonic: m,
+		}
+		return Result
+	case "restore":
+		mnemonic, ok1 := params[0].(string)
+		pass, ok2 := params[1].(string)
+		if !ok1 || !ok2 {
+			return "Error parsing parameters"
+		}
+		if strings.Count(mnemonic, " ") != 23 {
+			Result := "Wrong words count!"
+			return Result
+		}
+		addr, mk, pk, err := vlt.Restore(mnemonic, pass)
+		if err != nil {
+			Result := "Error while restore"
+			return Result
+		}
+		type res struct {
+			Addr types.Address `json:"address,omitempty"`
+			Priv string        `json:"priv,omitempty"`
+			Pub  string        `json:"pub,omitempty"`
+		}
+		Result := &res{
+			Priv: mk,
+			Pub:  pk,
+			Addr: addr,
+		}
+		return Result
+	case "verify":
+		addr, ok1 := params[0].(string)
+		pass, ok2 := params[1].(string)
+		if !ok1 || !ok2 {
+			return "Error parsing parameters"
+		}
+		rAddr, err := v.VerifyAccount(types.HexToAddress(addr), pass)
+		if err != nil {
+			return false //"Error while verify"
+		}
+		fmt.Println(rAddr.Hex(), addr)
+		// INSERT_YOUR_CODE
+		// Compare the addresses byte by byte for equality
+		if len(addr) != len(rAddr.Hex()) {
+			return false
+		}
+		for i := 0; i < len(rAddr); i++ {
+			if rAddr[i] != types.HexToAddress(addr)[i] {
+				return false
+			}
+		}
+		return true
+	case "getBalance":
+		addr, ok1 := params[0].(string)
+		if !ok1 {
+			return "Error parsing parameters"
+		}
+		return v.Get(types.HexToAddress(addr)).GetBalance()
+	}
+	return nil
 }

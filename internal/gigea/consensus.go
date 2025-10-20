@@ -1,6 +1,7 @@
 package gigea
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -72,7 +73,7 @@ var (
 	mu     sync.RWMutex // Mutex for protecting global variables
 )
 
-func Init(lAddr types.Address) error {
+func Init(ctx context.Context, lAddr types.Address) error {
 	C = Consensus{
 		Nonce:  1337,
 		Chain:  make(chan *block.Block),

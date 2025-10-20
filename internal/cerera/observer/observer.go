@@ -1,4 +1,4 @@
-package pool
+package observer
 
 import "github.com/cerera/internal/cerera/types"
 

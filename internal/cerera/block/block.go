@@ -76,7 +76,7 @@ func (b Block) Equals(other trie.Content) (bool, error) {
 		return false, errors.New("value is not of type Block")
 	}
 	return b.Head.ChainId == otherTC.Head.ChainId &&
-		b.Head.Height == b.Head.Height, nil
+		b.Head.Height == otherTC.Head.Height, nil
 }
 
 type BlockReader interface {
@@ -202,12 +202,12 @@ func (b *Block) ToBytes() []byte {
 // get nonce as [8]byte from header
 func (b *Block) GetNonceBytes() []byte {
 	bts := make([]byte, 8)
-	binary.BigEndian.PutUint64(bts, uint64(b.Header().Nonce))
+	binary.BigEndian.PutUint64(bts, uint64(b.Head.Nonce))
 	return bts
 }
 
 func (b *Block) IncNonce() {
-	b.Header().Nonce += 1
+	b.Head.Nonce += 1
 }
 
 // get nonce as [4]byte from header

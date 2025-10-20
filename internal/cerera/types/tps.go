@@ -281,13 +281,14 @@ func GetFloat(unk interface{}) (float64, error) {
 }
 
 func FloatToBigInt(val float64) *big.Int {
+	// Use higher precision for financial calculations
 	bigval := new(big.Float)
 	bigval.SetFloat64(val)
-	// Set precision if required.
-	// bigval.SetPrec(64)
+	bigval.SetPrec(128) // Higher precision to avoid rounding errors
 
+	// Use 10^18 as the multiplier (like Ethereum wei)
 	coin := new(big.Float)
-	coin.SetInt(big.NewInt(10000000))
+	coin.SetInt(big.NewInt(1000000000000000000)) // 10^18
 
 	bigval.Mul(bigval, coin)
 
@@ -300,13 +301,15 @@ func FloatToBigInt(val float64) *big.Int {
 func BigIntToFloat(bi *big.Int) float64 {
 	bigval := new(big.Float)
 	bigval.SetInt(bi)
+	bigval.SetPrec(128) // Higher precision to match FloatToBigInt
 
+	// Use 10^18 as the divisor (like Ethereum wei)
 	coin := new(big.Float)
-	coin.SetInt(big.NewInt(10000000))
+	coin.SetInt(big.NewInt(1000000000000000000)) // 10^18
 
 	bigval.Quo(bigval, coin)
 
-	// second result - accuracy value
+	// Convert to float64 with higher precision
 	result, _ := bigval.Float64()
 
 	return result

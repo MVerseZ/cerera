@@ -9,7 +9,7 @@ type CBTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64
 	GasPrice *big.Int // wei per gas
-	Gas      uint64   // gas limit
+	Gas      float64  // gas limit
 	To       *Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int
 	Data     []byte
@@ -26,7 +26,7 @@ type CBTransaction struct {
 func NewCoinBaseTransaction(nonce uint64,
 	to Address,
 	amount *big.Int,
-	gasLimit uint64,
+	gasLimit float64,
 	gasPrice *big.Int,
 	data []byte) *GTransaction {
 	return NewCoinBaseTx(&CBTransaction{
@@ -90,7 +90,7 @@ func (tx *CBTransaction) nonce() uint64 {
 	return tx.Nonce
 }
 
-func (tx *CBTransaction) gas() uint64 {
+func (tx *CBTransaction) gas() float64 {
 	return tx.Gas
 }
 
@@ -134,7 +134,7 @@ type FaucetTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64
 	GasPrice *big.Int // wei per gas
-	Gas      uint64   // gas limit
+	Gas      float64  // gas limit
 	To       *Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int
 	Data     []byte
@@ -154,7 +154,7 @@ func NewFaucetTransaction(nonce uint64, to Address, amount *big.Int) *GTransacti
 		To:       &to,
 		Value:    amount,
 		Time:     time.Now(),
-		Gas:      1000,
+		Gas:      1000.0,
 		GasPrice: FloatToBigInt(1000.0),
 	})
 }
@@ -209,7 +209,7 @@ func (tx *FaucetTransaction) nonce() uint64 {
 	return tx.Nonce
 }
 
-func (tx *FaucetTransaction) gas() uint64 {
+func (tx *FaucetTransaction) gas() float64 {
 	return tx.Gas
 }
 

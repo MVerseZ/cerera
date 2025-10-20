@@ -43,10 +43,14 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			return
 		}
 
-		// Execute(request.Method, request.Params)
-
+		// reg, err := service.GetRegistry()
+		// if err != nil {
+		// 	http.Error(w, "Service registry not available", http.StatusInternalServerError)
+		// 	return
+		// }
 		var response = types.Response{
 			Result: Execute(request.Method, request.Params),
+			// Result: reg.Execute(request.Method, request.Params),
 		}
 
 		response.JSONRPC = "2.0"

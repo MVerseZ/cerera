@@ -71,7 +71,7 @@ func (at *AccountsTrie) GetAll() map[types.Address]float64 {
 	// at.mu.Lock()
 	res := make(map[types.Address]float64)
 	for addr, v := range at.accounts {
-		res[addr] = types.BigIntToFloat(v.Balance)
+		res[addr] = v.GetBalance()
 	}
 	// at.mu.Unlock()
 

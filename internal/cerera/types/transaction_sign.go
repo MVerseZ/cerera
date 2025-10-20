@@ -50,7 +50,7 @@ func Sign(msg []byte, privKey *ecdsa.PrivateKey) ([]byte, error) {
 }
 
 func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, error) {
-	fmt.Printf("Sign tx %s with key: %s\r\n", tx.Hash(), prv.D)
+	// fmt.Printf("Sign tx %s with key: %s\r\n", tx.Hash(), prv.D)
 	h := s.Hash(tx)
 	sig, err := Sign(h[:], prv)
 	if err != nil {
@@ -73,7 +73,7 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, e
 		fmt.Errorf("%s", errSign)
 		fmt.Printf("Error while sign tx %s from: %s\r\n", tx.Hash(), tx.From())
 	}
-	fmt.Printf("Success sign tx %s from: %s\r\n", tx.Hash(), tx.From())
+	// fmt.Printf("Success sign tx %s from: %s\r\n", tx.Hash(), tx.From())
 	return signTx, nil
 }
 

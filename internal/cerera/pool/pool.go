@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/cerera/internal/cerera/common"
-
+	"github.com/cerera/internal/cerera/observer"
 	"github.com/cerera/internal/cerera/types"
 )
 
-var p Pool
+const POOL_SERVICE_NAME = "POOL_CERERA_001_1_3"
 
 type MemPoolInfo struct {
 	Size             int     // current tx count
@@ -31,7 +30,7 @@ type Pool struct {
 	DataChannel chan []byte                // ws channel
 
 	maxSize        int
-	minGas         uint64
+	minGas         float64
 	memPool        map[common.Hash]types.GTransaction
 	maintainTicker *time.Ticker
 
@@ -39,24 +38,33 @@ type Pool struct {
 	Prepared []*types.GTransaction
 	Executed []types.GTransaction
 
-	observers []Observer
+	observers []observer.Observer
+
+	Info MemPoolInfo
 
 	mu sync.Mutex
 }
 
-func SendTransaction(tx types.GTransaction) (common.Hash, error) {
-	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-		p.memPool[tx.Hash()] = tx
-		// p.memPool = append(p.memPool, tx)
-		// network.BroadcastTx(tx)
-	}
-	fmt.Println(p.memPool)
-	return tx.Hash(), nil
+var GPool TxPool
+
+func Get() TxPool {
+	return GPool
 }
 
-func InitPool(minGas uint64, maxSize int) (*Pool, error) {
+type TxPool interface {
+	GetInfo() MemPoolInfo
+	GetRawMemPool() []interface{}
+	GetPendingTransactions() []types.GTransaction
+	Exec(method string, params []interface{}) interface{}
+	QueueTransaction(tx *types.GTransaction)
+	Register(observer observer.Observer)
+	RemoveFromPool(txHash common.Hash) error
+	ServiceName() string
+}
+
+func InitPool(minGas float64, maxSize int) (TxPool, error) {
 	mPool := make(map[common.Hash]types.GTransaction)
-	p = Pool{
+	var p = &Pool{
 		memPool:        mPool,
 		maintainTicker: time.NewTicker(1500 * time.Millisecond),
 		maxSize:        maxSize,
@@ -70,81 +78,138 @@ func InitPool(minGas uint64, maxSize int) (*Pool, error) {
 		DataChannel: make(chan []byte),
 		Status:      0xa,
 
-		observers: make([]Observer, 0),
+		observers: make([]observer.Observer, 0),
 	}
-	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%d\r\n\tMAX_SIZE:%d\r\n", p.minGas, p.maxSize)
+	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%f (%s)\r\n\tMAX_SIZE:%d\r\n", p.minGas, types.FloatToBigInt(p.minGas), p.maxSize)
+	p.Info = MemPoolInfo{
+		Size:             0,
+		Bytes:            0,
+		Usage:            0,
+		MaxMempool:       p.maxSize,
+		Mempoolminfee:    int(p.minGas),
+		UnbroadCastCount: 0,
+		Hashes:           make([]common.Hash, 0),
+		Txs:              make([]types.GTransaction, 0),
+	}
 
 	go p.PoolServiceLoop()
-	return &p, nil
+	GPool = p
+	return GPool, nil
+}
+
+func removeFromslice(observerList []observer.Observer, observerToRemove observer.Observer) []observer.Observer {
+	observerListLength := len(observerList)
+	for i, observer := range observerList {
+		if observerToRemove.GetID() == observer.GetID() {
+			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
+			return observerList[:observerListLength-1]
+		}
+	}
+	return observerList
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 
 	// fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
-	var sLock = p.mu.TryLock()
-	if sLock {
-		if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-			p.memPool[tx.Hash()] = *tx
-			p.Prepared = append(p.Prepared, tx)
-			// p.memPool = append(p.memPool, *tx)
-			// network.BroadcastTx(tx)
+
+	if p.Info.Bytes+int(tx.Size()) > p.maxSize {
+		return
+	} else {
+		var sLock = p.mu.TryLock()
+		if sLock {
+			defer p.mu.Unlock()
+			if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+				p.memPool[tx.Hash()] = *tx
+				p.Prepared = append(p.Prepared, tx)
+				p.NotifyAll(tx)
+				// p.memPool = append(p.memPool, *tx)
+				// network.BroadcastTx(tx)
+				p.Info.Bytes += int(tx.Size())
+				p.Info.Size++
+				p.Info.Usage += uintptr(tx.Size())
+				p.Info.Hashes = append(p.Info.Hashes, tx.Hash())
+				p.Info.Txs = append(p.Info.Txs, *tx)
+				p.Info.UnbroadCastCount++
+			}
 		}
 	}
-	p.mu.Unlock()
-	p.NotifyAll(tx)
 	// p.Listen <- []*types.GTransaction{tx}
 	// p.DataChannel <- tx.Bytes()
 	// fmt.Println(len(p.memPool))
 }
 
-func (p *Pool) GetInfo() MemPoolInfo {
-	var txPoolSize = 0
+func (p *Pool) Clear() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	var usage uintptr
+	p.memPool = nil
+	p.memPool = make(map[common.Hash]types.GTransaction)
+	p.calcInfo()
+}
+
+func (p *Pool) calcInfo() {
+
+	var txPoolSize = 0
 	var hashes = make([]common.Hash, 0)
 	var cp = make([]types.GTransaction, 0)
-	// p.mu.Lock()
-	// defer p.mu.Unlock()
+
 	for _, k := range p.memPool {
 		var txSize = k.Size()
 		txPoolSize += int(txSize)
-		var txBts = unsafe.Sizeof(k)
-		usage += txBts
 		hashes = append(hashes, k.Hash())
 		cp = append(cp, k)
 	}
-	// var txPoolSizeDiskUsage = (uint64)(unsafe.Sizeof(ch.pool))
+
 	var result = MemPoolInfo{
 		Size:             len(hashes),
 		Bytes:            txPoolSize,
-		Usage:            usage,
-		UnbroadCastCount: txPoolSize,
+		Usage:            0, // Можно рассчитать если нужно
+		UnbroadCastCount: len(hashes),
 		MaxMempool:       p.maxSize,
 		Mempoolminfee:    int(p.minGas),
 		Hashes:           hashes,
 		Txs:              cp,
 	}
-	return result
+
+	p.Info = result
 }
 
-func (p *Pool) GetRawMemPool() []interface{} {
-	var result []interface{}
+func (p *Pool) GetInfo() MemPoolInfo {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calcInfo()
+	return p.Info
+}
 
-	for i := range p.memPool {
-		var tx = p.memPool[i]
-		result = append(result, tx.Hash())
-	}
-	return result
+func (p *Pool) GetMinimalGasValue() float64 {
+	return p.minGas
 }
 
 func (p *Pool) GetPendingTransactions() []types.GTransaction {
-	// p.mu.Lock()
-	// defer p.mu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	result := make([]types.GTransaction, 0)
 	for _, k := range p.memPool {
 		result = append(result, k)
 	}
 	return result
+}
+
+func (p *Pool) GetRawMemPool() []interface{} {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var result []interface{}
+	for i := range p.memPool {
+		var tx = p.memPool[i]
+		result = append(result, tx.Hash())
+	}
+
+	return result
+}
+
+func (p *Pool) QueueTransaction(tx *types.GTransaction) {
+	p.AddRawTransaction(tx)
 }
 
 func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
@@ -156,12 +221,9 @@ func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	return nil
 }
 
-func (p *Pool) UpdateTx(newTx types.GTransaction) {
-	for _, tx := range p.memPool {
-		if tx.Hash().String() == newTx.Hash().String() {
-			fmt.Printf("Replace sign tx in pool: %s signed:%t\r\n", newTx.Hash(), newTx.IsSigned())
-			p.AddRawTransaction(&newTx)
-		}
+func (p *Pool) NotifyAll(tx *types.GTransaction) {
+	for _, observer := range p.observers {
+		observer.Update(tx)
 	}
 }
 
@@ -218,8 +280,14 @@ func (p *Pool) PoolServiceLoop() {
 	errc <- nil
 }
 
-func (p *Pool) RemoveFromPool(txHash common.Hash) error {
+func (p *Pool) Register(observer observer.Observer) {
+	fmt.Printf("Register new pool observer: %s\r\n", observer.GetID())
+	p.observers = append(p.observers, observer)
+}
 
+func (p *Pool) RemoveFromPool(txHash common.Hash) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	_, ok := p.memPool[txHash]
 	if !ok {
 		return errors.New("no in mempool")
@@ -229,41 +297,41 @@ func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 	return nil
 }
 
-func (p *Pool) Clear() {
-	p.memPool = nil
-	p.memPool = make(map[common.Hash]types.GTransaction)
+func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+		p.memPool[tx.Hash()] = tx
+		// p.memPool = append(p.memPool, tx)
+		// network.BroadcastTx(tx)
+	} else {
+		fmt.Printf("[POOL] Transaction rejected: %s (pool size: %d/%d, gas: %f >= %f)\n",
+			tx.Hash(), len(p.memPool), p.maxSize, tx.Gas(), p.minGas)
+	}
+	return tx.Hash(), nil
 }
 
-func (p *Pool) GetMinimalGasValue() uint64 {
-	return p.minGas
+func (p *Pool) ServiceName() string {
+	return POOL_SERVICE_NAME
 }
 
-func (p *Pool) Register(observer Observer) {
-	fmt.Printf("Register new pool observer: %s\r\n", observer.GetID())
-	p.observers = append(p.observers, observer)
-}
-
-func (p *Pool) UnRegister(observer Observer) {
+func (p *Pool) UnRegister(observer observer.Observer) {
 	p.observers = removeFromslice(p.observers, observer)
 }
 
-func removeFromslice(observerList []Observer, observerToRemove Observer) []Observer {
-	observerListLength := len(observerList)
-	for i, observer := range observerList {
-		if observerToRemove.GetID() == observer.GetID() {
-			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
-			return observerList[:observerListLength-1]
+func (p *Pool) UpdateTx(newTx types.GTransaction) {
+	for _, tx := range p.memPool {
+		if tx.Hash().String() == newTx.Hash().String() {
+			fmt.Printf("Replace sign tx in pool: %s signed:%t\r\n", newTx.Hash(), newTx.IsSigned())
+			p.AddRawTransaction(&newTx)
 		}
 	}
-	return observerList
 }
 
-func (p *Pool) NotifyAll(tx *types.GTransaction) {
-	for _, observer := range p.observers {
-		observer.Update(tx)
+func (p *Pool) Exec(method string, params []interface{}) interface{} {
+	switch method {
+	case "getInfo":
+		return p.GetInfo()
 	}
-}
-
-func Get() *Pool {
-	return &p
+	return nil
 }

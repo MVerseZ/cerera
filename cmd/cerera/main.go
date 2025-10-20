@@ -8,99 +8,110 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/miner"
-	"github.com/cerera/internal/cerera/net"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
 )
 
-// Process управляет жизненным циклом приложения.
-type Process struct{}
-
-// Stop завершает работу приложения.
-func (p *Process) Stop() {
-	fmt.Println("Stopping...")
-	fmt.Println("Stopped!")
-}
-
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
-	bc     *chain.Chain
-	g      *validator.Validator
-	h      *network.Node
-	p      *pool.Pool
-	proc   Process
-	v      *storage.Vault
-	status [8]byte
+	bc       *chain.Chain
+	g        *validator.Validator
+	h        *network.Node
+	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
+	v        *storage.Vault
+	registry *service.Registry
+	status   [8]byte
 }
 
 // NewCerera создаёт и инициализирует экземпляр Cerera.
 func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, httpPort int, mine bool) (*Cerera, error) {
+	registry, err := service.NewRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create service registry: %w", err)
+	}
+
 	// Инициализация внутренних компонентов
-	if err := gigea.Init(cfg.NetCfg.ADDR); err != nil {
+	if err := gigea.Init(ctx, cfg.NetCfg.ADDR); err != nil {
 		return nil, fmt.Errorf("failed to init gigea: %w", err)
 	}
+
+	// coinbase
 	if err := coinbase.InitOperationData(); err != nil {
 		return nil, fmt.Errorf("failed to init coinbase: %w", err)
 	}
 
 	// Инициализация хранилища
-	vault, err := storage.NewD5Vault(cfg)
+	vault, err := storage.NewD5Vault(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
+	registry.Register(vault.ServiceName(), vault)
 
-	// Инициализация сети
-	if mode == "p2p" {
-		go net.StartNode(address, cfg.NetCfg.ADDR)
-	} else {
-		if err := network.NewServer(cfg, mode, address); err != nil {
-			return nil, fmt.Errorf("failed to start network server: %w", err)
-		}
+	// Инициализация цепочки
+	chain, err := chain.InitBlockChain(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init blockchain: %w", err)
 	}
-	go network.SetUpHttp(httpPort)
-	go network.NewWsManager().Start()
+	registry.Register(chain.ServiceName(), chain)
 
-	// Инициализация валидатора, цепочки и пула
-	val, err := validator.NewValidator(ctx, *cfg)
+	// инициализация валидатора
+	validator, err := validator.NewValidator(ctx, *cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init validator: %w", err)
 	}
-	if err := chain.InitBlockChain(cfg); err != nil {
-		return nil, fmt.Errorf("failed to init blockchain: %w", err)
-	}
-	poolInstance, err := pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
+	registry.Register(validator.ServiceName(), validator)
+
+	// инициализация пула
+	mempool, err := pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init pool: %w", err)
 	}
+	// register pool in registry
+	registry.Register(mempool.ServiceName(), mempool)
+
+	// Инициализация сети
+	// if mode == "p2p" {
+	// 	go net.StartNode(address, cfg.NetCfg.ADDR)
+	// } else {
+	// 	if err := network.NewServer(cfg, mode, address); err != nil {
+	// 		return nil, fmt.Errorf("failed to start network server: %w", err)
+	// 	}
+	// }
+	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
+		log.Printf("HTTP server error: %v", err)
+	}
+	// network.NewWsManager().Start(ctx)
 
 	// Инициализация майнера
-	if err := miner.Init(); err != nil {
+	miner, err := miner.Init()
+	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
 	if mine {
-		go miner.Run()
+		miner.Start()
 	}
 
-	var chain = chain.GetBlockChain()
-
-	gigea.E.Register(chain)
+	// gigea.E.Register(chain)
 	// gigea.E.Register(miner.GetMiner())
+	mempool.Register(miner)
 
 	return &Cerera{
-		bc:     chain,
-		g:      &val,
-		p:      poolInstance,
-		v:      &vault,
-		proc:   Process{},
-		status: [8]byte{0xf, val.Status(), poolInstance.Status, vault.Status(), 0x0, 0x3, 0x1, 0x7},
+		bc:       chain,
+		g:        &validator,
+		p:        mempool,
+		v:        &vault,
+		registry: registry,
+		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 
@@ -155,7 +166,19 @@ func main() {
 	}
 	fmt.Printf("\t<--------Cerera Status: %x-------->\r\n", app.status)
 
-	// Ожидание завершения
+	// Ожидание сигнала завершения
 	<-ctx.Done()
-	app.proc.Stop()
+
+	// Создаем контекст с таймаутом для graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// Ждем завершения или таймаута
+	select {
+	case <-shutdownCtx.Done():
+		log.Println("Таймаут graceful shutdown, принудительное завершение")
+		os.Exit(1)
+	default:
+		log.Println("Приложение корректно завершено")
+	}
 }

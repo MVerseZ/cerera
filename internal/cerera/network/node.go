@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
 	"golang.org/x/crypto/blake2b"
@@ -120,8 +119,8 @@ func (node *Node) handleMsg() {
 			node.handleReplySync(payload, sign)
 		case hSyncDone:
 			node.handleSyncDone(payload, sign)
-		case hTx:
-			node.handleInputTx(payload, sign)
+		// case hTx:
+		// 	node.handleInputTx(payload, sign)
 		case hAccOp:
 			node.handleInputAcc(payload, sign)
 			// case hPrePrepare:
@@ -440,16 +439,16 @@ func (node *Node) handleInputAcc(payload []byte, sig []byte) {
 	vlt.Sync(accMsg.Data)
 }
 
-func (node *Node) handleInputTx(payload []byte, sig []byte) {
-	var txMsg TxMsg
-	err := json.Unmarshal(payload, &txMsg)
-	if err != nil {
-		fmt.Printf("error happened while JSON unmarshal:%v", err)
-		return
-	}
-	var p = pool.Get()
-	p.Funnel <- []*types.GTransaction{&txMsg.Data}
-}
+// func (node *Node) handleInputTx(payload []byte, sig []byte) {
+// 	var txMsg TxMsg
+// 	err := json.Unmarshal(payload, &txMsg)
+// 	if err != nil {
+// 		fmt.Printf("error happened while JSON unmarshal:%v", err)
+// 		return
+// 	}
+// 	var p = pool.Get()
+// 	p.Funnel <- []*types.GTransaction{&txMsg.Data}
+// }
 
 // func (node *Node) handlePrePrepare(payload []byte, sig []byte) {
 // 	var prePrepareMsg PrePrepareMsg

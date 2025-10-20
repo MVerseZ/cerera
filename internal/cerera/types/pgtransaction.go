@@ -10,7 +10,7 @@ type PGTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64
 	GasPrice *big.Int // wei per gas
-	Gas      uint64   // gas limit
+	Gas      float64  // gas limit
 	To       *Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int
 	Data     []byte
@@ -27,7 +27,7 @@ type PGTransaction struct {
 func NewTransactionEnrich(nonce uint64,
 	to Address,
 	amount *big.Int,
-	gasLimit uint64,
+	gasLimit float64,
 	gasPrice *big.Int,
 	data []byte,
 	payload []byte) *GTransaction {
@@ -47,7 +47,7 @@ func NewTransaction(
 	nonce uint64,
 	to Address,
 	amount *big.Int,
-	gasLimit uint64,
+	gasLimit float64,
 	gasPrice *big.Int,
 	data []byte) *GTransaction {
 	return NewTx(&PGTransaction{
@@ -107,7 +107,7 @@ func (tx *PGTransaction) nonce() uint64 {
 	return tx.Nonce
 }
 
-func (tx *PGTransaction) gas() uint64 {
+func (tx *PGTransaction) gas() float64 {
 	return tx.Gas
 }
 

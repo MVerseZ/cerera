@@ -1,21 +1,16 @@
 package types
 
 import (
-	"encoding/json"
 	"math/big"
 	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/cerera/internal/cerera/common"
-	"github.com/tyler-smith/go-bip39"
 )
 
 func CreateTestStateAccount() StateAccount {
-	var name = "a"
-	var pass = "aaa"
-	entropy, _ := bip39.NewEntropy(256)
-	mnemonic, _ := bip39.NewMnemonic(entropy)
+	var pass = "test_pass"
 
 	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
 	// seed := bip39.NewSeed(mnemonic, pass)
@@ -29,29 +24,19 @@ func CreateTestStateAccount() StateAccount {
 	address := PubkeyToAddress(*pubkey)
 	derBytes := EncodePrivateKeyToByte(privateKey)
 	// derBytes, _ := x509.MarshalECPrivateKey(privateKey)
-
-	var walletName string
-	if name != "" {
-		walletName = name
-	} else {
-		walletName = address.String()
-	}
-
 	newAccount := StateAccount{
 		Address:  address,
-		Name:     walletName,
 		Nonce:    1,
-		Balance:  FloatToBigInt(0.0),
 		Root:     common.Hash(address.Bytes()),
 		CodeHash: derBytes,
 		Status:   "OP_ACC_NEW",
 		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
 		// Inputs:     Input{M: make(map[common.Hash]*big.Int)},
 		Passphrase: common.BytesToHash([]byte(pass)),
-		Mnemonic:   mnemonic,
 		// MPub:       publicKey,
 		// MPriv:      masterKey,
 	}
+	newAccount.SetBalance(0.0)
 	return newAccount
 }
 func TestStateAccount_BloomUp(t *testing.T) {
@@ -94,34 +79,56 @@ func TestStateAccount_BloomDown(t *testing.T) {
 
 func TestStateAccount_Bytes(t *testing.T) {
 	sa := &StateAccount{
-		Address:    Address{},
-		Balance:    big.NewInt(100),
+		Address:    Address{0x1, 0x2, 0x3, 0x4},
 		Bloom:      []byte{0x1, 0x2, 0x3},
 		CodeHash:   []byte{0x4, 0x5, 0x6},
-		Name:       "test",
 		Nonce:      42,
-		Root:       common.Hash{0x7},
+		Root:       common.Hash{0x7, 0x8, 0x9},
 		Status:     "active",
-		Passphrase: common.Hash{0x8},
+		Passphrase: common.Hash{0xa, 0xb, 0xc},
 		MPub:       "public_key",
-		Mnemonic:   "mnemonic phrase",
 		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
+	sa.SetBalance(100.0)
 
-	// Marshal to bytes
+	// Test JSON serialization (original Bytes method)
 	data := sa.Bytes()
-
-	// Unmarshal back to a new StateAccount
-	var sa2 StateAccount
-	err := json.Unmarshal(data, &sa2)
-	if err != nil {
-		t.Fatalf("Bytes failed: could not unmarshal: %v", err)
+	if len(data) == 0 {
+		t.Fatal("Bytes failed: returned empty data")
 	}
 
-	// Compare the original and unmarshaled structs (excluding Inputs for now)
-	sa2.Inputs = sa.Inputs // Inputs comparison needs separate handling due to mutex
-	if !reflect.DeepEqual(sa, &sa2) {
-		t.Errorf("Bytes failed: unmarshaled struct does not match original.\nGot: %+v\nWant: %+v", sa2, sa)
+	// Test JSON deserialization
+	sa2 := BytesToStateAccount(data)
+
+	// Compare fields that are serialized in JSON
+	if !reflect.DeepEqual(sa.Address, sa2.Address) {
+		t.Errorf("Bytes failed: Address mismatch")
+	}
+	if !reflect.DeepEqual(sa.Bloom, sa2.Bloom) {
+		t.Errorf("Bytes failed: Bloom mismatch")
+	}
+	if !reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) {
+		t.Errorf("Bytes failed: CodeHash mismatch")
+	}
+	if sa.Nonce != sa2.Nonce {
+		t.Errorf("Bytes failed: Nonce mismatch")
+	}
+	if sa.Root != sa2.Root {
+		t.Errorf("Bytes failed: Root mismatch")
+	}
+	if sa.Status != sa2.Status {
+		t.Errorf("Bytes failed: Status mismatch")
+	}
+	if sa.Passphrase != sa2.Passphrase {
+		t.Errorf("Bytes failed: Passphrase mismatch")
+	}
+	if sa.MPub != sa2.MPub {
+		t.Errorf("Bytes failed: MPub mismatch")
+	}
+
+	// Verify Inputs is properly initialized (custom binary serialization preserves Inputs)
+	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
+		t.Errorf("Bytes failed: Inputs not properly initialized after binary deserialization")
 	}
 }
 
@@ -147,47 +154,180 @@ func TestStateAccount_AddInput(t *testing.T) {
 }
 
 func TestBytesToStateAccount(t *testing.T) {
+	// Create a test account
 	sa := &StateAccount{
-		Address:    Address{},
-		Balance:    big.NewInt(100),
-		Bloom:      []byte{0x1, 0x2, 0x3},
-		CodeHash:   []byte{0x4, 0x5, 0x6},
-		Name:       "test",
-		Nonce:      42,
-		Root:       common.Hash{0x7},
-		Status:     "active",
-		Passphrase: common.Hash{0x8},
-		MPub:       "public_key",
-		Mnemonic:   "mnemonic phrase",
+		Address:    Address{0x1, 0x2, 0x3},
+		Bloom:      []byte{0x4, 0x5, 0x6},
+		CodeHash:   []byte{0x7, 0x8, 0x9},
+		Nonce:      123,
+		Root:       common.Hash{0xa, 0xb, 0xc},
+		Status:     "test_status",
+		Passphrase: common.Hash{0xd, 0xe, 0xf},
+		MPub:       "test_public_key",
 		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
+	sa.SetBalance(50.5)
 
-	// Marshal to bytes
-	data, err := json.Marshal(sa)
-	if err != nil {
-		t.Fatalf("TestBytesToStateAccount failed: could not marshal: %v", err)
+	// Convert to binary bytes using custom serialization
+	data := sa.Bytes()
+	if len(data) == 0 {
+		t.Fatal("TestBytesToStateAccount failed: returned empty data")
 	}
 
-	// Convert bytes back to StateAccount
+	// Convert back using BytesToStateAccount
 	sa2 := BytesToStateAccount(data)
 
-	// Verify the fields (excluding Inputs for now)
-	if !reflect.DeepEqual(sa.Address, sa2.Address) ||
-		sa.Balance.Cmp(sa2.Balance) != 0 ||
-		!reflect.DeepEqual(sa.Bloom, sa2.Bloom) ||
-		!reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) ||
-		sa.Name != sa2.Name ||
-		sa.Nonce != sa2.Nonce ||
-		sa.Root != sa2.Root ||
-		sa.Status != sa2.Status ||
-		sa.Passphrase != sa2.Passphrase ||
-		sa.MPub != sa2.MPub ||
-		sa.Mnemonic != sa2.Mnemonic {
-		t.Errorf("BytesToStateAccount failed: unmarshaled struct does not match original.\nGot: %+v\nWant: %+v", sa2, sa)
+	// Verify all serializable fields
+	if !reflect.DeepEqual(sa.Address, sa2.Address) {
+		t.Errorf("TestBytesToStateAccount failed: Address mismatch")
+	}
+	if !reflect.DeepEqual(sa.Bloom, sa2.Bloom) {
+		t.Errorf("TestBytesToStateAccount failed: Bloom mismatch")
+	}
+	if !reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) {
+		t.Errorf("TestBytesToStateAccount failed: CodeHash mismatch")
+	}
+	if sa.Nonce != sa2.Nonce {
+		t.Errorf("TestBytesToStateAccount failed: Nonce mismatch")
+	}
+	if sa.Root != sa2.Root {
+		t.Errorf("TestBytesToStateAccount failed: Root mismatch")
+	}
+	if sa.Status != sa2.Status {
+		t.Errorf("TestBytesToStateAccount failed: Status mismatch")
+	}
+	if sa.Passphrase != sa2.Passphrase {
+		t.Errorf("TestBytesToStateAccount failed: Passphrase mismatch")
+	}
+	if sa.MPub != sa2.MPub {
+		t.Errorf("TestBytesToStateAccount failed: MPub mismatch")
 	}
 
-	// Verify Inputs is initialized properly
-	// if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
-	// 	t.Errorf("BytesToStateAccount failed: Inputs field not properly initialized: %+v", sa2.Inputs)
-	// }
+	// Verify Inputs is properly initialized (custom binary serialization preserves Inputs)
+	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
+		t.Errorf("TestBytesToStateAccount failed: Inputs not properly initialized after binary deserialization")
+	}
+}
+
+func TestStateAccount_ToBytes(t *testing.T) {
+	// Create a test StateAccount with some data
+	sa := &StateAccount{
+		Address:    Address{0x1, 0x2, 0x3, 0x4},
+		Bloom:      []byte{0x1, 0x2, 0x3},
+		CodeHash:   []byte{0x4, 0x5, 0x6},
+		Nonce:      42,
+		Root:       common.Hash{0x7, 0x8, 0x9},
+		Status:     "active",
+		Passphrase: common.Hash{0xa, 0xb, 0xc},
+		MPub:       "public_key_string",
+		Inputs: &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		},
+	}
+	sa.SetBalance(100.5)
+
+	// Add some inputs
+	txHash1 := common.Hash{0x1, 0x2, 0x3}
+	txHash2 := common.Hash{0x4, 0x5, 0x6}
+	sa.AddInput(txHash1, big.NewInt(100))
+	sa.AddInput(txHash2, big.NewInt(200))
+
+	// Convert to bytes
+	data := sa.Bytes()
+	if len(data) == 0 {
+		t.Fatal("ToBytes failed: returned empty data")
+	}
+
+	// Convert back from bytes
+	sa2 := BytesToStateAccount(data)
+
+	// Compare the fields
+	if !reflect.DeepEqual(sa.Address, sa2.Address) {
+		t.Errorf("ToBytes/FromBytes failed: Address mismatch. Got: %v, Want: %v", sa2.Address, sa.Address)
+	}
+
+	if sa.GetBalance() != sa2.GetBalance() {
+		t.Errorf("ToBytes/FromBytes failed: Balance mismatch. Got: %f, Want: %f", sa2.GetBalance(), sa.GetBalance())
+	}
+
+	if !reflect.DeepEqual(sa.Bloom, sa2.Bloom) {
+		t.Errorf("ToBytes/FromBytes failed: Bloom mismatch. Got: %v, Want: %v", sa2.Bloom, sa.Bloom)
+	}
+
+	if !reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) {
+		t.Errorf("ToBytes/FromBytes failed: CodeHash mismatch. Got: %v, Want: %v", sa2.CodeHash, sa.CodeHash)
+	}
+
+	if sa.Nonce != sa2.Nonce {
+		t.Errorf("ToBytes/FromBytes failed: Nonce mismatch. Got: %d, Want: %d", sa2.Nonce, sa.Nonce)
+	}
+
+	if sa.Root != sa2.Root {
+		t.Errorf("ToBytes/FromBytes failed: Root mismatch. Got: %v, Want: %v", sa2.Root, sa.Root)
+	}
+
+	if sa.Status != sa2.Status {
+		t.Errorf("ToBytes/FromBytes failed: Status mismatch. Got: %s, Want: %s", sa2.Status, sa.Status)
+	}
+
+	if sa.Passphrase != sa2.Passphrase {
+		t.Errorf("ToBytes/FromBytes failed: Passphrase mismatch. Got: %v, Want: %v", sa2.Passphrase, sa.Passphrase)
+	}
+
+	if sa.MPub != sa2.MPub {
+		t.Errorf("ToBytes/FromBytes failed: MPub mismatch. Got: %s, Want: %s", sa2.MPub, sa.MPub)
+	}
+
+	// Compare Inputs map
+	sa.Inputs.RLock()
+	sa2.Inputs.RLock()
+	defer sa.Inputs.RUnlock()
+	defer sa2.Inputs.RUnlock()
+
+	if len(sa.Inputs.M) != len(sa2.Inputs.M) {
+		t.Errorf("ToBytes/FromBytes failed: Inputs length mismatch. Got: %d, Want: %d", len(sa2.Inputs.M), len(sa.Inputs.M))
+	}
+
+	for hash, amount := range sa.Inputs.M {
+		if sa2Amount, exists := sa2.Inputs.M[hash]; !exists || amount.Cmp(sa2Amount) != 0 {
+			t.Errorf("ToBytes/FromBytes failed: Inputs mismatch for hash %v. Got: %v, Want: %v", hash, sa2Amount, amount)
+		}
+	}
+}
+
+func TestStateAccount_ToBytes_EmptyInputs(t *testing.T) {
+	// Test with empty Inputs map
+	sa := &StateAccount{
+		Address:    Address{0x1, 0x2},
+		Bloom:      []byte{0x1, 0x2},
+		CodeHash:   []byte{0x3, 0x4},
+		Nonce:      1,
+		Root:       common.Hash{0x5},
+		Status:     "new",
+		Passphrase: common.Hash{0x6},
+		MPub:       "test_key",
+		Inputs: &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		},
+	}
+	sa.SetBalance(0.0)
+
+	// Convert to bytes and back
+	data := sa.Bytes()
+	sa2 := BytesToStateAccount(data)
+
+	// Verify basic fields
+	if !reflect.DeepEqual(sa.Address, sa2.Address) {
+		t.Errorf("Empty Inputs test failed: Address mismatch")
+	}
+
+	if sa.GetBalance() != sa2.GetBalance() {
+		t.Errorf("Empty Inputs test failed: Balance mismatch")
+	}
+
+	if len(sa2.Inputs.M) != 0 {
+		t.Errorf("Empty Inputs test failed: Expected empty Inputs map, got %d entries", len(sa2.Inputs.M))
+	}
 }

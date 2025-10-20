@@ -34,7 +34,7 @@ type VaultConfig struct {
 	PATH string
 }
 type PoolConfig struct {
-	MinGas  uint64
+	MinGas  float64
 	MaxSize int
 }
 type HttpSecConfig struct {
@@ -66,8 +66,8 @@ func GenerageConfig() *Config {
 		cfg = &Config{
 			TlsFlag: false,
 			POOL: PoolConfig{
-				MinGas:  3,
-				MaxSize: 1_000_000, // bytes
+				MinGas:  0.01,
+				MaxSize: 256 * 256, // bytes
 			},
 			Vault: VaultConfig{
 				MEM:  true,

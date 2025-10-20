@@ -9,7 +9,7 @@ import (
 	"github.com/cerera/internal/cerera/common"
 )
 
-var nonce, txValue, txData, gasLimit, gasPrice, to = uint64(1337), FloatToBigInt(11.55), []byte("test data"), uint64(16438), big.NewInt(63992), HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")
+var nonce, txValue, txData, gasLimit, gasPrice, to = uint64(1337), FloatToBigInt(11.55), []byte("test data"), float64(16438), big.NewInt(63992), HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")
 
 func TestCreate(t *testing.T) {
 	dna := make([]byte, 0, 16)
@@ -63,9 +63,9 @@ func TestCost(t *testing.T) {
 	itx := NewTx(txs)
 
 	var calcCost = itx.Cost()
-	var expectedCost = big.NewInt(15000010)
+	var expectedCost = big.NewInt(0).Mul(big.NewInt(15), big.NewInt(0).Mul(big.NewInt(1000000), big.NewInt(1000000000000000000))) // 15 * 1000000 * 10^18
 	if calcCost.Cmp(expectedCost) != 0 {
-		t.Errorf("Differenet sizes! Have %d, want %d", calcCost, expectedCost)
+		t.Errorf("Differenet costs! Have %f, want %f", BigIntToFloat(calcCost), BigIntToFloat(expectedCost))
 	}
 }
 

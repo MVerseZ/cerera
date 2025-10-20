@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"context"
 	"math/big"
+	"strings"
 	"sync"
 	"testing"
 
@@ -9,7 +11,6 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
-	"github.com/tyler-smith/go-bip39"
 )
 
 // Test helper functions
@@ -37,14 +38,9 @@ func createTestStateAccount(name string, balance float64) *types.StateAccount {
 	address := types.PubkeyToAddress(*pubkey)
 	derBytes := types.EncodePrivateKeyToByte(privateKey)
 
-	entropy, _ := bip39.NewEntropy(256)
-	mnemonic, _ := bip39.NewMnemonic(entropy)
-
-	return &types.StateAccount{
+	testStateAccount := &types.StateAccount{
 		Address:  address,
-		Name:     name,
 		Nonce:    1,
-		Balance:  types.FloatToBigInt(balance),
 		Root:     common.Hash{},
 		CodeHash: derBytes,
 		Status:   "OP_ACC_NEW",
@@ -54,8 +50,9 @@ func createTestStateAccount(name string, balance float64) *types.StateAccount {
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte("test_pass")),
-		Mnemonic:   mnemonic,
 	}
+	testStateAccount.SetBalance(balance)
+	return testStateAccount
 }
 
 // Test NewD5Vault
@@ -67,7 +64,7 @@ func TestNewD5Vault(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -96,7 +93,7 @@ func TestD5Vault_Create(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -114,7 +111,7 @@ func TestD5Vault_Create(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			masterKey, publicKey, mnemonic, address, err := vault.Create(tt.name, tt.pass)
+			masterKey, publicKey, mnemonic, address, err := vault.Create(tt.pass)
 
 			if tt.wantErr {
 				if err == nil {
@@ -150,11 +147,8 @@ func TestD5Vault_Create(t *testing.T) {
 				if account == nil {
 					t.Error("Create() account should be retrievable after creation")
 				} else {
-					if tt.wantName != "" && account.Name != tt.wantName {
-						t.Errorf("Create() account name = %v, want %v", account.Name, tt.wantName)
-					}
-					if account.Balance.Cmp(types.FloatToBigInt(100.0)) != 0 {
-						t.Errorf("Create() account balance = %v, want 100.0", account.Balance)
+					if account.GetBalance() != 0.0 {
+						t.Errorf("Create() account balance = %v, want 0.0", account.GetBalance())
 					}
 				}
 			}
@@ -171,13 +165,13 @@ func TestD5Vault_Restore(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// First create an account to restore
-	_, _, mnemonic, address, err := vault.Create("test_restore", "password123")
+	_, _, mnemonic, address, err := vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -250,13 +244,13 @@ func TestD5Vault_Get(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create a test account
-	_, _, _, address, err := vault.Create("test_get", "password123")
+	_, _, _, address, err := vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -266,8 +260,8 @@ func TestD5Vault_Get(t *testing.T) {
 	if account == nil {
 		t.Error("Get() should return account for existing address")
 	} else {
-		if account.Name != "test_get" {
-			t.Errorf("Get() account name = %v, want test_get", account.Name)
+		if account.Address != *address {
+			t.Errorf("Get() account name = %v, want test_get", account.Address)
 		}
 	}
 
@@ -288,7 +282,7 @@ func TestD5Vault_Put(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -305,11 +299,11 @@ func TestD5Vault_Put(t *testing.T) {
 	if retrieved == nil {
 		t.Error("Put() account should be retrievable after Put")
 	} else {
-		if retrieved.Name != "test_put" {
-			t.Errorf("Put() account name = %v, want test_put", retrieved.Name)
+		if retrieved.Address != address {
+			t.Errorf("Put() account name = %v, want test_put", retrieved.Address)
 		}
-		if retrieved.Balance.Cmp(types.FloatToBigInt(50.0)) != 0 {
-			t.Errorf("Put() account balance = %v, want 50.0", retrieved.Balance)
+		if retrieved.GetBalance() != 50.0 {
+			t.Errorf("Put() account balance = %v, want 50.0", retrieved.GetBalance())
 		}
 	}
 }
@@ -323,14 +317,14 @@ func TestD5Vault_GetAll(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create some test accounts
-	vault.Create("account1", "pass1")
-	vault.Create("account2", "pass2")
+	vault.Create("pass1")
+	vault.Create("pass2")
 
 	// Get all accounts
 	all := vault.GetAll()
@@ -354,7 +348,7 @@ func TestD5Vault_GetCount(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -362,7 +356,7 @@ func TestD5Vault_GetCount(t *testing.T) {
 	initialCount := vault.GetCount()
 
 	// Create a test account
-	vault.Create("test_count", "password123")
+	vault.Create("password123")
 
 	// Verify count increased
 	newCount := vault.GetCount()
@@ -380,18 +374,18 @@ func TestD5Vault_UpdateBalance(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create two test accounts
-	_, _, _, fromAddr, err := vault.Create("from_account", "password123")
+	_, _, _, fromAddr, err := vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create from account: %v", err)
 	}
 
-	_, _, _, toAddr, err := vault.Create("to_account", "password123")
+	_, _, _, toAddr, err := vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create to account: %v", err)
 	}
@@ -399,8 +393,8 @@ func TestD5Vault_UpdateBalance(t *testing.T) {
 	// Get initial balances
 	fromAccount := vault.Get(*fromAddr)
 	toAccount := vault.Get(*toAddr)
-	initialFromBalance := new(big.Int).Set(fromAccount.Balance)
-	initialToBalance := new(big.Int).Set(toAccount.Balance)
+	initialFromBalance := types.FloatToBigInt(fromAccount.GetBalance())
+	initialToBalance := types.FloatToBigInt(toAccount.GetBalance())
 
 	// Update balance
 	transferAmount := types.FloatToBigInt(25.0)
@@ -417,12 +411,12 @@ func TestD5Vault_UpdateBalance(t *testing.T) {
 	expectedFromBalance := new(big.Int).Sub(initialFromBalance, transferAmount)
 	expectedToBalance := new(big.Int).Add(initialToBalance, transferAmount)
 
-	if fromAccount.Balance.Cmp(expectedFromBalance) != 0 {
-		t.Errorf("UpdateBalance() from balance = %v, want %v", fromAccount.Balance, expectedFromBalance)
+	if fromAccount.GetBalance() != types.BigIntToFloat(expectedFromBalance) {
+		t.Errorf("UpdateBalance() from balance = %v, want %v", fromAccount.GetBalance(), types.BigIntToFloat(expectedFromBalance))
 	}
 
-	if toAccount.Balance.Cmp(expectedToBalance) != 0 {
-		t.Errorf("UpdateBalance() to balance = %v, want %v", toAccount.Balance, expectedToBalance)
+	if toAccount.GetBalance() != types.BigIntToFloat(expectedToBalance) {
+		t.Errorf("UpdateBalance() to balance = %v, want %v", toAccount.GetBalance(), types.BigIntToFloat(expectedToBalance))
 	}
 
 	// Verify transaction was added to inputs
@@ -442,13 +436,13 @@ func TestD5Vault_DropFaucet(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create a test account
-	_, _, _, toAddr, err := vault.Create("faucet_recipient", "password123")
+	_, _, _, toAddr, err := vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -456,8 +450,8 @@ func TestD5Vault_DropFaucet(t *testing.T) {
 	// Get initial balances
 	faucetAccount := vault.Get(coinbase.GetFaucetAddress())
 	toAccount := vault.Get(*toAddr)
-	initialFaucetBalance := new(big.Int).Set(faucetAccount.Balance)
-	initialToBalance := new(big.Int).Set(toAccount.Balance)
+	initialFaucetBalance := types.FloatToBigInt(faucetAccount.GetBalance())
+	initialToBalance := types.FloatToBigInt(toAccount.GetBalance())
 
 	// Drop faucet
 	faucetAmount := types.FloatToBigInt(100.0)
@@ -477,12 +471,12 @@ func TestD5Vault_DropFaucet(t *testing.T) {
 	expectedFaucetBalance := new(big.Int).Sub(initialFaucetBalance, faucetAmount)
 	expectedToBalance := new(big.Int).Add(initialToBalance, faucetAmount)
 
-	if faucetAccount.Balance.Cmp(expectedFaucetBalance) != 0 {
-		t.Errorf("DropFaucet() faucet balance = %v, want %v", faucetAccount.Balance, expectedFaucetBalance)
+	if faucetAccount.GetBalance() != types.BigIntToFloat(expectedFaucetBalance) {
+		t.Errorf("DropFaucet() faucet balance = %v, want %v", faucetAccount.GetBalance(), types.BigIntToFloat(expectedFaucetBalance))
 	}
 
-	if toAccount.Balance.Cmp(expectedToBalance) != 0 {
-		t.Errorf("DropFaucet() to balance = %v, want %v", toAccount.Balance, expectedToBalance)
+	if toAccount.GetBalance() != types.BigIntToFloat(expectedToBalance) {
+		t.Errorf("DropFaucet() to balance = %v, want %v", toAccount.GetBalance(), types.BigIntToFloat(expectedToBalance))
 	}
 
 	// Verify transaction was added to inputs
@@ -491,6 +485,76 @@ func TestD5Vault_DropFaucet(t *testing.T) {
 	if val, exists := toAccount.Inputs.M[txHash]; !exists || val.Cmp(faucetAmount) != 0 {
 		t.Errorf("DropFaucet() transaction not properly recorded in inputs")
 	}
+}
+
+// Test DropFaucet method with limits
+func TestD5Vault_DropFaucetWithLimits(t *testing.T) {
+	// Initialize coinbase data
+	err := coinbase.InitOperationData()
+	if err != nil {
+		t.Fatalf("Failed to initialize coinbase data: %v", err)
+	}
+
+	cfg := createTestConfig()
+	vault, err := NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+
+	// Create a test account
+	_, _, _, toAddr, err := vault.Create("password123")
+	if err != nil {
+		t.Fatalf("Failed to create test account: %v", err)
+	}
+
+	// Cast to D5Vault to access DropFaucet method
+	d5Vault := vault.(*D5Vault)
+	txHash := common.Hash{0x4, 0x5, 0x6}
+
+	t.Run("valid_faucet_request", func(t *testing.T) {
+		// Test valid faucet request
+		faucetAmount := types.FloatToBigInt(100.0)
+		err = d5Vault.DropFaucet(*toAddr, faucetAmount, txHash)
+		if err != nil {
+			t.Errorf("DropFaucet() error = %v", err)
+		}
+	})
+
+	t.Run("amount_below_minimum", func(t *testing.T) {
+		// Test amount below minimum
+		smallAmount := types.FloatToBigInt(0.5)
+		err = d5Vault.DropFaucet(*toAddr, smallAmount, txHash)
+		if err == nil {
+			t.Error("DropFaucet() should fail for amount below minimum")
+		}
+		if !strings.Contains(err.Error(), "below minimum") {
+			t.Errorf("DropFaucet() error message should contain 'below minimum', got: %v", err)
+		}
+	})
+
+	t.Run("amount_above_maximum", func(t *testing.T) {
+		// Test amount above maximum
+		largeAmount := types.FloatToBigInt(2000.0)
+		err = d5Vault.DropFaucet(*toAddr, largeAmount, txHash)
+		if err == nil {
+			t.Error("DropFaucet() should fail for amount above maximum")
+		}
+		if !strings.Contains(err.Error(), "exceeds maximum") {
+			t.Errorf("DropFaucet() error message should contain 'exceeds maximum', got: %v", err)
+		}
+	})
+
+	t.Run("cooldown_period", func(t *testing.T) {
+		// Test cooldown period - second request should fail
+		faucetAmount := types.FloatToBigInt(100.0)
+		err = d5Vault.DropFaucet(*toAddr, faucetAmount, txHash)
+		if err == nil {
+			t.Error("DropFaucet() should fail due to cooldown period")
+		}
+		if !strings.Contains(err.Error(), "cooldown") {
+			t.Errorf("DropFaucet() error message should contain 'cooldown', got: %v", err)
+		}
+	})
 }
 
 // Test VerifyAccount method
@@ -502,13 +566,13 @@ func TestD5Vault_VerifyAccount(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create a test account with specific password
-	_, _, _, address, err := vault.Create("test_verify", "correct_password")
+	_, _, _, address, err := vault.Create("correct_password")
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -556,13 +620,13 @@ func TestD5Vault_GetKey(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create a test account
-	_, publicKey, _, _, err := vault.Create("test_getkey", "password123")
+	_, publicKey, _, _, err := vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -591,7 +655,7 @@ func TestD5Vault_GetOwner(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -615,14 +679,14 @@ func TestD5Vault_Clear(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create some accounts
-	vault.Create("test1", "pass1")
-	vault.Create("test2", "pass2")
+	vault.Create("pass1")
+	vault.Create("pass2")
 
 	// Verify accounts exist
 	if vault.GetCount() < 2 {
@@ -650,7 +714,7 @@ func TestD5Vault_Status(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -670,7 +734,7 @@ func TestD5Vault_Sync(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -687,11 +751,8 @@ func TestD5Vault_Sync(t *testing.T) {
 	if syncedAccount == nil {
 		t.Error("Sync() account should be retrievable after sync")
 	} else {
-		if syncedAccount.Name != "test_sync" {
-			t.Errorf("Sync() account name = %v, want test_sync", syncedAccount.Name)
-		}
-		if syncedAccount.Balance.Cmp(types.FloatToBigInt(75.0)) != 0 {
-			t.Errorf("Sync() account balance = %v, want 75.0", syncedAccount.Balance)
+		if syncedAccount.Address != account.Address {
+			t.Errorf("Sync() account name = %v, want test_sync", syncedAccount.Address)
 		}
 	}
 }
@@ -705,7 +766,7 @@ func TestD5Vault_Size(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
@@ -726,13 +787,13 @@ func TestD5Vault_CheckRunnable(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
 
 	// Create a test transaction
-	_, _, _, _, err = vault.Create("test_runnable", "password123")
+	_, _, _, _, err = vault.Create("password123")
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -759,7 +820,7 @@ func TestD5Vault_Prepare(t *testing.T) {
 	}
 
 	cfg := createTestConfig()
-	vault, err := NewD5Vault(cfg)
+	vault, err := NewD5Vault(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("NewD5Vault failed: %v", err)
 	}
