@@ -33,13 +33,12 @@ func NewINRISeq() INRI {
 }
 
 func INRISeq(data ...[]byte) []byte {
-	b := make([]byte, 64)
 	d := NewINRISeq()
 
 	for _, b := range data {
 		d.Write(b)
 	}
-	return d.Sum(b)
+	return d.Sum(nil)
 }
 
 func INRISeqHash(data ...[]byte) (h common.Hash) {

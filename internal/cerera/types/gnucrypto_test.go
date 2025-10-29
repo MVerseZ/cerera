@@ -8,6 +8,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"testing"
+
+	"github.com/cerera/internal/cerera/common"
 )
 
 func TestKxAddress(t *testing.T) {
@@ -197,5 +199,226 @@ func TestEncode(t *testing.T) {
 	result = Base58Encode([]byte(data1))
 	if result != expected {
 		t.Errorf("different encode strings!, Have %s, want %s", result, expected)
+	}
+}
+
+// TestNewINRISeq tests the NewINRISeq function
+func TestNewINRISeq(t *testing.T) {
+	state := NewINRISeq()
+	if state == nil {
+		t.Fatal("NewINRISeq returned nil")
+	}
+
+	// Test that it implements hash.Hash interface
+	data := []byte("test data")
+	state.Write(data)
+	result := state.Sum(nil)
+	if len(result) == 0 {
+		t.Fatal("NewINRISeq result should not be empty")
+	}
+}
+
+// TestINRISeq tests the INRISeq function
+func TestINRISeq(t *testing.T) {
+	data1 := []byte("test1")
+	data2 := []byte("test2")
+
+	result := INRISeq(data1, data2)
+	if len(result) != 64 {
+		t.Errorf("INRISeq should return 64 bytes, got %d", len(result))
+	}
+
+	// Test with no data
+	resultEmpty := INRISeq()
+	if len(resultEmpty) != 64 {
+		t.Errorf("INRISeq with no data should return 64 bytes, got %d", len(resultEmpty))
+	}
+}
+
+// TestINRISeqHash tests the INRISeqHash function
+func TestINRISeqHash(t *testing.T) {
+	data1 := []byte("test1")
+	data2 := []byte("test2")
+
+	result := INRISeqHash(data1, data2)
+	if result == (common.Hash{}) {
+		t.Fatal("INRISeqHash should return non-empty hash")
+	}
+
+	// Test with no data
+	resultEmpty := INRISeqHash()
+	if resultEmpty == (common.Hash{}) {
+		t.Fatal("INRISeqHash should return non-empty hash even with no data")
+	}
+}
+
+// TestFromECDSAPub tests the FromECDSAPub function
+func TestFromECDSAPub(t *testing.T) {
+	// Test with valid key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	result := FromECDSAPub(&privateKey.PublicKey)
+	if len(result) == 0 {
+		t.Fatal("FromECDSAPub should return non-empty bytes")
+	}
+
+	// Test with nil
+	resultNil := FromECDSAPub(nil)
+	if resultNil != nil {
+		t.Error("FromECDSAPub with nil should return nil")
+	}
+}
+
+// TestGenerateKey tests the GenerateKey function
+func TestGenerateKey(t *testing.T) {
+	key, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey failed: %v", err)
+	}
+	if key == nil {
+		t.Fatal("GenerateKey should not return nil key")
+	}
+	if key.PublicKey.Curve == nil {
+		t.Fatal("GenerateKey should return key with valid curve")
+	}
+}
+
+// TestCheckSignature tests the checkSignature function
+func TestCheckSignature(t *testing.T) {
+	// Test with valid signature
+	validSig := make([]byte, 65)
+	validSig[64] = 0
+	err := checkSignature(validSig)
+	if err != nil {
+		t.Errorf("checkSignature should accept valid signature: %v", err)
+	}
+
+	// Test with invalid length
+	invalidSig := []byte{0, 1, 2}
+	err = checkSignature(invalidSig)
+	if err != ErrInvalidSignatureLen {
+		t.Errorf("checkSignature should return ErrInvalidSignatureLen for invalid length, got: %v", err)
+	}
+
+	// Test with invalid recovery ID
+	invalidRecoverId := make([]byte, 65)
+	invalidRecoverId[64] = 4
+	err = checkSignature(invalidRecoverId)
+	if err != ErrInvalidRecoveryID {
+		t.Errorf("checkSignature should return ErrInvalidRecoveryID for invalid recovery ID, got: %v", err)
+	}
+}
+
+// TestGenerateAccount tests the GenerateAccount function
+func TestGenerateAccount(t *testing.T) {
+	key, err := GenerateAccount()
+	if err != nil {
+		t.Fatalf("GenerateAccount failed: %v", err)
+	}
+	if key == nil {
+		t.Fatal("GenerateAccount should not return nil key")
+	}
+}
+
+// TestEncodePrivateKeyToByte tests the EncodePrivateKeyToByte function
+func TestEncodePrivateKeyToByte(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	encoded := EncodePrivateKeyToByte(privateKey)
+	if len(encoded) == 0 {
+		t.Fatal("EncodePrivateKeyToByte should return non-empty bytes")
+	}
+
+	// Verify it can be decoded
+	block, _ := pem.Decode(encoded)
+	if block == nil {
+		t.Fatal("Encoded data should be valid PEM")
+	}
+}
+
+// TestDecodeByteToPublicKey tests the DecodeByteToPublicKey function
+func TestDecodeByteToPublicKey(t *testing.T) {
+	// Generate a key and encode it
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	encodedPub := EncodePublicKeyToByte(&privateKey.PublicKey)
+
+	// Decode it back
+	decodedPub, err := DecodeByteToPublicKey(encodedPub)
+	if err != nil {
+		t.Fatalf("DecodeByteToPublicKey failed: %v", err)
+	}
+
+	if !privateKey.PublicKey.Equal(decodedPub) {
+		t.Fatal("Decoded public key should match original")
+	}
+
+	// Test with invalid data
+	_, err = DecodeByteToPublicKey([]byte("invalid pem"))
+	if err == nil {
+		t.Error("DecodeByteToPublicKey should error on invalid data")
+	}
+
+	// Test with wrong block type
+	wrongBlock := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("invalid")})
+	_, err = DecodeByteToPublicKey(wrongBlock)
+	if err == nil {
+		t.Error("DecodeByteToPublicKey should error on wrong block type")
+	}
+}
+
+// TestBase58EncodeWithLeadingZeros tests Base58Encode with leading zeros
+func TestBase58EncodeWithLeadingZeros(t *testing.T) {
+	data := []byte{0, 0, 0, 0x41}
+	result := Base58Encode(data)
+	if result == "" {
+		t.Fatal("Base58Encode should not return empty string")
+	}
+
+	// Test with all zeros
+	zeros := make([]byte, 10)
+	result = Base58Encode(zeros)
+	if result == "" {
+		t.Fatal("Base58Encode should not return empty string for all zeros")
+	}
+}
+
+// TestPublicKeyFromStringError tests PublicKeyFromString with invalid input
+func TestPublicKeyFromStringError(t *testing.T) {
+	_, err := PublicKeyFromString("invalid hex")
+	if err == nil {
+		t.Error("PublicKeyFromString should error on invalid hex")
+	}
+
+	_, err = PublicKeyFromString("deadbeef")
+	if err == nil {
+		t.Error("PublicKeyFromString should error on invalid encoding")
+	}
+}
+
+// TestPublicKeyToStringError tests PublicKeyToString with nil curve
+func TestPublicKeyToStringError(t *testing.T) {
+	// This is hard to test since the function uses chainElliptic which is a constant
+	// But we can test with a valid key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	result, err := PublicKeyToString(&privateKey.PublicKey)
+	if err != nil {
+		t.Errorf("PublicKeyToString should not error on valid key: %v", err)
+	}
+	if result == "" {
+		t.Error("PublicKeyToString should return non-empty string")
 	}
 }

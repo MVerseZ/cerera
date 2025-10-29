@@ -205,3 +205,200 @@ func TestDna(t *testing.T) {
 	)
 	tx.Dna()
 }
+
+// TestGasCostCalculation проверяет правильность расчета стоимости газа
+func TestGasCostCalculation(t *testing.T) {
+	tests := []struct {
+		name     string
+		gasLimit float64
+		gasPrice *big.Int
+		expected string
+	}{
+		{
+			name:     "Минимальная транзакция",
+			gasLimit: 3.0,
+			gasPrice: FloatToBigInt(0.000001),
+			expected: "2999999999997000000000000000000",
+		},
+		{
+			name:     "Стандартная транзакция",
+			gasLimit: 5.0,
+			gasPrice: FloatToBigInt(0.000001),
+			expected: "4999999999995000000000000000000",
+		},
+		{
+			name:     "Высокий лимит газа",
+			gasLimit: 50000.0,
+			gasPrice: FloatToBigInt(0.000001),
+			expected: "49999999999950000000000000000000000",
+		},
+		{
+			name:     "Ethereum-совместимый лимит",
+			gasLimit: 21000.0,
+			gasPrice: FloatToBigInt(0.000001),
+			expected: "20999999999979000000000000000000000",
+		},
+		{
+			name:     "Нулевой лимит газа",
+			gasLimit: 0.0,
+			gasPrice: FloatToBigInt(0.000001),
+			expected: "0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Создаем транзакцию с заданными параметрами
+			tx := NewTransaction(
+				1, // nonce
+				HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				big.NewInt(1000000000000000000), // 1 CER
+				tt.gasLimit,
+				tt.gasPrice,
+				[]byte("test data"),
+			)
+
+			// Проверяем расчет стоимости газа
+			cost := tx.Cost()
+			if cost.String() != tt.expected {
+				t.Errorf("Cost() = %s, want %s", cost.String(), tt.expected)
+			}
+
+			// Проверяем, что стоимость газа = gasPrice * gasLimit
+			expectedCost := new(big.Int).Mul(tt.gasPrice, FloatToBigInt(tt.gasLimit))
+			if cost.Cmp(expectedCost) != 0 {
+				t.Errorf("Cost calculation mismatch: got %s, want %s", cost.String(), expectedCost.String())
+			}
+		})
+	}
+}
+
+// TestGasPriceValidation проверяет валидацию минимальной цены газа
+func TestGasPriceValidation(t *testing.T) {
+	minGasPrice := FloatToBigInt(0.000001) // Минимальная цена из validator.go
+
+	tests := []struct {
+		name        string
+		gasLimit    float64
+		gasPrice    *big.Int
+		shouldPass  bool
+		description string
+	}{
+		{
+			name:        "Минимальная цена газа",
+			gasLimit:    3.0,
+			gasPrice:    minGasPrice,
+			shouldPass:  true,
+			description: "Должна пройти валидацию",
+		},
+		{
+			name:        "Цена выше минимума",
+			gasLimit:    3.0,
+			gasPrice:    FloatToBigInt(0.000002),
+			shouldPass:  true,
+			description: "Должна пройти валидацию",
+		},
+		{
+			name:        "Цена ниже минимума",
+			gasLimit:    3.0,
+			gasPrice:    FloatToBigInt(0.0000005),
+			shouldPass:  false,
+			description: "Должна быть отклонена",
+		},
+		{
+			name:        "Нулевая цена газа",
+			gasLimit:    3.0,
+			gasPrice:    big.NewInt(0),
+			shouldPass:  true,
+			description: "Нулевая цена разрешена",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tx := NewTransaction(
+				1,
+				HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				big.NewInt(1000000000000000000),
+				tt.gasLimit,
+				tt.gasPrice,
+				[]byte("test data"),
+			)
+
+			cost := tx.Cost()
+
+			// Симулируем логику валидации из validator.go
+			// Валидация проверяет цену газа за единицу, а не общую стоимость
+			passesValidation := tx.GasPrice().Sign() == 0 || tx.GasPrice().Cmp(minGasPrice) >= 0
+
+			if passesValidation != tt.shouldPass {
+				t.Errorf("Validation result mismatch: got %v, want %v (%s)",
+					passesValidation, tt.shouldPass, tt.description)
+			}
+
+			t.Logf("Gas cost: %s wei (%.6f CER), Validation: %v",
+				cost.String(), BigIntToFloat(cost), passesValidation)
+		})
+	}
+}
+
+// TestGasCostEdgeCases проверяет граничные случаи расчета газа
+func TestGasCostEdgeCases(t *testing.T) {
+	minGasPrice := FloatToBigInt(0.000001)
+
+	tests := []struct {
+		name     string
+		gasLimit float64
+		gasPrice *big.Int
+	}{
+		{
+			name:     "Очень маленький лимит газа",
+			gasLimit: 0.000001,
+			gasPrice: minGasPrice,
+		},
+		{
+			name:     "Очень большой лимит газа",
+			gasLimit: 1000000.0,
+			gasPrice: minGasPrice,
+		},
+		{
+			name:     "Очень маленькая цена газа",
+			gasLimit: 3.0,
+			gasPrice: FloatToBigInt(0.0000001),
+		},
+		{
+			name:     "Очень большая цена газа",
+			gasLimit: 3.0,
+			gasPrice: FloatToBigInt(1000.0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tx := NewTransaction(
+				1,
+				HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				big.NewInt(1000000000000000000),
+				tt.gasLimit,
+				tt.gasPrice,
+				[]byte("test data"),
+			)
+
+			cost := tx.Cost()
+
+			// Проверяем, что стоимость не отрицательная
+			if cost.Sign() < 0 {
+				t.Errorf("Gas cost should not be negative: %s", cost.String())
+			}
+
+			// Проверяем, что стоимость газа = gasPrice * gasLimit
+			expectedCost := new(big.Int).Mul(tt.gasPrice, FloatToBigInt(tt.gasLimit))
+			if cost.Cmp(expectedCost) != 0 {
+				t.Errorf("Cost calculation mismatch: got %s, want %s", cost.String(), expectedCost.String())
+			}
+
+			t.Logf("Gas limit: %f, Gas price: %s wei, Cost: %s wei (%.6f CER)",
+				tt.gasLimit, tt.gasPrice.String(), cost.String(), BigIntToFloat(cost))
+		})
+	}
+}

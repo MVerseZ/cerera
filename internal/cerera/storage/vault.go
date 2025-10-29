@@ -62,6 +62,7 @@ func Sync() []byte {
 	}
 	return res
 }
+
 func GetVault() *D5Vault {
 	return &vlt
 }
@@ -116,28 +117,32 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 
 		vlt.accounts.Append(rootSA.Address, rootSA)
 	} else {
-		// TO DO rewrite
-		if _, err := os.Stat("./vault.dat"); errors.Is(err, os.ErrNotExist) || cfg.Vault.PATH == "EMPTY" {
-			// path/to/whatever does not exist
-			if err := InitSecureVault(rootSA); err != nil {
-				panic(err)
-			}
+		// Initialize vault path if not set
+		if cfg.Vault.PATH == "EMPTY" {
 			cfg.UpdateVaultPath("./vault.dat")
 		}
 
 		vlt.path = cfg.Vault.PATH
-		//sync with fc
-		if err := SyncVault(cfg.Vault.PATH); err != nil {
-			panic(err)
+
+		// Check if vault file exists, if not create it
+		if _, err := os.Stat(cfg.Vault.PATH); errors.Is(err, os.ErrNotExist) {
+			if err := InitSecureVault(rootSA, cfg.Vault.PATH); err != nil {
+				panic(err)
+			}
+		} else {
+			//sync with existing vault
+			if err := SyncVault(cfg.Vault.PATH); err != nil {
+				panic(err)
+			}
 		}
 
 		var cbAcc = coinbase.CoinBaseStateAccount()
 		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
-		SaveToVault(cbAcc.Bytes())
+		SaveToVault(cbAcc.Bytes(), cfg.Vault.PATH)
 
 		var faucetAddr = coinbase.FaucetAccount()
 		vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
-		SaveToVault(faucetAddr.Bytes())
+		SaveToVault(faucetAddr.Bytes(), cfg.Vault.PATH)
 	}
 	vlt.status = 0xa
 
@@ -190,7 +195,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	v.accounts.Append(address, newAccount)
 
 	if !vlt.inMem {
-		SaveToVault(newAccount.Bytes())
+		SaveToVault(newAccount.Bytes(), vlt.path)
 	}
 
 	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
@@ -271,7 +276,7 @@ func (v *D5Vault) Put(address types.Address, acc *types.StateAccount) {
 	v.accounts.Append(address, acc)
 }
 func (v *D5Vault) Size() int64 {
-	var s, err = VaultSourceSize()
+	var s, err = VaultSourceSize(v.path)
 	if err != nil {
 		return -1
 	} else {
@@ -308,8 +313,8 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	saDest.AddInput(txHash, cnt)
 
 	if !v.inMem {
-		UpdateVault(saDest.Bytes())
-		UpdateVault(saFrom.Bytes())
+		UpdateVault(saDest.Bytes(), v.path)
+		UpdateVault(saFrom.Bytes(), v.path)
 	}
 }
 
@@ -351,8 +356,8 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	coinbase.RecordFaucetRequest(to, cnt)
 
 	if !v.inMem {
-		UpdateVault(saDest.Bytes())
-		UpdateVault(sa.Bytes())
+		UpdateVault(saDest.Bytes(), v.path)
+		UpdateVault(sa.Bytes(), v.path)
 	}
 
 	return nil
@@ -465,7 +470,7 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		if len(addr) != len(rAddr.Hex()) {
 			return false
 		}
-		for i := 0; i < len(rAddr); i++ {
+		for i := range len(rAddr) {
 			if rAddr[i] != types.HexToAddress(addr)[i] {
 				return false
 			}
@@ -477,6 +482,25 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 			return "Error parsing parameters"
 		}
 		return v.Get(types.HexToAddress(addr)).GetBalance()
+	case "faucet":
+		addrStr, ok1 := params[0].(string)
+		amount, ok2 := params[1].(float64)
+		if !ok1 || !ok2 {
+			return "Error parsing parameters"
+		}
+
+		addr := types.HexToAddress(addrStr)
+		amountBigInt := types.FloatToBigInt(amount)
+
+		// Create a dummy transaction hash for faucet
+		txHash := common.BytesToHash([]byte("faucet_" + addrStr))
+
+		err := v.DropFaucet(addr, amountBigInt, txHash)
+		if err != nil {
+			return err.Error()
+		}
+
+		return "Faucet successful"
 	}
 	return nil
 }

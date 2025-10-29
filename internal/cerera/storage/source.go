@@ -49,9 +49,9 @@ func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-func InitSecureVault(rootSa *types.StateAccount) error {
+func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
 	// Open file for writing, create if it doesn't exist
-	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(vaultPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open the file for writing: %w", err)
 	}
@@ -88,8 +88,8 @@ func SyncVault(path string) error {
 	return nil
 }
 
-func SaveToVault(account []byte) error {
-	f, err := os.OpenFile("./vault.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func SaveToVault(account []byte, vaultPath string) error {
+	f, err := os.OpenFile(vaultPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -109,8 +109,8 @@ func SaveToVault(account []byte) error {
 }
 
 // UpdateVault updates an account in the vault file.
-func UpdateVault(account []byte) error {
-	filePath := "./vault.dat"
+func UpdateVault(account []byte, vaultPath string) error {
+	filePath := vaultPath
 
 	// Read all accounts from the file
 	file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
@@ -160,8 +160,8 @@ func UpdateVault(account []byte) error {
 	return nil
 }
 
-func VaultSourceSize() (int64, error) {
-	filePath := "./vault.dat"
+func VaultSourceSize(vaultPath string) (int64, error) {
+	filePath := vaultPath
 	f, err := os.Open(filePath)
 	if err != nil {
 		return 0, err
