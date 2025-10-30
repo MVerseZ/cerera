@@ -3,6 +3,8 @@ package net
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,12 +21,55 @@ import (
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	ma "github.com/multiformats/go-multiaddr"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // reserved for future direct streams
 // const protocolID = "/cerera-p2p/1.0.0"
 
 var CereraNode *Node
+
+// p2plog is a dedicated console logger for P2P networking
+var p2plog = log.New(os.Stdout, "[p2p] ", log.LstdFlags|log.Lmicroseconds)
+
+var (
+	p2pPeerConnectsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_peer_connects_total",
+		Help: "Total number of successful peer connections",
+	})
+	p2pPeerDiscoveryAttemptsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_peer_discovery_attempts_total",
+		Help: "Total number of peer discovery attempts",
+	})
+	p2pDirectMessagesSentTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_direct_messages_sent_total",
+		Help: "Total number of direct messages sent",
+	})
+	p2pDirectMessagesReceivedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_direct_messages_received_total",
+		Help: "Total number of direct messages received",
+	})
+	p2pPubsubMessagesReceivedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_pubsub_messages_received_total",
+		Help: "Total number of pubsub messages received",
+	})
+	p2pPublishErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_publish_errors_total",
+		Help: "Total number of publish errors",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		p2pPeerConnectsTotal,
+		p2pPeerDiscoveryAttemptsTotal,
+		p2pDirectMessagesSentTotal,
+		p2pDirectMessagesReceivedTotal,
+		p2pPubsubMessagesReceivedTotal,
+		p2pPublishErrorsTotal,
+	)
+}
 
 type Node struct {
 	h       host.Host
@@ -47,13 +92,15 @@ func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
 		// 	panic(err)
 		// }
 		case d := <-n.ch: // channel from miner with blocks
-			fmt.Println("recieved channel")
+			p2plog.Println("received channel")
 			if err := topic.Publish(ctx, d); err != nil {
-				fmt.Println("### Publish error:", err)
+				p2plog.Printf("publish error: %v", err)
+				p2pPublishErrorsTotal.Inc()
 			}
 		case d := <-n.sch: // channel cons broadcast
 			if err := topic.Publish(ctx, d); err != nil {
-				fmt.Println("### Publish error:", err)
+				p2plog.Printf("publish error: %v", err)
+				p2pPublishErrorsTotal.Inc()
 			}
 		case <-n.BroadcastHeartBeetTimer.C:
 			// // Silence if setup consensus
@@ -102,7 +149,8 @@ func (n *Node) sendDirectMessage(ctx context.Context, peerID peer.ID, message st
 		return fmt.Errorf("failed to write message to peer %s: %w", peerID, err)
 	}
 
-	fmt.Printf("Direct message sent to peer %s: %s\n", peerID, message)
+	p2plog.Printf("direct message sent to peer %s: %s", peerID, message)
+	p2pDirectMessagesSentTotal.Inc()
 	return nil
 }
 
@@ -114,39 +162,40 @@ func (n *Node) handleDirectMessage(stream network.Stream) {
 	buf := make([]byte, 4096)
 	nBytes, err := stream.Read(buf)
 	if err != nil {
-		fmt.Printf("Error reading direct message: %v\n", err)
+		p2plog.Printf("error reading direct message: %v", err)
 		return
 	}
 
 	message := string(buf[:nBytes])
 	peerID := stream.Conn().RemotePeer()
 
-	fmt.Printf("Direct message received from peer %s: %s\n", peerID, message)
+	p2plog.Printf("direct message received from peer %s: %s", peerID, message)
+	p2pDirectMessagesReceivedTotal.Inc()
 
 	// Process the message (same logic as pubsub messages)
 	if strings.Contains(message, "_CONS_JOIN") {
-		fmt.Printf("Received CONS_JOIN from %s via direct message\n", peerID)
+		p2plog.Printf("received CONS_JOIN from %s via direct message", peerID)
 		// Parse CONS_JOIN message: {address}_CONS_JOIN#{network_address}
 		if peerAddress, networkAddress, valid := parseConsensusJoinMessage(message); valid {
-			fmt.Printf("Peer address: %s, Network address: %s\n", peerAddress, networkAddress)
+			p2plog.Printf("peer address: %s, network address: %s", peerAddress, networkAddress)
 			// Add peer to consensus voters list and node list
 			addr := types.HexToAddress(peerAddress)
 			gigea.AddVoter(addr)
 			gigea.AddNode(addr, networkAddress)
-			fmt.Printf("Added peer %s to consensus voters and node list\n", peerAddress)
+			p2plog.Printf("added peer %s to consensus voters and node list", peerAddress)
 
 			// Broadcast updated node list to all peers
 			go broadcastNodeList()
 		} else {
-			fmt.Printf("Invalid CONS_JOIN message format: %s\n", message)
+			p2plog.Printf("invalid CONS_JOIN message format: %s", message)
 		}
 	}
 
 	// Handle NODES message for node list synchronization
 	if strings.Contains(message, "_NODES") {
-		fmt.Printf("Received NODES from %s via direct message\n", peerID)
+		p2plog.Printf("received NODES from %s via direct message", peerID)
 		if senderAddress, nodes, valid := parseNodeListMessage(message); valid {
-			fmt.Printf("Received node list from %s: %d nodes\n", senderAddress, len(nodes))
+			p2plog.Printf("received node list from %s: %d nodes", senderAddress, len(nodes))
 			// Add all nodes to our known nodes list and make them voters
 			for _, nodeInfo := range nodes {
 				parts := strings.Split(nodeInfo, "#")
@@ -156,11 +205,11 @@ func (n *Node) handleDirectMessage(stream network.Stream) {
 					addr := types.HexToAddress(nodeAddr)
 					gigea.AddNode(addr, networkAddr)
 					gigea.AddVoter(addr) // Make all known nodes voters
-					fmt.Printf("Added node %s to known nodes and voters\n", nodeAddr)
+					p2plog.Printf("added node %s to known nodes and voters", nodeAddr)
 				}
 			}
 		} else {
-			fmt.Printf("Invalid NODES message format: %s\n", message)
+			p2plog.Printf("invalid NODES message format: %s", message)
 		}
 	}
 }
@@ -198,7 +247,7 @@ func broadcastNodeList() {
 	if len(nodeList) > 0 {
 		msg := fmt.Sprintf("%s_NODES#%s", CereraNode.address.String(), strings.Join(nodeList, ","))
 		CereraNode.sch <- []byte(msg)
-		fmt.Printf("Broadcasting node list: %d nodes\n", len(nodeList))
+		p2plog.Printf("broadcasting node list: %d nodes", len(nodeList))
 	}
 }
 
@@ -272,7 +321,7 @@ func BroadcastConsensusRequest(operation string) {
 }
 
 func StartNode(addr string, laddr types.Address) *Node {
-	fmt.Printf("addr: %s\r\nladdr:%s\r\n", addr, laddr)
+	p2plog.Printf("startup params: addr=%s, laddr=%s", addr, laddr)
 	ctx := context.Background()
 	// h, err := libp2p.New(
 	// 	// Use the keypair we generated
@@ -288,11 +337,11 @@ func StartNode(addr string, laddr types.Address) *Node {
 	CereraNode = NewNode(h, laddr)
 
 	fullAddr := getHostAddress(h)
-	fmt.Printf("I am %s\n", fullAddr)
-	fmt.Printf("Host ID is %s\n", h.ID())
+	p2plog.Printf("node multiaddr: %s", fullAddr)
+	p2plog.Printf("host id: %s", h.ID())
 
 	// Print initial status
-	fmt.Println("\n🚀 Starting Cerera Node...")
+	p2plog.Println("starting Cerera node...")
 	printNetworkStatus()
 
 	// Set up direct message handler
@@ -384,7 +433,7 @@ func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
 		go func() {
 			defer wg.Done()
 			if err := h.Connect(ctx, *peerinfo); err != nil {
-				fmt.Println("Bootstrap warning:", err)
+				p2plog.Printf("bootstrap warning: %v", err)
 			}
 		}()
 	}
@@ -401,8 +450,9 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 	// Look for others who have announced and attempt to connect to them
 	anyConnected := false
 	for !anyConnected {
-		fmt.Println("Searching for peers...")
-		fmt.Printf("\tfallback counter: %d\r\n", n.FallBackCounter)
+		p2plog.Println("searching for peers...")
+		p2pPeerDiscoveryAttemptsTotal.Inc()
+		p2plog.Printf("fallback counter: %d", n.FallBackCounter)
 		peerChan, err := routingDiscovery.FindPeers(ctx, topicName)
 		if err != nil {
 			panic(err)
@@ -421,12 +471,13 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 				// 	break
 				// }
 			} else {
-				fmt.Println("Connected to:", peer.ID)
+				p2plog.Printf("connected to peer: %s", peer.ID)
+				p2pPeerConnectsTotal.Inc()
 				networkAddr := getHostAddress(n.h)
 
 				// Send direct message to the connected peer
 				if err := n.sendDirectMessage(ctx, peer.ID, fmt.Sprintf("%s_CONS_JOIN#%s", n.address.String(), networkAddr)); err != nil {
-					fmt.Printf("Failed to send direct message to peer %s: %v\n", peer.ID, err)
+					p2plog.Printf("failed to send direct message to peer %s: %v", peer.ID, err)
 				}
 
 				// Also broadcast through pubsub for other nodes
@@ -435,7 +486,7 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 			}
 		}
 	}
-	fmt.Printf("Peer discovery complete: %d fallback attempts\n", n.FallBackCounter)
+	p2plog.Printf("peer discovery complete: %d fallback attempts", n.FallBackCounter)
 }
 
 func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID peer.ID) {
@@ -446,10 +497,11 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 		}
 		var msgData = string(m.Message.Data)
 		if m.ReceivedFrom != hostID {
+			p2pPubsubMessagesReceivedTotal.Inc()
 			// fmt.Printf("Received message from %s: \r\n\t%s,\r\n\t%s\r\n", m.ReceivedFrom, msgData, time.Now().Format("2006-01-02 15:04:05:05.000000000"))
 			if strings.Contains(msgData, "_PING") {
 				newAddr := strings.Split(msgData, "_PING")[0]
-				fmt.Printf("Received PING from %s\r\n", newAddr)
+				p2plog.Printf("received PING from %s", newAddr)
 			}
 			if strings.Contains(msgData, "_CONS_JOIN") {
 				// fmt.Printf("Received CONS_JOIN from %s\r\n", m.ReceivedFrom)
@@ -465,7 +517,7 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 					// Broadcast updated node list to all peers
 					go broadcastNodeList()
 				} else {
-					fmt.Printf("Invalid CONS_JOIN message format: %s\r\n", msgData)
+					p2plog.Printf("invalid CONS_JOIN message format: %s", msgData)
 				}
 			}
 			if strings.Contains(msgData, "_NODES") {
@@ -481,11 +533,11 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 							addr := types.HexToAddress(nodeAddr)
 							gigea.AddNode(addr, networkAddr)
 							gigea.AddVoter(addr) // Make all known nodes voters
-							// fmt.Printf("Added node %s to known nodes and voters\r\n", nodeAddr)
+							// p2plog.Printf("added node %s to known nodes and voters", nodeAddr)
 						}
 					}
 				} else {
-					fmt.Printf("Invalid NODES message format: %s\r\n", msgData)
+					p2plog.Printf("invalid NODES message format: %s", msgData)
 				}
 			}
 		}

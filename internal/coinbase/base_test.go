@@ -20,19 +20,22 @@ func TestInitOperationData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitOperationData failed: %v", err)
 	}
-	if Coinbase.address.Hex() != AddressHex {
-		t.Errorf("Coinbase address mismatch: got %s, want %s", Coinbase.address.Hex(), AddressHex)
+	expectedCoinbase := types.HexToAddress(AddressHex)
+	if Coinbase.address != expectedCoinbase {
+		t.Errorf("Coinbase address mismatch: got %s, want %s", Coinbase.address.Hex(), expectedCoinbase.Hex())
 	}
-	if Faucet.address.Hex() != FaucetAddressHex {
-		t.Errorf("Faucet address mismatch: got %s, want %s", Faucet.address.Hex(), FaucetAddressHex)
+	expectedFaucet := types.HexToAddress(FaucetAddressHex)
+	if Faucet.address != expectedFaucet {
+		t.Errorf("Faucet address mismatch: got %s, want %s", Faucet.address.Hex(), expectedFaucet.Hex())
 	}
 }
 
 func TestGetCoinbaseAddress(t *testing.T) {
 	InitOperationData()
 	addr := GetCoinbaseAddress()
-	if addr.Hex() != AddressHex {
-		t.Errorf("GetCoinbaseAddress returned %s, want %s", addr.Hex(), AddressHex)
+	expected := types.HexToAddress(AddressHex)
+	if addr != expected {
+		t.Errorf("GetCoinbaseAddress returned %s, want %s", addr.Hex(), expected.Hex())
 	}
 }
 
@@ -47,8 +50,9 @@ func TestGetCoinbaseBalance(t *testing.T) {
 func TestCoinBaseStateAccount(t *testing.T) {
 	InitOperationData()
 	acc := CoinBaseStateAccount()
-	if acc.Address.Hex() != AddressHex {
-		t.Errorf("CoinBaseStateAccount address mismatch: got %s, want %s", acc.Address.Hex(), AddressHex)
+	expected := types.HexToAddress(AddressHex)
+	if acc.Address != expected {
+		t.Errorf("CoinBaseStateAccount address mismatch: got %s, want %s", acc.Address.Hex(), expected.Hex())
 	}
 }
 
@@ -101,16 +105,18 @@ func TestCreateCoinBaseTransation(t *testing.T) {
 func TestFaucetAccount(t *testing.T) {
 	InitOperationData()
 	acc := FaucetAccount()
-	if acc.Address.Hex() != FaucetAddressHex {
-		t.Errorf("FaucetAccount address mismatch: got %s, want %s", acc.Address.Hex(), FaucetAddressHex)
+	expected := types.HexToAddress(FaucetAddressHex)
+	if acc.Address != expected {
+		t.Errorf("FaucetAccount address mismatch: got %s, want %s", acc.Address.Hex(), expected.Hex())
 	}
 }
 
 func TestGetFaucetAddress(t *testing.T) {
 	InitOperationData()
 	addr := GetFaucetAddress()
-	if addr.Hex() != FaucetAddressHex {
-		t.Errorf("GetFaucetAddress returned %s, want %s", addr.Hex(), FaucetAddressHex)
+	expected := types.HexToAddress(FaucetAddressHex)
+	if addr != expected {
+		t.Errorf("GetFaucetAddress returned %s, want %s", addr.Hex(), expected.Hex())
 	}
 }
 

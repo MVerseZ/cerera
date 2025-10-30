@@ -13,7 +13,7 @@ import (
 const (
 	HashLength    = 32
 	GnuHashLength = 48
-	AddressLength = 48 // up from 24 to 48 is secure move
+	AddressLength = 32 // up from 24 to 48 is secure move
 )
 
 var (

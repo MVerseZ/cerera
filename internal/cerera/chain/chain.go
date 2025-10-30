@@ -2,8 +2,9 @@ package chain
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"math/big"
+	"os"
 	"sync"
 	"time"
 
@@ -14,9 +15,47 @@ import (
 
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const CHAIN_SERVICE_NAME = "CHAIN_CERERA_001_1_7"
+
+// clogger is a dedicated console logger for chain
+var clogger = log.New(os.Stdout, "[chain] ", log.LstdFlags|log.Lmicroseconds)
+
+var (
+	chainBlocksTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "chain_blocks_total",
+		Help: "Total number of blocks added to the chain",
+	})
+	chainTxsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "chain_txs_total",
+		Help: "Total number of transactions applied to the chain",
+	})
+	chainGasTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "chain_gas_total",
+		Help: "Total gas consumed by executed transactions",
+	})
+	chainAvgBlockTimeSeconds = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "chain_avg_block_time_seconds",
+		Help: "Average time between blocks (seconds)",
+	})
+	chainDifficultyGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "chain_difficulty",
+		Help: "Current chain difficulty",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		chainBlocksTotal,
+		chainTxsTotal,
+		chainGasTotal,
+		chainAvgBlockTimeSeconds,
+		chainDifficultyGauge,
+	)
+}
 
 type BlockChainStatus struct {
 	Total     int         `json:"total,omitempty"`
@@ -110,7 +149,7 @@ func InitBlockChain(cfg *config.Config) (*Chain, error) {
 	}
 	t, err = trie.NewTree(list)
 	if err != nil {
-		fmt.Printf("error trie validating: %s\r\n", err)
+		clogger.Printf("trie validation error: %v", err)
 	}
 
 	t.VerifyTree()
@@ -145,6 +184,10 @@ func InitBlockChain(cfg *config.Config) (*Chain, error) {
 	// genesisBlock.Head.Node = bch.currentAddress
 	// go bch.BlockGenerator()
 	go bch.Start()
+
+	// Set initial gauges
+	chainDifficultyGauge.Set(float64(genesisBlock.Head.Difficulty))
+	chainAvgBlockTimeSeconds.Set(bch.avgTime)
 
 	return &bch, nil
 }
@@ -248,12 +291,12 @@ func (bc *Chain) ServiceName() string {
 }
 
 func (bc *Chain) Start() {
-	fmt.Printf("Chain started with: %d, chain owner: %s, total: %d\r\n", bc.chainId, bc.currentAddress, bc.info.Total)
+	clogger.Printf("chain started: chainId=%d, owner=%s, total=%d", bc.chainId, bc.currentAddress, bc.info.Total)
 	var errc chan error
 	for errc == nil {
 		select {
 		case <-bc.maintainTicker.C:
-			fmt.Println("Chain tick maintain")
+			clogger.Println("chain tick maintain")
 			continue
 		}
 	}
@@ -306,6 +349,17 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 		gas := tx.Gas()
 		bc.info.Gas += gas
 	}
+
+	// Update Prometheus metrics
+	chainBlocksTotal.Inc()
+	chainTxsTotal.Add(float64(len(newBlock.Transactions)))
+	var blockGas float64
+	for _, tx := range newBlock.Transactions {
+		blockGas += tx.Gas()
+	}
+	chainGasTotal.Add(blockGas)
+	chainAvgBlockTimeSeconds.Set(bc.avgTime)
+	chainDifficultyGauge.Set(float64(bc.Difficulty))
 }
 
 // return lenght of array

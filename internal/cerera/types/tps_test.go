@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"os"
 	"testing"
+
+	"github.com/cerera/internal/cerera/common"
 )
 
 func TestFloatToBigInt(t *testing.T) {
@@ -243,8 +245,8 @@ func TestAddress(t *testing.T) {
 		addr := BytesToAddress(bytes)
 
 		resultBytes := addr.Bytes()
-		if len(resultBytes) != 48 {
-			t.Errorf("BytesToAddress result length = %d, want 48", len(resultBytes))
+		if len(resultBytes) != common.AddressLength {
+			t.Errorf("BytesToAddress result length = %d, want %d", len(resultBytes), common.AddressLength)
 		}
 	})
 
@@ -286,12 +288,12 @@ func TestAddress(t *testing.T) {
 		}{
 			{
 				name:     "valid address with 0x",
-				input:    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+				input:    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 				expected: true,
 			},
 			{
 				name:     "valid address without 0x",
-				input:    "0x9eebd006b125cbd2b01f06b5e7119e588744ec0a92f882dd8e597174d652ab33ad8eee1b9a1cc766b581a6a3783f949a",
+				input:    "9eebd006b125cbd2b01f06b5e7119e588744ec0a92f882dd8e597174d652ab00",
 				expected: true,
 			},
 			{
@@ -301,7 +303,7 @@ func TestAddress(t *testing.T) {
 			},
 			{
 				name:     "invalid characters",
-				input:    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefg",
+				input:    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefg",
 				expected: false,
 			},
 			{

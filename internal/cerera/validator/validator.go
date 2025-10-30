@@ -6,8 +6,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"fmt"
+	"log"
 	"math/big"
+	"os"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
@@ -18,6 +19,8 @@ import (
 	"github.com/cerera/internal/gigea"
 
 	"github.com/cerera/internal/cerera/types"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const VALIDATOR_SERVICE_NAME = "CERERA_VALIDATOR_54013.10.25"
@@ -26,6 +29,52 @@ var (
 	EmptyCoinbase    = &decError{"empty hex string"}
 	NotEnoughtInputs = &decError{"not enought inputs"}
 )
+
+// vlogger is a dedicated console logger for validator
+var vlogger = log.New(os.Stdout, "[validator] ", log.LstdFlags|log.Lmicroseconds)
+
+var (
+	valTxCreated = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_tx_created_total",
+		Help: "Total number of transactions created",
+	})
+	valTxValidated = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_tx_validated_total",
+		Help: "Total number of transactions validated successfully",
+	})
+	valTxRejected = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_tx_rejected_total",
+		Help: "Total number of transactions rejected during validation",
+	})
+	valExecuteSuccess = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_execute_success_total",
+		Help: "Total number of executed transactions successfully applied",
+	})
+	valExecuteError = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_execute_error_total",
+		Help: "Total number of transaction execution errors",
+	})
+	valSignSuccess = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_sign_success_total",
+		Help: "Total number of successfully signed transactions",
+	})
+	valSignError = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "validator_sign_error_total",
+		Help: "Total number of transaction signing errors",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		valTxCreated,
+		valTxValidated,
+		valTxRejected,
+		valExecuteSuccess,
+		valExecuteError,
+		valSignSuccess,
+		valSignError,
+	)
+}
 
 type decError struct{ msg string }
 
@@ -99,6 +148,7 @@ func (v *DDDDDValidator) CreateTransaction(nonce uint64, addressTo types.Address
 		return nil, err
 	}
 	// calculate fee and add to value
+	valTxCreated.Inc()
 	return tx, nil
 }
 
@@ -173,9 +223,10 @@ func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 
 	default:
-		fmt.Printf("\t\t unknown tx type: %d from %s\r\n", tx.Type(), tx.From())
+		vlogger.Printf("unknown tx type: %d from %s", tx.Type(), tx.From())
 	}
 
+	valExecuteSuccess.Inc()
 	return nil
 }
 
@@ -234,7 +285,8 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	// fmt.Printf("Sing tx: %s\r\n", tx.Hash())
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
 	if err2 != nil {
-		fmt.Printf("Error while sign tx: %s\r\n", tx.Hash())
+		vlogger.Printf("error while sign tx: %s", tx.Hash())
+		valSignError.Inc()
 		return errors.New("error while sign tx")
 	}
 	//var r, vv, s =
@@ -266,8 +318,10 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	// fmt.Printf("\tsrc after transfer: %t\r\n", types.BigIntToFloat(big.NewInt(0).Sub(bFrom, bVal)) < 0.0)
 
 	if bFromBI.Cmp(needed) < 0 {
+		valSignError.Inc()
 		return NotEnoughtInputs
 	}
+	valSignSuccess.Inc()
 	return nil
 }
 
@@ -305,10 +359,12 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 	need := new(big.Int).Add(new(big.Int).Set(val), gasCost)
 	senderAcc := localVault.Get(from)
 	if senderAcc == nil {
+		valTxRejected.Inc()
 		return false
 	}
 	senderBal := senderAcc.GetBalanceBI()
 	if senderBal.Cmp(need) < 0 {
+		valTxRejected.Inc()
 		return false
 	}
 	//else {
@@ -323,6 +379,7 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 	// localVault.UpdateBalance(from, *tx.To(), val, tx.Hash())
 	//}
 	localVault.CheckRunnable(r, s, tx)
+	valTxValidated.Inc()
 	return true
 }
 

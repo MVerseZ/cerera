@@ -229,7 +229,7 @@ func TestSizeSigning(t *testing.T) {
 	txSize := uint64(0)
 	if runtime.GOOS == "windows" {
 		// fmt.Println("Hello from Windows")
-		txSize = uint64(92)
+		txSize = uint64(76)
 	} else {
 		txSize = uint64(91)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -54,6 +55,47 @@ type D5Vault struct {
 }
 
 var vlt D5Vault
+
+var (
+	vaultAccountsTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "vault_accounts_total",
+		Help: "Total number of accounts in vault",
+	})
+	vaultCirculatingSupply = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "vault_circulating_supply",
+		Help: "Circulating token supply (excludes coinbase and faucet balances)",
+	})
+	vaultFaucetAmountTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "vault_faucet_amount_total",
+		Help: "Total amount dispensed by faucet",
+	})
+	vaultTransfersTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "vault_transfers_total",
+		Help: "Total number of balance transfer operations",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		vaultAccountsTotal,
+		vaultCirculatingSupply,
+		vaultFaucetAmountTotal,
+		vaultTransfersTotal,
+	)
+}
+
+func (v *D5Vault) recomputeCirculatingSupply() {
+	var sum = big.NewInt(0)
+	coinbaseAddr := coinbase.GetCoinbaseAddress()
+	faucetAddr := coinbase.GetFaucetAddress()
+	for addr, sa := range v.accounts.accounts {
+		if addr == coinbaseAddr || addr == faucetAddr {
+			continue
+		}
+		sum = new(big.Int).Add(sum, sa.GetBalanceBI())
+	}
+	vaultCirculatingSupply.Set(types.BigIntToFloat(sum))
+}
 
 func Sync() []byte {
 	res := make([]byte, 0)
@@ -146,6 +188,10 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	}
 	vlt.status = 0xa
 
+	// init metrics
+	vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
+	vlt.recomputeCirculatingSupply()
+
 	return &vlt, nil
 }
 
@@ -174,6 +220,32 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
+
+	// Защита от коллизии с системными адресами (coinbase, faucet)
+	coinbaseAddr := coinbase.GetCoinbaseAddress()
+	faucetAddr := coinbase.GetFaucetAddress()
+
+	// Проверяем на коллизию и генерируем новый ключ, если нужно
+	maxRetries := 10
+	for i := 0; i < maxRetries && (address == coinbaseAddr || address == faucetAddr); i++ {
+		privateKey, err = types.GenerateAccount()
+		if err != nil {
+			return "", "", "", nil, err
+		}
+		pubkey = &privateKey.PublicKey
+		address = types.PubkeyToAddress(*pubkey)
+	}
+
+	// Если после всех попыток все еще коллизия - возвращаем ошибку
+	if address == coinbaseAddr || address == faucetAddr {
+		return "", "", "", nil, fmt.Errorf("failed to generate unique address after %d retries (collision with system address)", maxRetries)
+	}
+
+	// Проверяем, не существует ли уже аккаунт с таким адресом
+	if existing := v.accounts.GetAccount(address); existing != nil {
+		return "", "", "", nil, fmt.Errorf("address %s already exists in vault, bad collision", address.Hex())
+	}
+
 	derBytes := types.EncodePrivateKeyToByte(privateKey)
 
 	newAccount := &types.StateAccount{
@@ -193,6 +265,8 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 	newAccount.SetBalance(0.0)
 	v.accounts.Append(address, newAccount)
+	vaultAccountsTotal.Set(float64(v.accounts.Size()))
+	v.recomputeCirculatingSupply()
 
 	if !vlt.inMem {
 		SaveToVault(newAccount.Bytes(), vlt.path)
@@ -273,6 +347,12 @@ func (v *D5Vault) GetAll() interface{} {
 }
 
 func (v *D5Vault) Put(address types.Address, acc *types.StateAccount) {
+	if v.accounts.GetAccount(address) == nil {
+		v.accounts.Append(address, acc)
+		vaultAccountsTotal.Set(float64(v.accounts.Size()))
+		v.recomputeCirculatingSupply()
+		return
+	}
 	v.accounts.Append(address, acc)
 }
 func (v *D5Vault) Size() int64 {
@@ -316,6 +396,10 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 		UpdateVault(saDest.Bytes(), v.path)
 		UpdateVault(saFrom.Bytes(), v.path)
 	}
+
+	// metrics: transfer count and supply (internal transfers don't change supply, but we still recompute for safety)
+	vaultTransfersTotal.Inc()
+	v.recomputeCirculatingSupply()
 }
 
 // faucet method without creating transaction
@@ -359,6 +443,10 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 		UpdateVault(saDest.Bytes(), v.path)
 		UpdateVault(sa.Bytes(), v.path)
 	}
+
+	// metrics: faucet amount increases circulating supply (faucet excluded), recompute
+	vaultFaucetAmountTotal.Add(types.BigIntToFloat(cnt))
+	v.recomputeCirculatingSupply()
 
 	return nil
 }

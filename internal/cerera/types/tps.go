@@ -64,7 +64,7 @@ func (a *Address) SetBytes(b []byte) {
 }
 
 func (a Address) Bytes() []byte {
-	dst := make([]byte, 48)
+	dst := make([]byte, common.AddressLength)
 	copy(dst, a[:])
 	return dst
 }

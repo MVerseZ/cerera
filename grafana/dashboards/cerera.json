@@ -1,0 +1,83 @@
+{
+  "title": "Cerera Overview",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "P2P Direct Messages (rate)",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(p2p_direct_messages_sent_total[5m])", "legendFormat": "sent" },
+        { "expr": "rate(p2p_direct_messages_received_total[5m])", "legendFormat": "received" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "P2P PubSub Received (rate)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(p2p_pubsub_messages_received_total[5m])", "legendFormat": "pubsub recv" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Chain Blocks / TXs",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "increase(chain_blocks_total[1h])", "legendFormat": "blocks (1h)" },
+        { "expr": "increase(chain_txs_total[1h])", "legendFormat": "txs (1h)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Chain Avg Block Time / Difficulty",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "chain_avg_block_time_seconds", "legendFormat": "avg block time" },
+        { "expr": "chain_difficulty", "legendFormat": "difficulty" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Validator TXs (created/validated/rejected)",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "increase(validator_tx_created_total[15m])", "legendFormat": "created" },
+        { "expr": "increase(validator_tx_validated_total[15m])", "legendFormat": "validated" },
+        { "expr": "increase(validator_tx_rejected_total[15m])", "legendFormat": "rejected" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Validator Signing (success/error)",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "increase(validator_sign_success_total[15m])", "legendFormat": "sign success" },
+        { "expr": "increase(validator_sign_error_total[15m])", "legendFormat": "sign error" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Vault Accounts & Circulating Supply",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "vault_accounts_total", "legendFormat": "accounts" },
+        { "expr": "vault_circulating_supply", "legendFormat": "circulating" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Vault Faucet / Transfers",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "increase(vault_faucet_amount_total[1h])", "legendFormat": "faucet (1h)" },
+        { "expr": "rate(vault_transfers_total[5m])", "legendFormat": "transfers rate" }
+      ]
+    }
+  ]
+}
+
+
