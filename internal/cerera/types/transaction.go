@@ -148,6 +148,23 @@ func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64
 	}
 }
 
+// CreateUnbroadcastTransactionWei creates a transaction using exact wei amount (no float conversion).
+func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas float64, message string) (*GTransaction, error) {
+	if len(message) < 1024 {
+		var tx = NewTransaction(
+			nonce,
+			addressTo,
+			new(big.Int).Set(amountWei),
+			gas,
+			big.NewInt(0),
+			[]byte(message),
+		)
+		return tx, nil
+	} else {
+		return nil, ErrInvalidMsgLen
+	}
+}
+
 // WithSignature returns a new transaction with the given signature.
 func (tx *GTransaction) WithSignature(signer Signer, sig []byte) (*GTransaction, error) {
 	// fmt.Printf("try tx with siugnature: %x\r\n", sig)

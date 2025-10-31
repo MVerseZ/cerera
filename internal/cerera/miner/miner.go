@@ -93,7 +93,7 @@ func (m *miner) Stop() {
 }
 
 func (m *miner) miningLoop() {
-	ticker := time.NewTicker(1 * time.Second) // Майним каждые 7 секунд
+	ticker := time.NewTicker(3 * time.Second) // Майним каждые 7 секунд
 	defer ticker.Stop()
 
 	for {

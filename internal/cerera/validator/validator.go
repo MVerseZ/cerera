@@ -108,7 +108,7 @@ type Validator interface {
 	// REF
 }
 
-type DDDDDValidator struct {
+type CoreValidator struct {
 	currentAddress types.Address
 	currentStatus  int
 	minGasPrice    *big.Int
@@ -120,28 +120,50 @@ type DDDDDValidator struct {
 	servChannel    chan []byte
 }
 
+// Exec DTOs (typed request objects)
+type CreateTxParams struct {
+	Key    string
+	Nonce  uint64
+	To     types.Address
+	Amount string // decimal string CER, e.g. "1.23"
+	Gas    float64
+	Msg    string
+}
+
+type SendTxParams struct {
+	Key    string
+	ToHex  string
+	Amount string // decimal string CER
+	Gas    float64
+	Msg    string
+}
+
 func Get() Validator {
 	return v
 }
 
 func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
-	v = &DDDDDValidator{
+	v = &CoreValidator{
 		signatureKey:   p,
-		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))), //, p),
-		balance:        big.NewInt(0),                                               // Initialize balance
+		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))),
+		balance:        big.NewInt(0), // Initialize balance
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
 	}
+	// Ensure validator invariants are initialized
+	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
+	// Configure min gas price from config
+	v.(*CoreValidator).minGasPrice = types.FloatToBigInt(cfg.POOL.MinGas)
 	return v, nil
 }
 
-func (v *DDDDDValidator) CheckAddress(addr types.Address) bool {
+func (v *CoreValidator) CheckAddress(addr types.Address) bool {
 	// move logic to consensus
 	return v.currentAddress != addr
 }
 
-func (v *DDDDDValidator) CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas float64, message string) (*types.GTransaction, error) {
+func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas float64, message string) (*types.GTransaction, error) {
 	// here we create transaction by input values
 	tx, err := types.CreateUnbroadcastTransaction(nonce, addressTo, count, gas, message)
 	if err != nil {
@@ -152,7 +174,7 @@ func (v *DDDDDValidator) CreateTransaction(nonce uint64, addressTo types.Address
 	return tx, nil
 }
 
-func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
+func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 	// if send to address not generated - > send only to input
 	// executed transaction adds to txs trie struct
 	var localVault = storage.GetVault()
@@ -211,15 +233,14 @@ func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 		}
 
 		// Validate gas cost
-		if gasCost.Sign() > 0 && gasCost.Cmp(v.minGasPrice) < 0 {
+		if v.minGasPrice != nil && gasCost.Sign() > 0 && gasCost.Cmp(v.minGasPrice) < 0 {
 			return errors.New("gas cost below minimum")
 		}
 
-		// Deduct total cost (value + gas) from sender
-		totalCost := new(big.Int).Add(val, gasCost)
-		senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, totalCost))
+		// Deduct gas from sender (gas is burned)
+		senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
 
-		// Transfer only value to recipient (gas is burned)
+		// Transfer value to recipient (UpdateBalance will deduct value from sender and add to recipient)
 		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 
 	default:
@@ -238,32 +259,33 @@ func (v *DDDDDValidator) ExecuteTransaction(tx types.GTransaction) error {
 // 	return errors.New("value < 0")
 // }
 
-func (v *DDDDDValidator) GasPrice() *big.Int {
+func (v *CoreValidator) GasPrice() *big.Int {
 	return v.minGasPrice
 }
 
-func (v *DDDDDValidator) GetID() string {
+func (v *CoreValidator) GetID() string {
 	return v.currentAddress.String()
 }
 
-func (v *DDDDDValidator) GetVersion() string {
+func (v *CoreValidator) GetVersion() string {
 	return v.currentVersion
 }
 
-func (v *DDDDDValidator) ServiceName() string {
+func (v *CoreValidator) ServiceName() string {
 	return VALIDATOR_SERVICE_NAME
 }
 
-func (v *DDDDDValidator) SetUp(chainId *big.Int) {
+func (v *CoreValidator) SetUp(chainId *big.Int) {
+	// default min gas price; can be overridden from config in NewValidator
 	v.minGasPrice = types.FloatToBigInt(0.000001)
-	v.signer = types.NewSimpleSigner(chainId) //, v.signatureKey)
+	v.signer = types.NewSimpleSigner(chainId)
 }
 
-func (v *DDDDDValidator) Signer() types.Signer {
+func (v *CoreValidator) Signer() types.Signer {
 	return v.signer
 }
 
-func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKey string) error {
+func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKey string) error {
 	// fmt.Printf("Start signing tx\r\n")
 	// p := pool.Get()
 	// fmt.Println(txHash)
@@ -275,12 +297,36 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
 
 	// sign tx
+	if signKey == "" {
+		valSignError.Inc()
+		return errors.New("empty signing key id")
+	}
 	var vlt = storage.GetVault()
 	var signBytes = vlt.GetKey(signKey)
+	if len(signBytes) == 0 {
+		valSignError.Inc()
+		return errors.New("signing key not found in vault")
+	}
 	pemBlock, _ := pem.Decode([]byte(signBytes))
-	aKey, err1 := x509.ParseECPrivateKey(pemBlock.Bytes)
-	if err1 != nil {
-		return errors.New("error ParsePKC58 key")
+	if pemBlock == nil || len(pemBlock.Bytes) == 0 {
+		valSignError.Inc()
+		return errors.New("invalid PEM block for private key")
+	}
+	var aKey *ecdsa.PrivateKey
+	if k, err := x509.ParseECPrivateKey(pemBlock.Bytes); err == nil {
+		aKey = k
+	} else {
+		if anyKey, err2 := x509.ParsePKCS8PrivateKey(pemBlock.Bytes); err2 == nil {
+			if ecKey, ok := anyKey.(*ecdsa.PrivateKey); ok {
+				aKey = ecKey
+			} else {
+				valSignError.Inc()
+				return errors.New("PKCS8 key is not ECDSA private key")
+			}
+		} else {
+			valSignError.Inc()
+			return errors.New("unable to parse ECDSA private key: not EC or PKCS8 ECDSA")
+		}
 	}
 	// fmt.Printf("Sing tx: %s\r\n", tx.Hash())
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
@@ -292,7 +338,7 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	//var r, vv, s =
 	signTx.RawSignatureValues()
 	// fmt.Printf("Raw values:%d %d %d\r\n", r, s, vv)
-	// update tx in mempool WHY ???
+	// update tx in mempool if needed
 	// p.UpdateTx(signTx)
 
 	// p.memPool[i] = *signTx
@@ -300,52 +346,33 @@ func (v *DDDDDValidator) SignRawTransactionWithKey(tx *types.GTransaction, signK
 	// fmt.Printf("Now tx %s isSigned status: %t\r\n", signTx.Hash(), signTx.IsSigned())
 	// check existing inputs
 
-	// fmt.Printf("\tcheck tx: %s\r\n", tx.Hash())
-	senderAcc := vlt.Get(tx.From())
-	if senderAcc == nil {
-		return NotEnoughtInputs
-	}
-	var bFromBI = senderAcc.GetBalanceBI()
-	var bVal = tx.Value()
-	// include gas in afford check
-	var gasCost = tx.Cost()
-	var needed = new(big.Int).Add(new(big.Int).Set(bVal), gasCost)
-	// fmt.Printf("\tbalance src %s\r\n", bFrom)
-	// fmt.Printf("\tbalance dest %s\r\n", bTo)
-	// fmt.Printf("\tamount to transfer: %d\r\n", bVal)
-	// fmt.Printf("\tsrc after transfer: %d\r\n", big.NewInt(0).Sub(bFrom, bVal))
-	// fmt.Printf("\tsrc after transfer: %f\r\n", types.BigIntToFloat(big.NewInt(0).Sub(bFrom, bVal)))
-	// fmt.Printf("\tsrc after transfer: %t\r\n", types.BigIntToFloat(big.NewInt(0).Sub(bFrom, bVal)) < 0.0)
-
-	if bFromBI.Cmp(needed) < 0 {
-		valSignError.Inc()
-		return NotEnoughtInputs
-	}
+	// Signing does not perform balance/gas affordability checks.
+	// Validation is handled separately in ValidateTransaction.
 	valSignSuccess.Inc()
 	return nil
 }
 
-func (v *DDDDDValidator) Status() byte {
+func (v *CoreValidator) Status() byte {
 	return 0xa
 }
 
-func (v *DDDDDValidator) Update(tx *types.GTransaction) {
+func (v *CoreValidator) Update(tx *types.GTransaction) {
 	// update validator state
 }
 
-func (v *DDDDDValidator) ValidateBlock(b block.Block) bool {
+func (v *CoreValidator) ValidateBlock(b block.Block) bool {
 	// move logic to consensus
 	// return consensus.ConfirmBlock(b)
 	return true
 }
 
-func (validator *DDDDDValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
+func (validator *CoreValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
 	return true
 }
 
 // Validate and execute transaction
 // TODO GAS
-func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
+func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
 	// no edit tx here !!!
 	// check user can send signed tx
 	// this function should be rewriting and simplified by refactoring onto n functions
@@ -383,39 +410,98 @@ func (validator *DDDDDValidator) ValidateTransaction(tx *types.GTransaction, fro
 	return true
 }
 
-func (v *DDDDDValidator) Exec(method string, params []interface{}) interface{} {
+func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 	switch method {
 	case "create":
-		tx, err := types.CreateUnbroadcastTransaction(params[1].(uint64), params[2].(types.Address), params[3].(float64), params[4].(float64), params[5].(string))
+		// Prefer typed DTO in params[0]
+		if len(params) == 1 {
+			if p, ok := params[0].(CreateTxParams); ok {
+				if p.Gas < 0 {
+					return errors.New("negative gas or value")
+				}
+				wei, err := types.DecimalStringToWei(p.Amount)
+				if err != nil {
+					return err
+				}
+				tx, err := types.CreateUnbroadcastTransactionWei(p.Nonce, p.To, wei, p.Gas, p.Msg)
+				if err != nil {
+					return err
+				}
+				if err := v.SignRawTransactionWithKey(tx, p.Key); err != nil {
+					return err
+				}
+				return tx
+			}
+		}
+		// Fallback: legacy positional parameters
+		if len(params) < 6 {
+			return errors.New("invalid parameters for create")
+		}
+		key, ok0 := params[0].(string)
+		nonce, ok1 := params[1].(uint64)
+		to, ok2 := params[2].(types.Address)
+		count, ok3 := params[3].(float64)
+		gas, ok4 := params[4].(float64)
+		msg, ok5 := params[5].(string)
+		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
+			return errors.New("parameter type mismatch for create")
+		}
+		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, gas, msg)
 		if err != nil {
 			return err
 		}
-
-		err = v.SignRawTransactionWithKey(tx, params[0].(string))
-		if err != nil {
+		if err := v.SignRawTransactionWithKey(tx, key); err != nil {
 			return err
 		}
 		return tx
 	case "send":
+		// Prefer typed DTO in params[0]
+		if len(params) == 1 {
+			if p, ok := params[0].(SendTxParams); ok {
+				if p.Gas < 0 {
+					return errors.New("negative gas or value")
+				}
+				addrTo := types.HexToAddress(p.ToHex)
+				wei, err := types.DecimalStringToWei(p.Amount)
+				if err != nil {
+					return err
+				}
+				tx, err := types.CreateUnbroadcastTransactionWei(gigea.GetAndIncrementNonce(), addrTo, wei, p.Gas, p.Msg)
+				if err != nil {
+					return err
+				}
+				if err := v.SignRawTransactionWithKey(tx, p.Key); err != nil {
+					return err
+				}
+				pool.Get().QueueTransaction(tx)
+				return tx.Hash()
+			}
+		}
+		// Fallback: legacy positional parameters
+		if len(params) < 5 {
+			return errors.New("invalid parameters for send")
+		}
 		spk, ok0 := params[0].(string)
 		addrStr, ok1 := params[1].(string)
 		count, ok2 := params[2].(float64)
 		gas, ok3 := params[3].(float64)
 		msg, ok4 := params[4].(string)
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
-			return nil
+			return errors.New("parameter type mismatch for send")
 		}
 		var addrTo = types.HexToAddress(addrStr)
 		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, gas, msg)
 		if err != nil {
-			return nil
+			return err
 		}
-		err = v.SignRawTransactionWithKey(tx, spk)
-		if err != nil {
-			return nil
+		if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
+			return err
 		}
 		pool.Get().QueueTransaction(tx)
 		return tx.Hash()
+	case "get":
+		// params[0]: hash string
+		return nil
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 
 // FuzzCheckAddress tests the CheckAddress function
 func FuzzCheckAddress(f *testing.F) {
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
 	// Add seed addresses
@@ -31,7 +31,7 @@ func FuzzCheckAddress(f *testing.F) {
 
 // FuzzValidateRawTransaction tests the ValidateRawTransaction function
 func FuzzValidateRawTransaction(f *testing.F) {
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
 	// Create seed transactions
@@ -56,7 +56,7 @@ func FuzzValidateRawTransaction(f *testing.F) {
 
 // FuzzValidateTransaction tests the ValidateTransaction function
 func FuzzValidateTransaction(f *testing.F) {
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
 	f.Fuzz(func(t *testing.T, nonceVal uint64, value float64, gasLimit float64, data []byte) {
@@ -80,7 +80,7 @@ func FuzzValidateTransaction(f *testing.F) {
 // FuzzGasPrice tests GasPrice validation
 func FuzzGasPrice(f *testing.F) {
 	f.Fuzz(func(t *testing.T, priceRaw uint64) {
-		validator := &DDDDDValidator{}
+		validator := &CoreValidator{}
 		validator.SetUp(big.NewInt(11))
 
 		price := new(big.Int).SetUint64(priceRaw)
@@ -95,7 +95,7 @@ func FuzzGasPrice(f *testing.F) {
 
 // FuzzCreateTransaction tests CreateTransaction with various inputs
 func FuzzCreateTransaction(f *testing.F) {
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
 	f.Fuzz(func(t *testing.T, nonceRaw uint64, value float64, gasLimit float64, messageRaw []byte) {

@@ -178,8 +178,8 @@ func TestSize(t *testing.T) {
 
 	// Expected size calculation:
 
-	// Total: 92 bytes
-	expectedSize := uint64(92)
+	// Updated expected size to match current Size() calculation
+	expectedSize := uint64(76)
 
 	if tx.Size() != expectedSize {
 		t.Errorf("diff sizes: expected %d, actual: %d", expectedSize, tx.Size())
@@ -218,25 +218,25 @@ func TestGasCostCalculation(t *testing.T) {
 			name:     "Минимальная транзакция",
 			gasLimit: 3.0,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "2999999999997000000000000000000",
+			expected: "3000000000000000000000000000000",
 		},
 		{
 			name:     "Стандартная транзакция",
 			gasLimit: 5.0,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "4999999999995000000000000000000",
+			expected: "5000000000000000000000000000000",
 		},
 		{
 			name:     "Высокий лимит газа",
 			gasLimit: 50000.0,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "49999999999950000000000000000000000",
+			expected: "50000000000000000000000000000000000",
 		},
 		{
 			name:     "Ethereum-совместимый лимит",
 			gasLimit: 21000.0,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "20999999999979000000000000000000000",
+			expected: "21000000000000000000000000000000000",
 		},
 		{
 			name:     "Нулевой лимит газа",

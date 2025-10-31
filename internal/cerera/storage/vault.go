@@ -572,13 +572,24 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		return v.Get(types.HexToAddress(addr)).GetBalance()
 	case "faucet":
 		addrStr, ok1 := params[0].(string)
-		amount, ok2 := params[1].(float64)
-		if !ok1 || !ok2 {
+		if !ok1 {
 			return "Error parsing parameters"
 		}
 
 		addr := types.HexToAddress(addrStr)
-		amountBigInt := types.FloatToBigInt(amount)
+		var amountBigInt *big.Int
+		// Prefer exact decimal as string in params[1]
+		if s, ok := params[1].(string); ok {
+			wei, err := types.DecimalStringToWei(s)
+			if err != nil {
+				return err.Error()
+			}
+			amountBigInt = wei
+		} else if f, ok := params[1].(float64); ok {
+			amountBigInt = types.FloatToBigInt(f)
+		} else {
+			return "Error parsing amount"
+		}
 
 		// Create a dummy transaction hash for faucet
 		txHash := common.BytesToHash([]byte("faucet_" + addrStr))
@@ -587,8 +598,13 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		if err != nil {
 			return err.Error()
 		}
-
 		return "Faucet successful"
+	case "inputs":
+		addr, ok1 := params[0].(string)
+		if !ok1 {
+			return "Error parsing parameters"
+		}
+		return v.Get(types.HexToAddress(addr)).Inputs
 	}
 	return nil
 }

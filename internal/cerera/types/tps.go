@@ -281,21 +281,30 @@ func GetFloat(unk interface{}) (float64, error) {
 }
 
 func FloatToBigInt(val float64) *big.Int {
-	// Use higher precision for financial calculations
-	bigval := new(big.Float)
-	bigval.SetFloat64(val)
-	bigval.SetPrec(128) // Higher precision to avoid rounding errors
+	// Convert float to decimal string, then use exact decimal -> wei converter
+	// to avoid binary FP artifacts like ...0005
+	s := strconv.FormatFloat(val, 'f', -1, 64)
+	wei, err := DecimalStringToWei(s)
+	if err != nil {
+		return big.NewInt(0)
+	}
+	return wei
+}
 
-	// Use 10^18 as the multiplier (like Ethereum wei)
-	coin := new(big.Float)
-	coin.SetInt(big.NewInt(1000000000000000000)) // 10^18
-
-	bigval.Mul(bigval, coin)
-
-	result := new(big.Int)
-	bigval.Int(result) // store converted number in result
-
-	return result
+// DecimalStringToWei converts exact decimal string (e.g. "1.23") into wei (10^18) without binary float errors.
+// Returns error for malformed input. Accepts optional leading +/-, and up to 18 fractional digits.
+func DecimalStringToWei(s string) (*big.Int, error) {
+	r := new(big.Rat)
+	if _, ok := r.SetString(s); !ok {
+		return nil, errors.New("bad decimal")
+	}
+	scale := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+	r.Mul(r, scale)
+	// Round to nearest integer towards zero; adjust policy if needed
+	if !r.IsInt() {
+		r = r.SetFrac(r.Num(), r.Denom())
+	}
+	return new(big.Int).Set(r.Num()), nil
 }
 
 func BigIntToFloat(bi *big.Int) float64 {

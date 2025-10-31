@@ -62,7 +62,7 @@ func TestPoolSigningProc(t *testing.T) {
 // TestGasValidation проверяет валидацию газа в валидаторе
 func TestGasValidation(t *testing.T) {
 	// Создаем валидатор
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11)) // ChainID = 11 из config.json
 
 	tests := []struct {
@@ -149,7 +149,7 @@ func TestGasValidation(t *testing.T) {
 
 // TestMinGasPrice проверяет установку минимальной цены газа
 func TestMinGasPrice(t *testing.T) {
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
 	expectedMinGasPrice := types.FloatToBigInt(0.000001)
@@ -164,7 +164,7 @@ func TestMinGasPrice(t *testing.T) {
 
 // TestGasCostCalculation проверяет расчет стоимости газа в контексте валидатора
 func TestGasCostCalculation(t *testing.T) {
-	validator := &DDDDDValidator{}
+	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
 	tests := []struct {
@@ -177,25 +177,25 @@ func TestGasCostCalculation(t *testing.T) {
 			name:     "Минимальная транзакция",
 			gasLimit: 3.0,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "2999999999997000000000000000000",
+			expected: "3000000000000000000000000000000",
 		},
 		{
 			name:     "Стандартная транзакция",
 			gasLimit: 5.0,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "4999999999995000000000000000000",
+			expected: "5000000000000000000000000000000",
 		},
 		{
 			name:     "Высокий лимит газа",
 			gasLimit: 50000.0,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "49999999999950000000000000000000000",
+			expected: "50000000000000000000000000000000000",
 		},
 		{
 			name:     "Ethereum-совместимый лимит",
 			gasLimit: 21000.0,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "20999999999979000000000000000000000",
+			expected: "21000000000000000000000000000000000",
 		},
 	}
 

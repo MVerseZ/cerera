@@ -332,6 +332,8 @@ func (p *Pool) Exec(method string, params []interface{}) interface{} {
 	switch method {
 	case "getInfo":
 		return p.GetInfo()
+	case "minGas":
+		return p.GetMinimalGasValue()
 	}
 	return nil
 }

@@ -33,7 +33,7 @@ func TestFloatToBigInt(t *testing.T) {
 		{
 			name:     "small decimal",
 			input:    0.000001,
-			expected: big.NewInt(999999999999), // 0.000001 * 10^18 (with rounding)
+			expected: big.NewInt(1000000000000), // exact 1e-6 * 1e18
 		},
 		{
 			name:     "large number",

@@ -171,8 +171,13 @@ func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error
 	return BytesToAddress(INRISeq(pubBytes[1:])[32:]), nil
 }
 
+// removed custom pubkey extraction; legacy recovery kept
+
 func decodeSignature(sig []byte) (r, s, v *big.Int) {
 	// fmt.Printf("decode signature len: %v\r\n", len(sig))
+	if len(sig) < 96 {
+		return new(big.Int), new(big.Int), new(big.Int)
+	}
 	rsSig := sig[64:]
 	vSig := sig[1:][:16]
 	r = new(big.Int).SetBytes(rsSig[:32])
