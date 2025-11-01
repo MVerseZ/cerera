@@ -24,9 +24,9 @@ import (
 
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
-	bc       *chain.Chain
-	g        *validator.Validator
-	h        *network.Node
+	bc *chain.Chain
+	g  *validator.Validator
+	// h        *network.Node
 	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
 	v        *storage.Vault
 	registry *service.Registry

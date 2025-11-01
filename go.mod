@@ -1,8 +1,6 @@
 module github.com/cerera
 
-go 1.23.0
-
-toolchain go1.23.6
+go 1.25.3
 
 require (
 	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792
@@ -15,8 +13,9 @@ require (
 	github.com/tyler-smith/go-bip32 v1.0.0
 	github.com/tyler-smith/go-bip39 v1.1.0
 	golang.org/x/crypto v0.36.0
-	google.golang.org/protobuf v1.36.5
 )
+
+require google.golang.org/protobuf v1.36.5 // indirect
 
 require (
 	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect

@@ -78,28 +78,6 @@ func (manager *WsManager) Start(ctx context.Context) error {
 				}
 			}
 			manager.mutex.Unlock()
-			// case message := <-pul.DataChannel:
-			// 	manager.mutex.Lock()
-			// 	for conn := range manager.clients {
-			// 		err := conn.WriteMessage(websocket.TextMessage, message)
-			// 		if err != nil {
-			// 			log.Println("Error writing message:", err)
-			// 			conn.Close()
-			// 			delete(manager.clients, conn)
-			// 		}
-			// 	}
-			// 	manager.mutex.Unlock()
-			// case message := <-gigea.C.MetricChannel:
-			// 	manager.mutex.Lock()
-			// 	for conn := range manager.clients {
-			// 		err := conn.WriteMessage(websocket.TextMessage, message)
-			// 		if err != nil {
-			// 			log.Println("Error writing message:", err)
-			// 			conn.Close()
-			// 			delete(manager.clients, conn)
-			// 		}
-			// 	}
-			// 	manager.mutex.Unlock()
 		}
 	}
 }
