@@ -230,7 +230,7 @@ func TestSizeSigning(t *testing.T) {
 		// fmt.Println("Hello from Windows")
 		txSize = uint64(76)
 	} else {
-		txSize = uint64(91)
+		txSize = uint64(76)
 	}
 	if tx1.Size() != txSize || txSize == 0 {
 		t.Errorf("diff sizes: expected %d, actual: %d", txSize, tx1.Size())
