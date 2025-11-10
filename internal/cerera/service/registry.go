@@ -36,6 +36,19 @@ func Exec(method string, params []interface{}) interface{} {
 	return service.Exec(m, params)
 }
 
+func ExecTyped(method string, params []interface{}) interface{} {
+	registry, err := GetRegistry()
+	if err != nil {
+		return err
+	}
+	var cmp, m = ParseMethod(method)
+	service, ok := registry.GetService(cmp)
+	if !ok {
+		return fmt.Errorf("service %s not found", cmp)
+	}
+	return service.Exec(m, params)
+}
+
 func GetRegistry() (*Registry, error) {
 	if R == nil {
 		return nil, fmt.Errorf("service registry not initialized")

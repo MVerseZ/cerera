@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"strings"
@@ -20,7 +21,26 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
+// vltlogger is a dedicated console logger for chain
+var vltlogger = log.New(os.Stdout, "[vault] ", log.LstdFlags|log.Lmicroseconds)
+
 const VAULT_SERVICE_NAME = "D5_VAULT_CERERA_001_1_7"
+
+// Error constants
+var (
+	ErrMnemonicEmpty             = errors.New("mnemonic phrase cannot be empty")
+	ErrFailedCreateMasterKey     = errors.New("failed to create master key")
+	ErrAccountNotFound           = errors.New("account not found")
+	ErrFaucetAccountNotFound     = errors.New("faucet account not found")
+	ErrFaucetInsufficientBalance = errors.New("faucet insufficient balance")
+	ErrWrongCredentials          = errors.New("wrong credentials")
+	ErrErrorParsingParameters    = errors.New("error parsing parameters")
+	ErrWrongWordsCount           = errors.New("wrong words count")
+	ErrErrorWhileRestore         = errors.New("error while restore")
+	ErrErrorParsingAmount        = errors.New("error parsing amount")
+	ErrFailedGenerateUniqueAddr  = errors.New("failed to generate unique address after retries (collision with system address)")
+	ErrAddressAlreadyExists      = errors.New("address already exists in vault, bad collision")
+)
 
 type Vault interface {
 	Create(pass string) (string, string, string, *types.Address, error)
@@ -127,10 +147,8 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
 
-	fmt.Printf("Init vault with %s\r\n\t%s\r\n", rootHashAddress, VAULT_SERVICE_NAME)
-	fmt.Println("==========================================")
-	fmt.Printf("%s\r\n", cfg.NetCfg.PRIV)
-	fmt.Println("==========================================")
+	vltlogger.Printf("Init vault with %s_serv_%s\r\n", rootHashAddress, VAULT_SERVICE_NAME)
+	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &types.StateAccount{
 		Address: rootHashAddress,
@@ -238,12 +256,12 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 
 	// Если после всех попыток все еще коллизия - возвращаем ошибку
 	if address == coinbaseAddr || address == faucetAddr {
-		return "", "", "", nil, fmt.Errorf("failed to generate unique address after %d retries (collision with system address)", maxRetries)
+		return "", "", "", nil, fmt.Errorf("%w (after %d retries)", ErrFailedGenerateUniqueAddr, maxRetries)
 	}
 
 	// Проверяем, не существует ли уже аккаунт с таким адресом
 	if existing := v.accounts.GetAccount(address); existing != nil {
-		return "", "", "", nil, fmt.Errorf("address %s already exists in vault, bad collision", address.Hex())
+		return "", "", "", nil, fmt.Errorf("%w: %s", ErrAddressAlreadyExists, address.Hex())
 	}
 
 	derBytes := types.EncodePrivateKeyToByte(privateKey)
@@ -282,20 +300,20 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, string, error) {
 	// Validate input parameters
 	if mnemonic == "" {
-		return types.EmptyAddress(), "", "", errors.New("mnemonic phrase cannot be empty")
+		return types.EmptyAddress(), "", "", ErrMnemonicEmpty
 	}
 
 	// entropy := bip39.EntropyFromMnemonic(mnemonic)
 	seed := bip39.NewSeed(mnemonic, pass)
 	masterKey, err := bip32.NewMasterKey(seed)
 	if err != nil {
-		return types.EmptyAddress(), "", "", fmt.Errorf("failed to create master key: %w", err)
+		return types.EmptyAddress(), "", "", fmt.Errorf("%w: %v", ErrFailedCreateMasterKey, err)
 	}
 	publicKey := masterKey.PublicKey()
 
 	addr, err := v.accounts.FindAddrByPub(publicKey.B58Serialize())
 	if err != nil {
-		return types.EmptyAddress(), "", "", fmt.Errorf("account not found: %w", err)
+		return types.EmptyAddress(), "", "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
 	}
 
 	return addr, masterKey.B58Serialize(), publicKey.B58Serialize(), nil
@@ -415,12 +433,12 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 
 	var sa = v.Get(coinbase.GetFaucetAddress())
 	if sa == nil {
-		return errors.New("faucet account not found")
+		return ErrFaucetAccountNotFound
 	}
 
 	// Check if faucet has enough balance
 	if sa.GetBalanceBI().Cmp(cnt) < 0 {
-		return errors.New("faucet insufficient balance")
+		return ErrFaucetInsufficientBalance
 	}
 
 	var saDest = v.Get(to)
@@ -476,12 +494,12 @@ func (v *D5Vault) Status() byte {
 func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address, error) {
 	var acc = v.accounts.GetAccount(addr)
 	if acc == nil {
-		return types.EmptyAddress(), errors.New("account not found")
+		return types.EmptyAddress(), ErrAccountNotFound
 	}
 	if acc.Passphrase == common.BytesToHash([]byte(pass)) {
 		return acc.Address, nil
 	}
-	return types.EmptyAddress(), errors.New("wrong credentials")
+	return types.EmptyAddress(), ErrWrongCredentials
 }
 
 func (v *D5Vault) ServiceName() string {
@@ -520,16 +538,14 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		mnemonic, ok1 := params[0].(string)
 		pass, ok2 := params[1].(string)
 		if !ok1 || !ok2 {
-			return "Error parsing parameters"
+			return ErrErrorParsingParameters.Error()
 		}
 		if strings.Count(mnemonic, " ") != 23 {
-			Result := "Wrong words count!"
-			return Result
+			return ErrWrongWordsCount.Error()
 		}
 		addr, mk, pk, err := vlt.Restore(mnemonic, pass)
 		if err != nil {
-			Result := "Error while restore"
-			return Result
+			return ErrErrorWhileRestore.Error()
 		}
 		type res struct {
 			Addr types.Address `json:"address,omitempty"`
@@ -546,13 +562,13 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		addr, ok1 := params[0].(string)
 		pass, ok2 := params[1].(string)
 		if !ok1 || !ok2 {
-			return "Error parsing parameters"
+			return ErrErrorParsingParameters.Error()
 		}
 		rAddr, err := v.VerifyAccount(types.HexToAddress(addr), pass)
 		if err != nil {
 			return false //"Error while verify"
 		}
-		fmt.Println(rAddr.Hex(), addr)
+		// fmt.Println(rAddr.Hex(), addr)
 		// INSERT_YOUR_CODE
 		// Compare the addresses byte by byte for equality
 		if len(addr) != len(rAddr.Hex()) {
@@ -567,13 +583,13 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 	case "getBalance":
 		addr, ok1 := params[0].(string)
 		if !ok1 {
-			return "Error parsing parameters"
+			return ErrErrorParsingParameters.Error()
 		}
 		return v.Get(types.HexToAddress(addr)).GetBalance()
 	case "faucet":
 		addrStr, ok1 := params[0].(string)
 		if !ok1 {
-			return "Error parsing parameters"
+			return ErrErrorParsingParameters.Error()
 		}
 
 		addr := types.HexToAddress(addrStr)
@@ -588,7 +604,7 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		} else if f, ok := params[1].(float64); ok {
 			amountBigInt = types.FloatToBigInt(f)
 		} else {
-			return "Error parsing amount"
+			return ErrErrorParsingAmount.Error()
 		}
 
 		// Create a dummy transaction hash for faucet
@@ -602,7 +618,7 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 	case "inputs":
 		addr, ok1 := params[0].(string)
 		if !ok1 {
-			return "Error parsing parameters"
+			return ErrErrorParsingParameters.Error()
 		}
 		return v.Get(types.HexToAddress(addr)).Inputs
 	}

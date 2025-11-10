@@ -3,13 +3,17 @@ package network
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/cerera/internal/cerera/config"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+var httpLogger = log.New(os.Stdout, "[http] ", log.LstdFlags|log.Lmicroseconds)
 
 func SetUpHttp(ctx context.Context, cfg *config.Config, port int) error {
 	rpcRequestMetric := prometheus.NewCounter(
@@ -29,12 +33,12 @@ func SetUpHttp(ctx context.Context, cfg *config.Config, port int) error {
 		// 	}
 		// } else {
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
-			fmt.Println("Error starting server:", err)
+			httpLogger.Println("Error starting server:", err)
 		}
 		// }
 	}()
 
-	fmt.Printf("Starting http server at port %d\r\n", port)
+	httpLogger.Printf("Starting http server at port %d\r\n", port)
 	go http.HandleFunc("/", HandleRequest(ctx))
 	go http.HandleFunc("/ws", HandleWebSockerRequest(ctx))
 

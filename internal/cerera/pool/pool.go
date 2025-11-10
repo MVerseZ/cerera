@@ -2,7 +2,8 @@ package pool
 
 import (
 	"errors"
-	"fmt"
+	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 )
 
 const POOL_SERVICE_NAME = "POOL_CERERA_001_1_3"
+
+var pLogger = log.New(os.Stdout, "[pool] ", log.LstdFlags|log.Lmicroseconds)
 
 type MemPoolInfo struct {
 	Size             int     // current tx count
@@ -80,7 +83,7 @@ func InitPool(minGas float64, maxSize int) (TxPool, error) {
 
 		observers: make([]observer.Observer, 0),
 	}
-	fmt.Printf("Init pool with parameters: \r\n\t MIN_GAS:%f (%s)\r\n\tMAX_SIZE:%d\r\n", p.minGas, types.FloatToBigInt(p.minGas), p.maxSize)
+	pLogger.Printf("Init pool with parameters: MIN_GAS:%f(%s), MAX_SIZE:%d", p.minGas, types.FloatToBigInt(p.minGas), p.maxSize)
 	p.Info = MemPoolInfo{
 		Size:             0,
 		Bytes:            0,
@@ -281,7 +284,7 @@ func (p *Pool) PoolServiceLoop() {
 }
 
 func (p *Pool) Register(observer observer.Observer) {
-	fmt.Printf("Register new pool observer: %s\r\n", observer.GetID())
+	pLogger.Printf("Register new pool observer: %s\r\n", observer.GetID())
 	p.observers = append(p.observers, observer)
 }
 
@@ -305,7 +308,7 @@ func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 		// p.memPool = append(p.memPool, tx)
 		// network.BroadcastTx(tx)
 	} else {
-		fmt.Printf("[POOL] Transaction rejected: %s (pool size: %d/%d, gas: %f >= %f)\n",
+		pLogger.Printf("Transaction rejected: %s (pool size: %d/%d, gas: %f >= %f)\n",
 			tx.Hash(), len(p.memPool), p.maxSize, tx.Gas(), p.minGas)
 	}
 	return tx.Hash(), nil
@@ -322,7 +325,7 @@ func (p *Pool) UnRegister(observer observer.Observer) {
 func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	for _, tx := range p.memPool {
 		if tx.Hash().String() == newTx.Hash().String() {
-			fmt.Printf("Replace sign tx in pool: %s signed:%t\r\n", newTx.Hash(), newTx.IsSigned())
+			pLogger.Printf("Replace sign tx in pool: %s signed:%t", newTx.Hash(), newTx.IsSigned())
 			p.AddRawTransaction(&newTx)
 		}
 	}

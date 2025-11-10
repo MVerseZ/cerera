@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"github.com/cerera/internal/cerera/block"
-	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
 )
 
@@ -25,9 +25,9 @@ type Miner interface {
 }
 
 type miner struct {
-	status   byte
-	config   *config.Config
-	chain    *chain.Chain
+	status byte
+	config *config.Config
+	// chain    *chain.Chain
 	pool     pool.TxPool
 	mining   bool
 	stopChan chan struct{}
@@ -62,7 +62,8 @@ func (m *miner) Start() {
 		fmt.Printf("[MINER] Chain service not found\n")
 		return
 	}
-	m.chain = chain.GetBlockChain()
+	// m.chain = chain.GetBlockChain()
+	// connect chain to miner by validator
 	fmt.Printf("[MINER] Chain service connected\n")
 
 	// Получаем пул транзакций
@@ -75,7 +76,8 @@ func (m *miner) Start() {
 	fmt.Printf("[MINER] Pool service connected\n")
 
 	// Получаем последний блок
-	lastBlock := m.chain.GetLatestBlock()
+	lastBlockIndex := service.ExecTyped("cerera.chain.height", nil).(int)
+	lastBlock := service.ExecTyped("cerera.chain.getBlockByIndex", []interface{}{float64(lastBlockIndex)}).(*block.Block)
 	fmt.Printf("[MINER] Last block: Height=%d, Hash=%s\n",
 		lastBlock.Header().Height, lastBlock.GetHash())
 
@@ -113,18 +115,20 @@ func (m *miner) mineBlock() {
 	// fmt.Printf("[MINER] Starting scheduled block mining...\n")
 
 	// Получаем последний блок
-	lastBlock := m.chain.GetLatestBlock()
-	if lastBlock == nil {
-		fmt.Printf("[MINER] No last block found\n")
-		return
-	}
+
+	lastBlockIndex := service.ExecTyped("cerera.chain.height", nil).(int)
+	latestBlock := service.ExecTyped("cerera.chain.getBlockByIndex", []interface{}{float64(lastBlockIndex)}).(*block.Block)
+	// if lastBlock == nil {
+	// 	fmt.Printf("[MINER] No last block found\n")
+	// 	return
+	// }
 
 	// Получаем транзакции из пула
 	pendingTxs := m.pool.GetPendingTransactions()
 	// fmt.Printf("[MINER] Found %d pending transactions\n", len(pendingTxs))
 
 	// Создаем новый блок
-	newBlock := m.createNewBlock(lastBlock, pendingTxs)
+	newBlock := m.createNewBlock(latestBlock, pendingTxs)
 	if newBlock == nil {
 		fmt.Printf("[MINER] Failed to create new block\n")
 		return
@@ -133,8 +137,9 @@ func (m *miner) mineBlock() {
 	// Выполняем майнинг (поиск nonce)
 	m.performMining(newBlock)
 
-	// Добавляем блок в цепочку
-	m.chain.UpdateChain(newBlock)
+	// Добавляем блок в цепочку через validator
+	var validator = validator.Get()
+	validator.ProposeBlock(newBlock)
 
 	// Очищаем пул от обработанных транзакций
 	m.clearProcessedTransactions(newBlock.Transactions)

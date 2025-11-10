@@ -20,6 +20,7 @@ import (
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
+	"github.com/cerera/internal/mesh"
 )
 
 // Cerera объединяет основные компоненты приложения.
@@ -79,18 +80,10 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	// register pool in registry
 	registry.Register(mempool.ServiceName(), mempool)
 
-	// Инициализация сети
-	// if mode == "p2p" {
-	// 	go net.StartNode(address, cfg.NetCfg.ADDR)
-	// } else {
-	// 	if err := network.NewServer(cfg, mode, address); err != nil {
-	// 		return nil, fmt.Errorf("failed to start network server: %w", err)
-	// 	}
-	// }
+	// Инициализация http сервера
 	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
 		log.Printf("HTTP server error: %v", err)
 	}
-	// network.NewWsManager().Start(ctx)
 
 	// Инициализация майнера
 	miner, err := miner.Init()
@@ -127,7 +120,7 @@ func setupLogging() error {
 
 // parseFlags разбирает аргументы командной строки.
 func parseFlags() (config.Config, string, string, int, bool, bool) {
-	addr := flag.String("addr", "31000", "p2p address for connection")
+	port := flag.String("port", "31000", "p2p port for connection")
 	keyPath := flag.String("key", "", "path to pem key")
 	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
@@ -141,7 +134,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	cfg.SetAutoGen(true)
 	cfg.SetInMem(*inMem)
 
-	return *cfg, *mode, *addr, *http, *mine, *inMem
+	return *cfg, *mode, *port, *http, *mine, *inMem
 }
 
 func main() {
@@ -152,19 +145,25 @@ func main() {
 	}
 
 	// Парсинг флагов и создание конфигурации
-	cfg, mode, address, httpPort, mine, _ := parseFlags()
+	cfg, mode, port, httpPort, mine, _ := parseFlags()
 
 	// Создание контекста с обработкой сигналов
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	// Инициализация приложения
-	app, err := NewCerera(&cfg, ctx, mode, address, httpPort, mine)
+	_, err := NewCerera(&cfg, ctx, mode, port, httpPort, mine)
 	if err != nil {
 		log.Printf("Failed to initialize Cerera: %v", err)
 		os.Exit(1)
 	}
-	fmt.Printf("\t<--------Cerera Status: %x-------->\r\n", app.status)
+
+	_, err = mesh.Start(&cfg, ctx, port)
+	if err != nil {
+		log.Printf("Failed to initialize DHT: %v", err)
+		os.Exit(1)
+	}
+	// mesh.Connect(app.cmdChan)
 
 	// Ожидание сигнала завершения
 	<-ctx.Done()
@@ -181,4 +180,5 @@ func main() {
 	default:
 		log.Println("Приложение корректно завершено")
 	}
+
 }

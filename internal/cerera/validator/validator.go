@@ -11,9 +11,11 @@ import (
 	"os"
 
 	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/pool"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
@@ -83,20 +85,18 @@ func (err decError) Error() string { return err.msg }
 var v Validator
 
 type Validator interface {
-	CheckAddress(addr types.Address) bool
+	// CheckAddress(addr types.Address) bool
 	GasPrice() *big.Int
 	GetVersion() string
 	Exec(method string, params []interface{}) interface{}
 	ExecuteTransaction(tx types.GTransaction) error
-	// Faucet(addrStr string, valFor int) error
+	FindTransaction(hash common.Hash) *types.GTransaction
 	CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas float64, message string) (*types.GTransaction, error)
-
 	SetUp(chainId *big.Int)
 	ServiceName() string
 	Signer() types.Signer
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
-
 	ValidateRawTransaction(tx *types.GTransaction) bool
 	// validate and execute transaction
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
@@ -104,20 +104,20 @@ type Validator interface {
 	// observer methods
 	GetID() string
 	Update(tx *types.GTransaction)
+	// UpdateTxTree(tx *types.GTransaction, bIndex int)
+	ProposeBlock(b *block.Block)
 
 	// REF
 }
 
 type CoreValidator struct {
-	currentAddress types.Address
-	currentStatus  int
-	minGasPrice    *big.Int
-	storage        string
+	*chain.Chain
 	signatureKey   *ecdsa.PrivateKey
 	signer         types.Signer
 	balance        *big.Int
+	currentAddress types.Address
 	currentVersion string
-	servChannel    chan []byte
+	minGasPrice    *big.Int
 }
 
 // Exec DTOs (typed request objects)
@@ -144,12 +144,22 @@ func Get() Validator {
 
 func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	var p = types.DecodePrivKey(cfg.NetCfg.PRIV)
+	storage.InitTxTable()
 	v = &CoreValidator{
 		signatureKey:   p,
 		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))),
 		balance:        big.NewInt(0), // Initialize balance
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
+	}
+	// Get chain from registry if not set
+	registry, err := service.GetRegistry()
+	if err == nil {
+		if ch, ok := registry.GetService(chain.CHAIN_SERVICE_NAME); ok {
+			if chainPtr, ok := ch.(*chain.Chain); ok {
+				v.(*CoreValidator).Chain = chainPtr
+			}
+		}
 	}
 	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
@@ -172,6 +182,11 @@ func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address,
 	// calculate fee and add to value
 	valTxCreated.Inc()
 	return tx, nil
+}
+
+func (v *CoreValidator) FindTransaction(hash common.Hash) *types.GTransaction {
+	storage.GetTxTable().Get(hash)
+	return nil
 }
 
 func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
@@ -247,6 +262,9 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		vlogger.Printf("unknown tx type: %d from %s", tx.Type(), tx.From())
 	}
 
+	// add tx to tx tree
+	storage.GetTxTable().Add(&tx)
+
 	valExecuteSuccess.Inc()
 	return nil
 }
@@ -271,6 +289,14 @@ func (v *CoreValidator) GetVersion() string {
 	return v.currentVersion
 }
 
+func (v *CoreValidator) ProposeBlock(b *block.Block) {
+	for _, btx := range b.Transactions {
+		v.ExecuteTransaction(btx)
+		v.UpdateTxTree(&btx, int(b.Header().Index))
+	}
+	v.UpdateChain(b)
+}
+
 func (v *CoreValidator) ServiceName() string {
 	return VALIDATOR_SERVICE_NAME
 }
@@ -286,13 +312,6 @@ func (v *CoreValidator) Signer() types.Signer {
 }
 
 func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKey string) error {
-	// fmt.Printf("Start signing tx\r\n")
-	// p := pool.Get()
-	// fmt.Println(txHash)
-	// fmt.Println(signKey)
-	// var tx = p.GetTransaction(txHash)
-	// fmt.Println(tx.IsSigned())
-
 	// get for tx
 	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
 
@@ -360,6 +379,10 @@ func (v *CoreValidator) Update(tx *types.GTransaction) {
 	// update validator state
 }
 
+func (v *CoreValidator) UpdateTxTree(tx *types.GTransaction, bIndex int) {
+	storage.GetTxTable().UpdateIndex(tx, bIndex)
+}
+
 func (v *CoreValidator) ValidateBlock(b block.Block) bool {
 	// move logic to consensus
 	// return consensus.ConfirmBlock(b)
@@ -379,8 +402,6 @@ func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from
 	// logic now semicorrect, false only arythmetic errors
 	var localVault = storage.GetVault()
 	var r, s, _ = tx.RawSignatureValues()
-	// fmt.Printf("Sender is: %s\r\n", from)
-	// var gas = tx.Gas()
 	var val = tx.Value()
 	gasCost := tx.Cost()
 	need := new(big.Int).Add(new(big.Int).Set(val), gasCost)
@@ -394,17 +415,6 @@ func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from
 		valTxRejected.Inc()
 		return false
 	}
-	//else {
-	// fmt.Printf(
-	// 	"APPROVED_TX_TYPE_%d\r\n\tSigned transaction with hash=%s\r\n\t gas=%d\r\n\t value=%d\r\n\t  current balance=%d\r\n",
-	// 	tx.Type(),
-	// 	tx.Hash(),
-	// 	gas,
-	// 	val,
-	// 	out,
-	// )
-	// localVault.UpdateBalance(from, *tx.To(), val, tx.Hash())
-	//}
 	localVault.CheckRunnable(r, s, tx)
 	valTxValidated.Inc()
 	return true
@@ -501,6 +511,34 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		return tx.Hash()
 	case "get":
 		// params[0]: hash string
+		if len(params) == 1 {
+			if p, ok := params[0].(string); ok {
+				hash := common.HexToHash(p)
+				var index = storage.GetTxTable().Get(hash)
+				if index != -1 {
+					txBlock := v.GetBlockByNumber(index)
+					for _, btx := range txBlock.Transactions {
+						if btx.Hash() == hash {
+							// Return only selected fields
+							result := map[string]interface{}{
+								"hash":  btx.Hash().Hex(),
+								"from":  btx.From().Hex(),
+								"value": btx.Value().String(),
+								"gas":   btx.Gas(),
+								"data":  string(btx.Data()),
+							}
+							// Handle To() which can be nil
+							if to := btx.To(); to != nil {
+								result["to"] = to.Hex()
+							} else {
+								result["to"] = nil
+							}
+							return result
+						}
+					}
+				}
+			}
+		}
 		return nil
 	}
 	return nil
