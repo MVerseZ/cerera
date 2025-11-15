@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"errors"
 	"sync"
 
@@ -54,7 +55,7 @@ func (at *AccountsTrie) GetKBytes(pubKey *bip32.Key) []byte {
 	// at.mu.Lock()
 	// defer at.mu.Unlock()
 	for _, account := range at.accounts {
-		if pubKey.B58Serialize() == account.MPub {
+		if bytes.Equal([]byte(pubKey.B58Serialize()), account.MPub[:]) {
 			return account.CodeHash
 		}
 	}
@@ -89,7 +90,7 @@ func (at *AccountsTrie) FindAddrByPub(pubKey string) (types.Address, error) {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 	for _, account := range at.accounts {
-		if account.MPub == pubKey {
+		if bytes.Equal([]byte(pubKey), account.MPub[:]) {
 			return account.Address, nil
 		}
 	}

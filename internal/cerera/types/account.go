@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"sync"
 
@@ -22,10 +23,11 @@ type StateAccount struct {
 	Nonce      uint64
 	Root       common.Hash // merkle root of the storage trie
 	Inputs     *Input      `json:"-"` // не сериализуем Inputs в JSON из-за mutex
-	Status     string
+	Status     byte        // 0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID
+	Type       byte        // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
 	Passphrase common.Hash // hash of password
 	// bip32 data
-	MPub string
+	MPub [78]byte
 	// MPriv    *bip32.Key
 }
 
@@ -37,7 +39,8 @@ func NewStateAccount(address Address, balance float64, root common.Hash) *StateA
 		balance: FloatToBigInt(balance),
 		Root:    root,
 		Bloom:   []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Status:  "OP_ACC_NEW",
+		Status:  0,
+		Type:    0,
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -88,67 +91,76 @@ func (sa *StateAccount) BloomDown() {
 	}
 }
 
-// func (sa *StateAccount) Bytes() []byte {
-
-// 	buf, err := json.Marshal(sa)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	return buf
-// }
-
 func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
 	sa.Inputs.Lock()
 	defer sa.Inputs.Unlock()
 	sa.Inputs.M[txHash] = cnt
 }
 
-// func BytesToStateAccount(data []byte) *StateAccount {
-// 	sa := &StateAccount{}
-// 	err := json.Unmarshal(data, sa)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	// Inputs не инициализируем, так как оно не сериализуется в JSON
-// 	// и должно оставаться nil после десериализации
-// 	return sa
-// }
-
 // ToBytes converts StateAccount to custom binary format
 func (sa *StateAccount) Bytes() []byte {
+	// add by order of length fields constant
 	var buf bytes.Buffer
+	fmt.Printf("Buffer before anything: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
 
 	// Write Address (assuming Address is []byte or has Bytes() method)
 	addressBytes := sa.Address.Bytes()
+	fmt.Printf("Add address to buffer: %x\n", addressBytes)
 	binary.Write(&buf, binary.LittleEndian, uint32(len(addressBytes)))
 	buf.Write(addressBytes)
+	fmt.Printf("Buffer after address: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+
+	// Write Passphrase
+	passphraseBytes := sa.Passphrase.Bytes()
+	buf.Write(passphraseBytes)
+	fmt.Printf("Buffer after passphrase: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// Write MPub
+	mpubBytes := sa.MPub[:]
+	binary.Write(&buf, binary.LittleEndian, uint32(len(mpubBytes)))
+	buf.Write(mpubBytes)
+	fmt.Printf("Buffer after mpub: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// Write Bloom
+	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.Bloom)))
+	buf.Write(sa.Bloom)
+	fmt.Printf("Buffer after bloom: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// Write CodeHash
+	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
+	buf.Write(sa.CodeHash)
+	fmt.Printf("Buffer after code hash: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// Write Nonce
+	binary.Write(&buf, binary.LittleEndian, sa.Nonce)
+	fmt.Printf("Buffer after nonce: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// Write Root (assuming common.Hash has Bytes() method)
+	rootBytes := sa.Root.Bytes()
+	buf.Write(rootBytes)
+	fmt.Printf("Buffer after root: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// Write Status
+	statusBytes := sa.Status
+	buf.WriteByte(statusBytes)
+	fmt.Printf("Buffer after status: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
 
 	// Write balance as big.Int bytes
 	balanceBytes := sa.balance.Bytes()
 	binary.Write(&buf, binary.LittleEndian, uint32(len(balanceBytes)))
 	buf.Write(balanceBytes)
-
-	// Write Bloom
-	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.Bloom)))
-	buf.Write(sa.Bloom)
-
-	// Write CodeHash
-	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
-	buf.Write(sa.CodeHash)
-
-	// Write Nonce
-	binary.Write(&buf, binary.LittleEndian, sa.Nonce)
-
-	// Write Root (assuming common.Hash has Bytes() method)
-	rootBytes := sa.Root.Bytes()
-	buf.Write(rootBytes)
-
+	fmt.Printf("Buffer after balance: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
 	// Write Inputs map
 	sa.Inputs.RLock()
 	inputCount := uint32(len(sa.Inputs.M))
 	sa.Inputs.RUnlock()
 	binary.Write(&buf, binary.LittleEndian, inputCount)
-
+	fmt.Printf("Buffer after input count: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
 	sa.Inputs.RLock()
 	for hash, amount := range sa.Inputs.M {
 		// Write hash
@@ -160,20 +172,8 @@ func (sa *StateAccount) Bytes() []byte {
 		buf.Write(amountBytes)
 	}
 	sa.Inputs.RUnlock()
-
-	// Write Status
-	statusBytes := []byte(sa.Status)
-	binary.Write(&buf, binary.LittleEndian, uint32(len(statusBytes)))
-	buf.Write(statusBytes)
-
-	// Write Passphrase
-	passphraseBytes := sa.Passphrase.Bytes()
-	buf.Write(passphraseBytes)
-
-	// Write MPub
-	mpubBytes := []byte(sa.MPub)
-	binary.Write(&buf, binary.LittleEndian, uint32(len(mpubBytes)))
-	buf.Write(mpubBytes)
+	fmt.Printf("Buffer after inputs: %x\n", buf.Bytes())
+	fmt.Printf("Buffer length: %d\n", buf.Len())
 
 	return buf.Bytes()
 }
@@ -188,14 +188,19 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	binary.Read(buf, binary.LittleEndian, &addressLen)
 	addressBytes := make([]byte, addressLen)
 	buf.Read(addressBytes)
-	sa.Address = Address(addressBytes)
+	sa.Address = BytesToAddress(addressBytes)
 
-	// Read balance
-	var balanceLen uint32
-	binary.Read(buf, binary.LittleEndian, &balanceLen)
-	balanceBytes := make([]byte, balanceLen)
-	buf.Read(balanceBytes)
-	sa.balance = new(big.Int).SetBytes(balanceBytes)
+	// Read Passphrase (32 bytes, no length prefix)
+	passphraseBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
+	buf.Read(passphraseBytes)
+	sa.Passphrase = common.Hash(passphraseBytes)
+
+	// Read MPub
+	var mpubLen uint32
+	binary.Read(buf, binary.LittleEndian, &mpubLen)
+	mpubBytes := make([]byte, mpubLen)
+	buf.Read(mpubBytes)
+	copy(sa.MPub[:], mpubBytes)
 
 	// Read Bloom
 	var bloomLen uint32
@@ -212,10 +217,21 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	// Read Nonce
 	binary.Read(buf, binary.LittleEndian, &sa.Nonce)
 
-	// Read Root
+	// Read Root (32 bytes, no length prefix)
 	rootBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
 	buf.Read(rootBytes)
 	sa.Root = common.Hash(rootBytes)
+
+	// Read Status (1 byte, no length prefix)
+	statusByte, _ := buf.ReadByte()
+	sa.Status = statusByte
+
+	// Read balance as big.Int bytes
+	var balanceLen uint32
+	binary.Read(buf, binary.LittleEndian, &balanceLen)
+	balanceBytes := make([]byte, balanceLen)
+	buf.Read(balanceBytes)
+	sa.balance = new(big.Int).SetBytes(balanceBytes)
 
 	// Read Inputs map
 	var inputCount uint32
@@ -240,25 +256,6 @@ func BytesToStateAccount(data []byte) *StateAccount {
 
 		sa.Inputs.M[hash] = amount
 	}
-
-	// Read Status
-	var statusLen uint32
-	binary.Read(buf, binary.LittleEndian, &statusLen)
-	statusBytes := make([]byte, statusLen)
-	buf.Read(statusBytes)
-	sa.Status = string(statusBytes)
-
-	// Read Passphrase
-	passphraseBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
-	buf.Read(passphraseBytes)
-	sa.Passphrase = common.Hash(passphraseBytes)
-
-	// Read MPub
-	var mpubLen uint32
-	binary.Read(buf, binary.LittleEndian, &mpubLen)
-	mpubBytes := make([]byte, mpubLen)
-	buf.Read(mpubBytes)
-	sa.MPub = string(mpubBytes)
 
 	return sa
 }

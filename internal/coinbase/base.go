@@ -42,18 +42,7 @@ var faucetTracker = FaucetTracker{
 
 const AddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000f"
 const FaucetAddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000a"
-
-var TotalValue = types.FloatToBigInt(699999000000.0)
-var FaucetInitialBalance = types.FloatToBigInt(1000000.0)
-var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
-var blockReward = types.FloatToBigInt(1.0)
-var InitialNodeBalance = 0.0000
-var FaucetValue = types.FloatToBigInt(100.0000)
-
-// Faucet limits and constraints
-var MaxFaucetAmount = types.FloatToBigInt(1000.0) // Maximum amount per request
-var MinFaucetAmount = types.FloatToBigInt(1.0)    // Minimum amount per request
-var FaucetCooldownHours = 1                       // Hours between requests per address
+const CoreStakingAddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000b"
 
 func CurrentReward() int {
 	return 1024
@@ -71,7 +60,7 @@ func InitOperationData() error {
 		CodeHash: []byte{},
 		Nonce:    1,
 		Root:     common.HexToHash(AddressHex),
-		Status:   "OP_ACC_C",
+		Status:   4, // 4: OP_ACC_C
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -84,6 +73,22 @@ func InitOperationData() error {
 		balance:         types.FloatToBigInt(ca.GetBalance()),
 	}
 
+	sa := types.StateAccount{
+		Address: types.HexToAddress(CoreStakingAddressHex),
+		// Balance:  big.NewInt(0),
+		Bloom:    []byte{0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		CodeHash: []byte{},
+		Nonce:    1,
+		Root:     common.HexToHash(CoreStakingAddressHex),
+		Status:   1, // 1: OP_ACC_STAKE
+		Inputs: &types.Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		},
+	}
+	sa.SetBalance(0.0)
+	// You can store stakingAcc somewhere if needed
+
 	fc := types.StateAccount{
 		Address: faucetAddr,
 		// Balance:  FaucetInitialBalance,
@@ -91,7 +96,7 @@ func InitOperationData() error {
 		CodeHash: []byte{},
 		Nonce:    1,
 		Root:     common.HexToHash(FaucetAddressHex),
-		Status:   "OP_ACC_F",
+		Status:   2, // 2: OP_ACC_F
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),

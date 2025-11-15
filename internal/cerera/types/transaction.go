@@ -132,37 +132,28 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas float
 }
 
 func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas float64, message string) (*GTransaction, error) {
-	// check max size of tx here
-	if len(message) < 1024 {
-		var tx = NewTransaction(
-			nonce,
-			addressTo,
-			FloatToBigInt(count),
-			gas,
-			big.NewInt(0),
-			[]byte(message),
-		)
-		return tx, nil
-	} else {
-		return nil, ErrInvalidMsgLen
-	}
+	var tx = NewTransaction(
+		nonce,
+		addressTo,
+		FloatToBigInt(count),
+		gas,
+		big.NewInt(0),
+		[]byte(message),
+	)
+	return tx, nil
 }
 
 // CreateUnbroadcastTransactionWei creates a transaction using exact wei amount (no float conversion).
 func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas float64, message string) (*GTransaction, error) {
-	if len(message) < 1024 {
-		var tx = NewTransaction(
-			nonce,
-			addressTo,
-			new(big.Int).Set(amountWei),
-			gas,
-			big.NewInt(0),
-			[]byte(message),
-		)
-		return tx, nil
-	} else {
-		return nil, ErrInvalidMsgLen
-	}
+	var tx = NewTransaction(
+		nonce,
+		addressTo,
+		new(big.Int).Set(amountWei),
+		gas,
+		big.NewInt(0),
+		[]byte(message),
+	)
+	return tx, nil
 }
 
 // WithSignature returns a new transaction with the given signature.

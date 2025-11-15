@@ -129,8 +129,10 @@ func InitBlockChain(cfg *config.Config) (*Chain, error) {
 	var list []trie.Content
 
 	if cfg.IN_MEM {
+		clogger.Print("Using in-memory storage\n")
 		dataBlocks = append(dataBlocks, genesisBlock)
 	} else {
+		clogger.Print("Using D5 storage\n")
 		if cfg.Chain.Path == "EMPTY" {
 			cfg.UpdateChainPath("./chain.dat")
 			list = append(list, genesisBlock)
@@ -263,7 +265,11 @@ func (bc *Chain) GetInfo() BlockChainStatus {
 	var totalTxs uint64
 	for _, b := range bc.data {
 		totalSize += b.Header().Size
-		totalTxs += uint64(len(b.Transactions))
+		for _, tx := range b.Transactions {
+			if txType := tx.Type(); txType != types.CoinbaseTxType && txType != types.FaucetTxType {
+				totalTxs += 1
+			}
+		}
 	}
 
 	// Update info struct with current values
@@ -347,8 +353,10 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	bc.info.AvgTime = bc.avgTime
 	bc.info.Txs += uint64(len(newBlock.Transactions))
 	for _, tx := range newBlock.Transactions {
-		gas := tx.Gas()
-		bc.info.Gas += gas
+		if txType := tx.Type(); txType != types.CoinbaseTxType && txType != types.FaucetTxType {
+			gas := tx.Gas()
+			bc.info.Gas += gas
+		}
 	}
 
 	// Update Prometheus metrics

@@ -45,6 +45,7 @@ func InitTxTable() {
 		recs: make([]TxRecord, 0),
 	}
 }
+
 func GetTxTable() *TxTable {
 	return &txTable
 }

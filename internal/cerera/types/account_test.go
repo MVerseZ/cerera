@@ -24,16 +24,21 @@ func CreateTestStateAccount() StateAccount {
 	address := PubkeyToAddress(*pubkey)
 	derBytes := EncodePrivateKeyToByte(privateKey)
 	// derBytes, _ := x509.MarshalECPrivateKey(privateKey)
+	var mpub [78]byte
+	copy(mpub[:], []byte("test_public_key_placeholder_for_testing_purposes_only_78_bytes"))
 	newAccount := StateAccount{
 		Address:  address,
 		Nonce:    1,
 		Root:     common.Hash(address.Bytes()),
 		CodeHash: derBytes,
-		Status:   "OP_ACC_NEW",
+		Status:   0, // 0: OP_ACC_NEW
 		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
-		// Inputs:     Input{M: make(map[common.Hash]*big.Int)},
+		Inputs: &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		},
 		Passphrase: common.BytesToHash([]byte(pass)),
-		// MPub:       publicKey,
+		MPub:       mpub,
 		// MPriv:      masterKey,
 	}
 	newAccount.SetBalance(0.0)
@@ -78,15 +83,17 @@ func TestStateAccount_BloomDown(t *testing.T) {
 }
 
 func TestStateAccount_Bytes(t *testing.T) {
+	var mpub [78]byte
+	copy(mpub[:], []byte("public_key"))
 	sa := &StateAccount{
 		Address:    Address{0x1, 0x2, 0x3, 0x4},
 		Bloom:      []byte{0x1, 0x2, 0x3},
 		CodeHash:   []byte{0x4, 0x5, 0x6},
 		Nonce:      42,
 		Root:       common.Hash{0x7, 0x8, 0x9},
-		Status:     "active",
+		Status:     1, // 1: OP_ACC_STAKE
 		Passphrase: common.Hash{0xa, 0xb, 0xc},
-		MPub:       "public_key",
+		MPub:       mpub,
 		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	sa.SetBalance(100.0)
@@ -122,7 +129,7 @@ func TestStateAccount_Bytes(t *testing.T) {
 	if sa.Passphrase != sa2.Passphrase {
 		t.Errorf("Bytes failed: Passphrase mismatch")
 	}
-	if sa.MPub != sa2.MPub {
+	if !reflect.DeepEqual(sa.MPub, sa2.MPub) {
 		t.Errorf("Bytes failed: MPub mismatch")
 	}
 
@@ -155,15 +162,17 @@ func TestStateAccount_AddInput(t *testing.T) {
 
 func TestBytesToStateAccount(t *testing.T) {
 	// Create a test account
+	var mpub [78]byte
+	copy(mpub[:], []byte("test_public_key"))
 	sa := &StateAccount{
 		Address:    Address{0x1, 0x2, 0x3},
 		Bloom:      []byte{0x4, 0x5, 0x6},
 		CodeHash:   []byte{0x7, 0x8, 0x9},
 		Nonce:      123,
 		Root:       common.Hash{0xa, 0xb, 0xc},
-		Status:     "test_status",
+		Status:     2, // 2: OP_ACC_F
 		Passphrase: common.Hash{0xd, 0xe, 0xf},
-		MPub:       "test_public_key",
+		MPub:       mpub,
 		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	sa.SetBalance(50.5)
@@ -199,7 +208,7 @@ func TestBytesToStateAccount(t *testing.T) {
 	if sa.Passphrase != sa2.Passphrase {
 		t.Errorf("TestBytesToStateAccount failed: Passphrase mismatch")
 	}
-	if sa.MPub != sa2.MPub {
+	if !reflect.DeepEqual(sa.MPub, sa2.MPub) {
 		t.Errorf("TestBytesToStateAccount failed: MPub mismatch")
 	}
 
@@ -211,15 +220,17 @@ func TestBytesToStateAccount(t *testing.T) {
 
 func TestStateAccount_ToBytes(t *testing.T) {
 	// Create a test StateAccount with some data
+	var mpub [78]byte
+	copy(mpub[:], []byte("public_key_string"))
 	sa := &StateAccount{
 		Address:    Address{0x1, 0x2, 0x3, 0x4},
 		Bloom:      []byte{0x1, 0x2, 0x3},
 		CodeHash:   []byte{0x4, 0x5, 0x6},
 		Nonce:      42,
 		Root:       common.Hash{0x7, 0x8, 0x9},
-		Status:     "active",
+		Status:     1, // 1: OP_ACC_STAKE
 		Passphrase: common.Hash{0xa, 0xb, 0xc},
-		MPub:       "public_key_string",
+		MPub:       mpub,
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -268,15 +279,15 @@ func TestStateAccount_ToBytes(t *testing.T) {
 	}
 
 	if sa.Status != sa2.Status {
-		t.Errorf("ToBytes/FromBytes failed: Status mismatch. Got: %s, Want: %s", sa2.Status, sa.Status)
+		t.Errorf("ToBytes/FromBytes failed: Status mismatch. Got: %d, Want: %d", sa2.Status, sa.Status)
 	}
 
 	if sa.Passphrase != sa2.Passphrase {
 		t.Errorf("ToBytes/FromBytes failed: Passphrase mismatch. Got: %v, Want: %v", sa2.Passphrase, sa.Passphrase)
 	}
 
-	if sa.MPub != sa2.MPub {
-		t.Errorf("ToBytes/FromBytes failed: MPub mismatch. Got: %s, Want: %s", sa2.MPub, sa.MPub)
+	if !reflect.DeepEqual(sa.MPub, sa2.MPub) {
+		t.Errorf("ToBytes/FromBytes failed: MPub mismatch. Got: %v, Want: %v", sa2.MPub, sa.MPub)
 	}
 
 	// Compare Inputs map
@@ -298,15 +309,17 @@ func TestStateAccount_ToBytes(t *testing.T) {
 
 func TestStateAccount_ToBytes_EmptyInputs(t *testing.T) {
 	// Test with empty Inputs map
+	var mpub [78]byte
+	copy(mpub[:], []byte("test_key"))
 	sa := &StateAccount{
 		Address:    Address{0x1, 0x2},
 		Bloom:      []byte{0x1, 0x2},
 		CodeHash:   []byte{0x3, 0x4},
 		Nonce:      1,
 		Root:       common.Hash{0x5},
-		Status:     "new",
+		Status:     0, // 0: OP_ACC_NEW
 		Passphrase: common.Hash{0x6},
-		MPub:       "test_key",
+		MPub:       mpub,
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),

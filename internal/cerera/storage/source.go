@@ -50,8 +50,13 @@ func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 }
 
 func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
+	// Check if file already exists to prevent overwriting
+	if _, err := os.Stat(vaultPath); err == nil {
+		return fmt.Errorf("vault file already exists: %s", vaultPath)
+	}
+
 	// Open file for writing, create if it doesn't exist
-	f, err := os.OpenFile(vaultPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(vaultPath, os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open the file for writing: %w", err)
 	}
@@ -67,7 +72,7 @@ func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
 
 // load from file
 func SyncVault(path string) error {
-	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	file, err := os.OpenFile(path, os.O_RDONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file: %w", err)
 	}
@@ -77,8 +82,29 @@ func SyncVault(path string) error {
 	GetVault().Clear()
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		account := types.BytesToStateAccount(line)
-		GetVault().accounts.Append(account.Address, account)
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
+		// Minimum size check: at least need address length (4 bytes) + address (32 bytes) = 36 bytes
+		// In practice, a valid account needs much more, but this is a basic sanity check
+		if len(line) < 36 {
+			vltlogger.Printf("Skipping invalid line in vault file (too short: %d bytes)", len(line))
+			continue
+		}
+
+		// Try to deserialize account, skip on error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					vltlogger.Printf("Skipping corrupted account data in vault file: %v", r)
+				}
+			}()
+			account := types.BytesToStateAccount(line)
+			if account != nil {
+				GetVault().accounts.Append(account.Address, account)
+			}
+		}()
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -89,22 +115,24 @@ func SyncVault(path string) error {
 }
 
 func SaveToVault(account []byte, vaultPath string) error {
-	f, err := os.OpenFile(vaultPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(vaultPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open vault file: %w", err)
 	}
 	defer f.Close()
 
 	// Decode account from bytes using BytesToStateAccount
 	accountData := types.BytesToStateAccount(account)
-	accountData.Status = "LOCAL"
+	if accountData == nil {
+		return fmt.Errorf("failed to decode account data")
+	}
+	accountData.Status = 5 // 5: LOCAL
 	accountDataToWrite := accountData.Bytes()
 	accountDataToWrite = append(accountDataToWrite, '\n')
 
 	if _, err := f.Write(accountDataToWrite); err != nil {
-		return err
+		return fmt.Errorf("failed to write account data: %w", err)
 	}
-
 	return nil
 }
 
@@ -113,7 +141,7 @@ func UpdateVault(account []byte, vaultPath string) error {
 	filePath := vaultPath
 
 	// Read all accounts from the file
-	file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
+	file, err := os.OpenFile(filePath, os.O_RDONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file: %w", err)
 	}
@@ -123,8 +151,14 @@ func UpdateVault(account []byte, vaultPath string) error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
 		account := types.BytesToStateAccount(line)
-		accounts = append(accounts, account)
+		if account != nil {
+			accounts = append(accounts, account)
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -133,15 +167,26 @@ func UpdateVault(account []byte, vaultPath string) error {
 
 	// Update the specific account
 	updatedAccount := types.BytesToStateAccount(account)
+	if updatedAccount == nil {
+		return fmt.Errorf("failed to decode account data for update")
+	}
+
+	found := false
 	for i, acc := range accounts {
-		if acc.Address == updatedAccount.Address {
+		if acc != nil && acc.Address == updatedAccount.Address {
 			accounts[i] = updatedAccount
+			found = true
 			break
 		}
 	}
 
+	// If account not found, append it
+	if !found {
+		accounts = append(accounts, updatedAccount)
+	}
+
 	// Write all accounts back to the file
-	file, err = os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0644)
+	file, err = os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file for writing: %w", err)
 	}
@@ -149,13 +194,18 @@ func UpdateVault(account []byte, vaultPath string) error {
 
 	writer := bufio.NewWriter(file)
 	for _, acc := range accounts {
+		if acc == nil {
+			continue
+		}
 		accountData := acc.Bytes()
 		accountData = append(accountData, '\n')
 		if _, err := writer.Write(accountData); err != nil {
 			return fmt.Errorf("failed to write to the vault file: %w", err)
 		}
 	}
-	writer.Flush()
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush writer: %w", err)
+	}
 
 	return nil
 }
@@ -166,6 +216,8 @@ func VaultSourceSize(vaultPath string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer f.Close()
+
 	fi, err2 := f.Stat()
 	if err2 != nil {
 		return 0, err2

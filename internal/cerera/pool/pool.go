@@ -115,27 +115,27 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 
 	// fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
 
-	if p.Info.Bytes+int(tx.Size()) > p.maxSize {
-		return
-	} else {
-		var sLock = p.mu.TryLock()
-		if sLock {
-			defer p.mu.Unlock()
-			if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-				p.memPool[tx.Hash()] = *tx
-				p.Prepared = append(p.Prepared, tx)
-				p.NotifyAll(tx)
-				// p.memPool = append(p.memPool, *tx)
-				// network.BroadcastTx(tx)
-				p.Info.Bytes += int(tx.Size())
-				p.Info.Size++
-				p.Info.Usage += uintptr(tx.Size())
-				p.Info.Hashes = append(p.Info.Hashes, tx.Hash())
-				p.Info.Txs = append(p.Info.Txs, *tx)
-				p.Info.UnbroadCastCount++
-			}
+	// if p.Info.Bytes+int(tx.Size()) > p.maxSize {
+	// 	return
+	// } else {
+	var sLock = p.mu.TryLock()
+	if sLock {
+		defer p.mu.Unlock()
+		if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+			p.memPool[tx.Hash()] = *tx
+			p.Prepared = append(p.Prepared, tx)
+			p.NotifyAll(tx)
+			// p.memPool = append(p.memPool, *tx)
+			// network.BroadcastTx(tx)
+			p.Info.Bytes += int(tx.Size())
+			p.Info.Size++
+			p.Info.Usage += uintptr(tx.Size())
+			p.Info.Hashes = append(p.Info.Hashes, tx.Hash())
+			p.Info.Txs = append(p.Info.Txs, *tx)
+			p.Info.UnbroadCastCount++
 		}
 	}
+	// }
 	// p.Listen <- []*types.GTransaction{tx}
 	// p.DataChannel <- tx.Bytes()
 	// fmt.Println(len(p.memPool))

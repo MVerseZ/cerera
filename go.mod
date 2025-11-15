@@ -3,7 +3,11 @@ module github.com/cerera
 go 1.25.3
 
 require (
+	github.com/anacrolix/utp v0.2.0
 	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792
+	github.com/ccding/go-stun/stun v0.0.0-20200514191101-4dc67bcdb029
+	github.com/chzyer/readline v1.5.1
+	github.com/jbenet/go-base58 v0.0.0-20150317085156-6237cf65f3a6
 	github.com/libp2p/go-libp2p v0.40.0
 	github.com/libp2p/go-libp2p-kad-dht v0.29.1
 	github.com/libp2p/go-libp2p-pubsub v0.13.0
@@ -15,7 +19,14 @@ require (
 	golang.org/x/crypto v0.36.0
 )
 
-require google.golang.org/protobuf v1.36.5 // indirect
+require (
+	github.com/anacrolix/missinggo v1.3.0 // indirect
+	github.com/anacrolix/missinggo/perf v1.0.0 // indirect
+	github.com/anacrolix/missinggo/v2 v2.5.1 // indirect
+	github.com/anacrolix/sync v0.4.0 // indirect
+	github.com/huandu/xstrings v1.3.1 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
+)
 
 require (
 	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect

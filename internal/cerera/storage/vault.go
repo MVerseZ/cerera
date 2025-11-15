@@ -42,6 +42,7 @@ var (
 	ErrAddressAlreadyExists      = errors.New("address already exists in vault, bad collision")
 )
 
+// vault store accounts data
 type Vault interface {
 	Create(pass string) (string, string, string, *types.Address, error)
 	Clear() error
@@ -146,6 +147,8 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	seed := bip39.NewSeed(mnemonic, "GENESISNODE")
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
+	var mpub [78]byte
+	copy(mpub[:], publicKey.B58Serialize())
 
 	vltlogger.Printf("Init vault with %s_serv_%s\r\n", rootHashAddress, VAULT_SERVICE_NAME)
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
@@ -156,54 +159,74 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
 		Root:     vlt.rootHash,
 		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
-		Status:   "OP_ACC_NODE",
+		Status:   3, // 3: OP_ACC_NODE
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
-		MPub: publicKey.B58Serialize(),
+		MPub: mpub,
 	}
 	rootSA.SetBalance(coinbase.InitialNodeBalance)
 
 	vlt.initiator = rootSA
 
-	if vlt.inMem {
-		var cbAcc = coinbase.CoinBaseStateAccount()
-		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
+	// if vlt.inMem {
+	// 	var cbAcc = coinbase.CoinBaseStateAccount()
+	// 	vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
 
-		var faucetAddr = coinbase.FaucetAccount()
-		vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
+	// 	var faucetAddr = coinbase.FaucetAccount()
+	// 	vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
 
-		vlt.accounts.Append(rootSA.Address, rootSA)
-	} else {
-		// Initialize vault path if not set
-		if cfg.Vault.PATH == "EMPTY" {
-			cfg.UpdateVaultPath("./vault.dat")
-		}
-
-		vlt.path = cfg.Vault.PATH
-
-		// Check if vault file exists, if not create it
-		if _, err := os.Stat(cfg.Vault.PATH); errors.Is(err, os.ErrNotExist) {
-			if err := InitSecureVault(rootSA, cfg.Vault.PATH); err != nil {
-				panic(err)
-			}
-		} else {
-			//sync with existing vault
-			if err := SyncVault(cfg.Vault.PATH); err != nil {
-				panic(err)
-			}
-		}
-
-		var cbAcc = coinbase.CoinBaseStateAccount()
-		vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
-		SaveToVault(cbAcc.Bytes(), cfg.Vault.PATH)
-
-		var faucetAddr = coinbase.FaucetAccount()
-		vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
-		SaveToVault(faucetAddr.Bytes(), cfg.Vault.PATH)
+	// 	vlt.accounts.Append(rootSA.Address, rootSA)
+	// } else {
+	// Initialize vault path if not set
+	if cfg.Vault.PATH == "EMPTY" {
+		cfg.UpdateVaultPath("./vault.dat")
 	}
+
+	vlt.path = cfg.Vault.PATH
+
+	// Check if vault file exists, if not create it
+	_, err := os.Stat(cfg.Vault.PATH)
+	if errors.Is(err, os.ErrNotExist) {
+		// Create new vault with rootSA
+		if err := InitSecureVault(rootSA, cfg.Vault.PATH); err != nil {
+			panic(err)
+		}
+		// Add rootSA to accounts
+		vlt.accounts.Append(rootSA.Address, rootSA)
+	} else if err != nil {
+		// Handle other errors (permissions, etc.)
+		panic(fmt.Errorf("failed to check vault file: %w", err))
+	} else {
+		// Sync with existing vault
+		if err := SyncVault(cfg.Vault.PATH); err != nil {
+			panic(err)
+		}
+		// Ensure rootSA is in accounts after sync (may not exist in old vaults)
+		if vlt.accounts.GetAccount(rootSA.Address) == nil {
+			vlt.accounts.Append(rootSA.Address, rootSA)
+			SaveToVault(rootSA.Bytes(), cfg.Vault.PATH)
+		}
+	}
+
+	// Ensure coinbase account exists (only add if not already present)
+	coinbaseAddr := coinbase.GetCoinbaseAddress()
+	if vlt.accounts.GetAccount(coinbaseAddr) == nil {
+		var cbAcc = coinbase.CoinBaseStateAccount()
+		vlt.accounts.Append(coinbaseAddr, &cbAcc)
+		SaveToVault(cbAcc.Bytes(), cfg.Vault.PATH)
+	}
+
+	// Ensure faucet account exists (only add if not already present)
+	faucetAddr := coinbase.GetFaucetAddress()
+	if vlt.accounts.GetAccount(faucetAddr) == nil {
+		var faucetAcc = coinbase.FaucetAccount()
+		vlt.accounts.Append(faucetAddr, &faucetAcc)
+		SaveToVault(faucetAcc.Bytes(), cfg.Vault.PATH)
+	}
+	// }
 	vlt.status = 0xa
 
 	// init metrics
@@ -265,21 +288,22 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 
 	derBytes := types.EncodePrivateKeyToByte(privateKey)
-
+	var mpub [78]byte
+	copy(mpub[:], publicKey.B58Serialize())
 	newAccount := &types.StateAccount{
 		Address: address,
 		Nonce:   1,
 		//Balance:  types.FloatToBigInt(100.0),
 		Root:     v.rootHash,
 		CodeHash: derBytes,
-		Status:   "OP_ACC_NEW",
+		Status:   0, // 0: OP_ACC_NEW
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte(pass)),
-		MPub:       publicKey.B58Serialize(),
+		MPub:       mpub,
 	}
 	newAccount.SetBalance(0.0)
 	v.accounts.Append(address, newAccount)

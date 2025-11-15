@@ -9,6 +9,7 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"time"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/chain"
@@ -85,6 +86,7 @@ func (err decError) Error() string { return err.msg }
 var v Validator
 
 type Validator interface {
+	coinbase.Stake
 	// CheckAddress(addr types.Address) bool
 	GasPrice() *big.Int
 	GetVersion() string
@@ -98,16 +100,12 @@ type Validator interface {
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
 	ValidateRawTransaction(tx *types.GTransaction) bool
-	// validate and execute transaction
 	ValidateTransaction(t *types.GTransaction, from types.Address) bool
 	ValidateBlock(b block.Block) bool
 	// observer methods
 	GetID() string
 	Update(tx *types.GTransaction)
-	// UpdateTxTree(tx *types.GTransaction, bIndex int)
 	ProposeBlock(b *block.Block)
-
-	// REF
 }
 
 type CoreValidator struct {
@@ -422,7 +420,7 @@ func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from
 
 func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 	switch method {
-	case "create":
+	case "_create":
 		// Prefer typed DTO in params[0]
 		if len(params) == 1 {
 			if p, ok := params[0].(CreateTxParams); ok {
@@ -483,6 +481,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 				if err := v.SignRawTransactionWithKey(tx, p.Key); err != nil {
 					return err
 				}
+				time.Sleep(1 * time.Second) // prefer spam
 				pool.Get().QueueTransaction(tx)
 				return tx.Hash()
 			}
@@ -496,6 +495,9 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		count, ok2 := params[2].(float64)
 		gas, ok3 := params[3].(float64)
 		msg, ok4 := params[4].(string)
+		if len(msg) > 1024 {
+			return errors.New("message too long")
+		}
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
 			return errors.New("parameter type mismatch for send")
 		}

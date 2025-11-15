@@ -77,7 +77,7 @@ func (r *Registry) GetService(name string) (Service, bool) {
 	if name == "pool" {
 		srvName = "POOL_CERERA_001_1_3"
 	}
-	if name == "transaction" {
+	if name == "transaction" || name == "validator" {
 		srvName = "CERERA_VALIDATOR_54013.10.25"
 	}
 	r.mu.Lock()
