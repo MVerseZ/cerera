@@ -52,7 +52,7 @@ Content-Type: application/json
     "jsonrpc": "2.0",
     "id": 11231,
     "params": [
-        ""
+        "test_password"
     ]
 }
 
@@ -66,7 +66,7 @@ Content-Type: application/json
     "id": 2,
     "params": [
         "holiday journey object dirt turn there clown picnic legend average organ dose obey viable october park wood license elephant spell tiger horror exhaust also",
-        ""
+        "test_password"
     ]
 }
 
@@ -80,7 +80,7 @@ Content-Type: application/json
     "id": 11231,
     "params": [
         "0x1b9e0917a36263c3ec6c1518e7b99e972f0915c1f033884b8956e2f3b686b1c385127d2bb3dd633d143893961f7839a2",
-        ""
+        "test_password"
     ]
 }
 
