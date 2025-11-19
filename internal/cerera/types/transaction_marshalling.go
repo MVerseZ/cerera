@@ -184,6 +184,64 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		itx.Value = (*big.Int)(dec.Value)
 
 		itx.Time = dec.Time
+	case CoinbaseTxType:
+		var itx CBTransaction
+		inner = &itx
+		if dec.To == nil {
+			return errors.New("missing required field 'to' in transaction")
+		}
+		itx.To = dec.To
+
+		if dec.Nonce == nil {
+			return errors.New("missing required field 'nonce' in transaction")
+		}
+		itx.Nonce = uint64(*dec.Nonce)
+
+		if dec.GasPrice == nil {
+			return errors.New("missing required field 'gasPrice' in transaction")
+		}
+		itx.GasPrice = (*big.Int)(dec.GasPrice)
+
+		if dec.Gas == nil {
+			return errors.New("missing required field 'gas' in transaction")
+		}
+		// JSON carries gas as uint64; convert to float64 for CBTransaction
+		itx.Gas = float64(*dec.Gas)
+
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+		itx.Value = (*big.Int)(dec.Value)
+
+		if dec.Data == nil {
+			itx.Data = []byte{}
+		} else {
+			itx.Data = *dec.Data
+		}
+
+		if dec.Payload == nil {
+			itx.Payload = []byte{}
+		} else {
+			itx.Payload = *dec.Payload
+		}
+
+		if dec.Dna == nil {
+			itx.Dna = []byte{}
+		} else {
+			itx.Dna = *dec.Dna
+		}
+
+		itx.Time = dec.Time
+		// Coinbase transactions may not have signature fields
+		if dec.R != nil {
+			itx.R = (*big.Int)(dec.R)
+		}
+		if dec.S != nil {
+			itx.S = (*big.Int)(dec.S)
+		}
+		if dec.V != nil {
+			itx.V = (*big.Int)(dec.V)
+		}
 	default:
 		return ErrTxTypeNotSupported
 	}

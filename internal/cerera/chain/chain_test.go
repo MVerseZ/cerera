@@ -24,7 +24,7 @@ func TestChainInitialization(t *testing.T) {
 	}
 
 	// Test chain initialization
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestChainExec(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestGetBlock(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestGetBlockByNumber(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestGetBlockHash(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestGetBlockHeader(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestGetInfo(t *testing.T) {
 		IN_MEM: false, // Use persistent mode for more predictable behavior
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestGetLatestBlock(t *testing.T) {
 		IN_MEM: false, // Use persistent mode for more predictable behavior
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestUpdateChain(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -506,7 +506,7 @@ func TestChainConcurrency(t *testing.T) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		t.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -569,7 +569,7 @@ func BenchmarkGetInfo(b *testing.B) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		b.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -592,7 +592,7 @@ func BenchmarkGetLatestBlock(b *testing.B) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		b.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -615,7 +615,7 @@ func BenchmarkGetBlockByNumber(b *testing.B) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		b.Fatalf("Failed to initialize blockchain: %v", err)
 	}
@@ -638,7 +638,7 @@ func BenchmarkUpdateChain(b *testing.B) {
 		IN_MEM: true,
 	}
 
-	chain, err := InitBlockChain(cfg)
+	chain, err := Mold(cfg)
 	if err != nil {
 		b.Fatalf("Failed to initialize blockchain: %v", err)
 	}

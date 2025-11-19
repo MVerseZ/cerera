@@ -133,7 +133,7 @@ func TestStateAccount_Bytes(t *testing.T) {
 		t.Errorf("Bytes failed: MPub mismatch")
 	}
 
-	// Verify Inputs is properly initialized (custom binary serialization preserves Inputs)
+	// Verify Inputs is properly initialized (Inputs are not serialized, but should be initialized)
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
 		t.Errorf("Bytes failed: Inputs not properly initialized after binary deserialization")
 	}
@@ -212,7 +212,7 @@ func TestBytesToStateAccount(t *testing.T) {
 		t.Errorf("TestBytesToStateAccount failed: MPub mismatch")
 	}
 
-	// Verify Inputs is properly initialized (custom binary serialization preserves Inputs)
+	// Verify Inputs is properly initialized (Inputs are not serialized, but should be initialized)
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
 		t.Errorf("TestBytesToStateAccount failed: Inputs not properly initialized after binary deserialization")
 	}
@@ -290,20 +290,9 @@ func TestStateAccount_ToBytes(t *testing.T) {
 		t.Errorf("ToBytes/FromBytes failed: MPub mismatch. Got: %v, Want: %v", sa2.MPub, sa.MPub)
 	}
 
-	// Compare Inputs map
-	sa.Inputs.RLock()
-	sa2.Inputs.RLock()
-	defer sa.Inputs.RUnlock()
-	defer sa2.Inputs.RUnlock()
-
-	if len(sa.Inputs.M) != len(sa2.Inputs.M) {
-		t.Errorf("ToBytes/FromBytes failed: Inputs length mismatch. Got: %d, Want: %d", len(sa2.Inputs.M), len(sa.Inputs.M))
-	}
-
-	for hash, amount := range sa.Inputs.M {
-		if sa2Amount, exists := sa2.Inputs.M[hash]; !exists || amount.Cmp(sa2Amount) != 0 {
-			t.Errorf("ToBytes/FromBytes failed: Inputs mismatch for hash %v. Got: %v, Want: %v", hash, sa2Amount, amount)
-		}
+	// Inputs are not serialized, so we only verify they are initialized
+	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
+		t.Errorf("ToBytes/FromBytes failed: Inputs not properly initialized after binary deserialization")
 	}
 }
 
@@ -330,6 +319,9 @@ func TestStateAccount_ToBytes_EmptyInputs(t *testing.T) {
 	// Convert to bytes and back
 	data := sa.Bytes()
 	sa2 := BytesToStateAccount(data)
+	if sa2 == nil {
+		t.Fatalf("BytesToStateAccount returned nil")
+	}
 
 	// Verify basic fields
 	if !reflect.DeepEqual(sa.Address, sa2.Address) {

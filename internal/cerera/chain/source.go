@@ -4,18 +4,21 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/cerera/internal/cerera/block"
-	"github.com/cerera/internal/cerera/types"
 )
 
-var BATCH_SIZE = 100
-var TMP []block.Block
+var chainSrcLogger = log.New(os.Stdout, "[chain_source] ", log.LstdFlags|log.Lmicroseconds)
 
 func InitChainVault(initBLock *block.Block) {
+	InitChainVaultWithPath(initBLock, "./chain.dat")
+}
+
+func InitChainVaultWithPath(initBLock *block.Block, chainPath string) {
 	// Open file for writing, create if it doesn't exist
-	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(chainPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -29,12 +32,15 @@ func InitChainVault(initBLock *block.Block) {
 	if _, errWrite := f.Write(buf); errWrite != nil {
 		panic(errWrite)
 	}
-	TMP = append(TMP, *initBLock)
 }
 
 // load from file
 func SyncVault() ([]*block.Block, error) {
-	file, err := os.OpenFile("./chain.dat", os.O_RDONLY, 0644)
+	return SyncVaultWithPath("./chain.dat")
+}
+
+func SyncVaultWithPath(chainPath string) ([]*block.Block, error) {
+	file, err := os.OpenFile(chainPath, os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open the vault file: %w", err)
 	}
@@ -44,11 +50,18 @@ func SyncVault() ([]*block.Block, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
 		bl := &block.Block{}
-		// parse error fix
+		// parse error fix - skip corrupted blocks instead of panicking
 		err := json.Unmarshal(line, bl)
 		if err != nil {
-			panic(err)
+			// Log error but continue processing other blocks
+			chainSrcLogger.Printf("Skipping corrupted block: %v\r\n", err)
+			chainSrcLogger.Printf("Block data: %s\r\n", string(line))
+			continue
 		}
 		readBlocks = append(readBlocks, bl)
 	}
@@ -56,18 +69,18 @@ func SyncVault() ([]*block.Block, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to read block data from file: %w", err)
 	}
+	chainSrcLogger.Printf("Loaded %d blocks from chain file: %s", len(readBlocks), chainPath)
 
 	return readBlocks, nil
 }
 
 func SaveToVault(newBlock block.Block) error {
-	var totalSize int
-	for _, blk := range TMP {
-		totalSize += blk.Header().Size
-	}
-	if totalSize < BATCH_SIZE {
-		return nil
-	}
+
+	// Only write to file if batch size is reached
+	// if totalSize < BATCH_SIZE {
+	// 	return nil
+	// }
+
 	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -75,69 +88,99 @@ func SaveToVault(newBlock block.Block) error {
 	defer f.Close()
 
 	buf := make([]byte, 0)
-	for _, newBlock := range TMP {
-		blockData, err := json.Marshal(newBlock)
-		if err != nil {
-			return err
-		}
-		buf = append(buf, blockData...)
-		buf = append(buf, '\n') // Добавляем разделитель новой строки
+	blockData, err := json.Marshal(newBlock)
+	if err != nil {
+		return err
 	}
+	buf = append(buf, blockData...)
+	buf = append(buf, '\n') // Добавляем разделитель новой строки
+
 	if _, err := f.Write(buf); err != nil {
 		return err
 	}
-	TMP = TMP[:0]
 	return nil
 }
 
-// UpdateVault updates an account in the vault file.
-func UpdateVault(account []byte) error {
+// UpdateVault updates a block in the vault file.
+// Note: This function works with blocks, not accounts.
+func UpdateVault(blockData []byte) error {
 	filePath := "./chain.dat"
 
-	// Read all accounts from the file
-	file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
+	// Read all blocks from the file
+	readFile, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file: %w", err)
 	}
-	defer file.Close()
 
-	var accounts = make([]*types.StateAccount, 0)
-	scanner := bufio.NewScanner(file)
+	var blocks = make([]*block.Block, 0)
+	scanner := bufio.NewScanner(readFile)
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		account := types.BytesToStateAccount(line)
-		accounts = append(accounts, account)
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
+		bl := &block.Block{}
+		err := json.Unmarshal(line, bl)
+		if err != nil {
+			// Skip corrupted blocks
+			continue
+		}
+		blocks = append(blocks, bl)
 	}
+
+	readFile.Close()
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read account data from file: %w", err)
+		return fmt.Errorf("failed to read block data from file: %w", err)
 	}
 
-	// Update the specific account
-	updatedAccount := types.BytesToStateAccount(account)
-	for i, acc := range accounts {
-		if acc.Address == updatedAccount.Address {
-			accounts[i] = updatedAccount
+	// Parse the updated block
+	updatedBlock := &block.Block{}
+	err = json.Unmarshal(blockData, updatedBlock)
+	if err != nil {
+		return fmt.Errorf("failed to decode block data for update: %w", err)
+	}
+
+	// Update the specific block by hash
+	found := false
+	for i, bl := range blocks {
+		if bl != nil && bl.GetHash().Compare(updatedBlock.GetHash()) == 0 {
+			blocks[i] = updatedBlock
+			found = true
 			break
 		}
 	}
 
-	// Write all accounts back to the file
-	file, err = os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0644)
+	// If block not found, append it
+	if !found {
+		blocks = append(blocks, updatedBlock)
+	}
+
+	// Write all blocks back to the file
+	writeFile, err := os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file for writing: %w", err)
 	}
-	defer file.Close()
+	defer writeFile.Close()
 
-	writer := bufio.NewWriter(file)
-	for _, acc := range accounts {
-		accountData := acc.Bytes()
-		accountData = append(accountData, '\n')
-		if _, err := writer.Write(accountData); err != nil {
+	writer := bufio.NewWriter(writeFile)
+	for _, bl := range blocks {
+		if bl == nil {
+			continue
+		}
+		blockData, err := json.Marshal(bl)
+		if err != nil {
+			return fmt.Errorf("failed to marshal block: %w", err)
+		}
+		blockData = append(blockData, '\n')
+		if _, err := writer.Write(blockData); err != nil {
 			return fmt.Errorf("failed to write to the vault file: %w", err)
 		}
 	}
-	writer.Flush()
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush writer: %w", err)
+	}
 
 	return nil
 }

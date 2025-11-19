@@ -6,7 +6,6 @@ import (
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/coinbase"
 )
 
 type TxTree struct {
@@ -49,11 +48,6 @@ func (e *Engine) Start(lAddr types.Address) {
 func (e *Engine) Listen() {
 	for {
 		select {
-		case tx := <-e.TxFunnel:
-			if err := e.Pack(tx); err != nil {
-				fmt.Printf("Error packing transaction: %v\r\n", err)
-				continue
-			}
 		case b := <-e.BlockFunnel:
 			fmt.Printf("New block arrived to GIGEA: %s\r\n", b.GetHash())
 			C.Notify(b)
@@ -73,23 +67,6 @@ func (e *Engine) Listen() {
 			return
 		}
 	}
-}
-
-func (e *Engine) Pack(tx *types.GTransaction) error {
-	var err error
-	// fmt.Printf("Rebuild with hash: %s\r\n", tx.Hash())
-	if len(e.List) == 0 {
-		var firstTx = coinbase.CreateCoinBaseTransation(C.Nonce, e.Owner)
-		e.List = append(e.List, firstTx)
-	}
-	e.List = append(e.List, *tx)
-	e.Transactions, err = NewTree(e.List)
-	if err != nil {
-		fmt.Printf("Error creating transaction tree: %v\r\n", err)
-		return err
-	}
-
-	return nil
 }
 
 func (e *Engine) Register(a interface{}) {

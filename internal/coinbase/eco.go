@@ -7,7 +7,7 @@ import (
 )
 
 // economy structs
-var TotalValue = types.FloatToBigInt(699999000000.0)
+var TotalValue = types.FloatToBigInt(700000000000.0)
 var FaucetInitialBalance = types.FloatToBigInt(1000000.0)
 var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
 var blockReward = types.FloatToBigInt(1.0)

@@ -2,16 +2,20 @@ package storage
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/cerera/internal/cerera/types"
 )
+
+var vaultSrcLogger = log.New(os.Stdout, "[vault_source] ", log.LstdFlags|log.Lmicroseconds)
 
 func encrypt(data []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
@@ -63,6 +67,7 @@ func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
 	defer f.Close()
 
 	accountData := rootSa.Bytes()
+	vaultSrcLogger.Printf("Writing account data to file: %s", rootSa.Address.Hex())
 	accountData = append(accountData, '\n') // Добавляем разделитель новой строки
 	if _, err := f.Write(accountData); err != nil {
 		return fmt.Errorf("failed to write account data to file: %w", err)
@@ -78,18 +83,31 @@ func SyncVault(path string) error {
 	}
 	defer file.Close()
 
+	// Support both legacy "CERERA_ACC_" delimiter and newline-separated entries.
+	splitEntries := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		trimmed := func(b []byte) []byte {
+			return bytes.TrimSpace(b)
+		}
+		delimiter := []byte("CERERA_ACC_")
+		if i := bytes.Index(data, delimiter); i >= 0 {
+			return i + len(delimiter), trimmed(data[:i]), nil
+		}
+		if i := bytes.IndexByte(data, '\n'); i >= 0 {
+			return i + 1, trimmed(data[:i]), nil
+		}
+		if atEOF && len(data) > 0 {
+			return len(data), trimmed(data), nil
+		}
+		return 0, nil, nil
+	}
+
 	scanner := bufio.NewScanner(file)
+	scanner.Split(splitEntries)
 	GetVault().Clear()
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		// Skip empty lines
+		// Skip empty segments
 		if len(line) == 0 {
-			continue
-		}
-		// Minimum size check: at least need address length (4 bytes) + address (32 bytes) = 36 bytes
-		// In practice, a valid account needs much more, but this is a basic sanity check
-		if len(line) < 36 {
-			vltlogger.Printf("Skipping invalid line in vault file (too short: %d bytes)", len(line))
 			continue
 		}
 
@@ -102,6 +120,7 @@ func SyncVault(path string) error {
 			}()
 			account := types.BytesToStateAccount(line)
 			if account != nil {
+				vltlogger.Printf("Read account from file vault: %s", account.Address.Hex())
 				GetVault().accounts.Append(account.Address, account)
 			}
 		}()
@@ -126,11 +145,14 @@ func SaveToVault(account []byte, vaultPath string) error {
 	if accountData == nil {
 		return fmt.Errorf("failed to decode account data")
 	}
-	accountData.Status = 5 // 5: LOCAL
-	accountDataToWrite := accountData.Bytes()
-	accountDataToWrite = append(accountDataToWrite, '\n')
+	// Note: Status values are 0-4 (0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID)
+	// Status is preserved from the original account data
+	// accountDataToWrite := accountData.Bytes()
+	// accountDataToWrite = append(accountDataToWrite, '\n')
 
-	if _, err := f.Write(accountDataToWrite); err != nil {
+	vaultSrcLogger.Printf("Writing account data to file: %s", accountData.Address.Hex())
+	account = append(account, '\n')
+	if _, err := f.Write(account); err != nil {
 		return fmt.Errorf("failed to write account data: %w", err)
 	}
 	return nil
@@ -141,25 +163,43 @@ func UpdateVault(account []byte, vaultPath string) error {
 	filePath := vaultPath
 
 	// Read all accounts from the file
-	file, err := os.OpenFile(filePath, os.O_RDONLY, 0600)
+	readFile, err := os.OpenFile(filePath, os.O_RDONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file: %w", err)
 	}
-	defer file.Close()
 
 	var accounts = make([]*types.StateAccount, 0)
-	scanner := bufio.NewScanner(file)
+	splitCER := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		trimmed := func(b []byte) []byte {
+			return bytes.TrimSpace(b)
+		}
+		delimiter := []byte("CERERA_ACC_")
+		if i := bytes.Index(data, delimiter); i >= 0 {
+			return i + len(delimiter), trimmed(data[:i]), nil
+		}
+		if i := bytes.IndexByte(data, '\n'); i >= 0 {
+			return i + 1, trimmed(data[:i]), nil
+		}
+		if atEOF && len(data) > 0 {
+			return len(data), trimmed(data), nil
+		}
+		return 0, nil, nil
+	}
+	scanner := bufio.NewScanner(readFile)
+	scanner.Split(splitCER)
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		// Skip empty lines
+		// Skip empty segments
 		if len(line) == 0 {
 			continue
 		}
-		account := types.BytesToStateAccount(line)
-		if account != nil {
-			accounts = append(accounts, account)
+		acc := types.BytesToStateAccount(line)
+		if acc != nil {
+			accounts = append(accounts, acc)
 		}
 	}
+
+	readFile.Close()
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("failed to read account data from file: %w", err)
@@ -186,13 +226,13 @@ func UpdateVault(account []byte, vaultPath string) error {
 	}
 
 	// Write all accounts back to the file
-	file, err = os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0600)
+	writeFile, err := os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open the vault file for writing: %w", err)
 	}
-	defer file.Close()
+	defer writeFile.Close()
 
-	writer := bufio.NewWriter(file)
+	writer := bufio.NewWriter(writeFile)
 	for _, acc := range accounts {
 		if acc == nil {
 			continue

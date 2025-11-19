@@ -40,6 +40,7 @@ var (
 	ErrErrorParsingAmount        = errors.New("error parsing amount")
 	ErrFailedGenerateUniqueAddr  = errors.New("failed to generate unique address after retries (collision with system address)")
 	ErrAddressAlreadyExists      = errors.New("address already exists in vault, bad collision")
+	ErrInvalidMintAmount         = errors.New("invalid mint amount")
 )
 
 // vault store accounts data
@@ -84,7 +85,11 @@ var (
 	})
 	vaultCirculatingSupply = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "vault_circulating_supply",
-		Help: "Circulating token supply (excludes coinbase and faucet balances)",
+		Help: "Circulating token supply",
+	})
+	vaultTotalSupply = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "vault_total_supply",
+		Help: "Total minted token supply",
 	})
 	vaultFaucetAmountTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "vault_faucet_amount_total",
@@ -100,22 +105,10 @@ func init() {
 	prometheus.MustRegister(
 		vaultAccountsTotal,
 		vaultCirculatingSupply,
+		vaultTotalSupply,
 		vaultFaucetAmountTotal,
 		vaultTransfersTotal,
 	)
-}
-
-func (v *D5Vault) recomputeCirculatingSupply() {
-	var sum = big.NewInt(0)
-	coinbaseAddr := coinbase.GetCoinbaseAddress()
-	faucetAddr := coinbase.GetFaucetAddress()
-	for addr, sa := range v.accounts.accounts {
-		if addr == coinbaseAddr || addr == faucetAddr {
-			continue
-		}
-		sum = new(big.Int).Add(sum, sa.GetBalanceBI())
-	}
-	vaultCirculatingSupply.Set(types.BigIntToFloat(sum))
 }
 
 func Sync() []byte {
@@ -130,6 +123,38 @@ func GetVault() *D5Vault {
 	return &vlt
 }
 
+// GetTotalSupply returns the sum of all account balances currently stored in the vault.
+func (v *D5Vault) GetTotalSupply() *big.Int {
+	total := big.NewInt(0)
+	v.accounts.mu.RLock()
+	defer v.accounts.mu.RUnlock()
+	for _, acc := range v.accounts.accounts {
+		total.Add(total, acc.GetBalanceBI())
+	}
+	return total
+}
+
+// CheckSupplyLimit ensures that minting the requested amount won't exceed the configured cap.
+func (v *D5Vault) CheckSupplyLimit(amount *big.Int) error {
+	if amount == nil || amount.Sign() <= 0 {
+		return ErrInvalidMintAmount
+	}
+	currentSupply := v.GetTotalSupply()
+	newSupply := new(big.Int).Add(new(big.Int).Set(currentSupply), amount)
+	if newSupply.Cmp(coinbase.TotalValue) > 0 {
+		return fmt.Errorf("supply limit exceeded: requested %s, current %s, cap %s",
+			amount.String(), currentSupply.String(), coinbase.TotalValue.String())
+	}
+	return nil
+}
+
+func (v *D5Vault) updateSupplyMetrics() {
+	total := v.GetTotalSupply()
+	totalFloat := types.BigIntToFloat(total)
+	vaultTotalSupply.Set(totalFloat)
+	vaultCirculatingSupply.Set(totalFloat)
+}
+
 // NewD5Vault initializes and returns a new vault instance.
 func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	gob.Register(types.StateAccount{})
@@ -137,7 +162,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 
 	vlt = D5Vault{
 		accounts: GetAccountsTrie(),
-		rootHash: common.BytesToHash(coinbase.GetCoinbaseAddress().Bytes()),
+		rootHash: common.EmptyHash(),
 		inMem:    cfg.IN_MEM,
 		// stChan:   make(chan [32]byte),
 	}
@@ -157,10 +182,10 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		Address: rootHashAddress,
 		Nonce:   1,
 		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
-		Root:     vlt.rootHash,
-		CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
-		Status:   3, // 3: OP_ACC_NODE
-		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Root: vlt.rootHash,
+		// CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
+		Status: 3, // 3: OP_ACC_NODE
+		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -211,27 +236,11 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		}
 	}
 
-	// Ensure coinbase account exists (only add if not already present)
-	coinbaseAddr := coinbase.GetCoinbaseAddress()
-	if vlt.accounts.GetAccount(coinbaseAddr) == nil {
-		var cbAcc = coinbase.CoinBaseStateAccount()
-		vlt.accounts.Append(coinbaseAddr, &cbAcc)
-		SaveToVault(cbAcc.Bytes(), cfg.Vault.PATH)
-	}
-
-	// Ensure faucet account exists (only add if not already present)
-	faucetAddr := coinbase.GetFaucetAddress()
-	if vlt.accounts.GetAccount(faucetAddr) == nil {
-		var faucetAcc = coinbase.FaucetAccount()
-		vlt.accounts.Append(faucetAddr, &faucetAcc)
-		SaveToVault(faucetAcc.Bytes(), cfg.Vault.PATH)
-	}
-	// }
 	vlt.status = 0xa
 
 	// init metrics
 	vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
-	vlt.recomputeCirculatingSupply()
+	vlt.updateSupplyMetrics()
 
 	return &vlt, nil
 }
@@ -262,42 +271,29 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
 
-	// Защита от коллизии с системными адресами (coinbase, faucet)
-	coinbaseAddr := coinbase.GetCoinbaseAddress()
-	faucetAddr := coinbase.GetFaucetAddress()
-
-	// Проверяем на коллизию и генерируем новый ключ, если нужно
-	maxRetries := 10
-	for i := 0; i < maxRetries && (address == coinbaseAddr || address == faucetAddr); i++ {
-		privateKey, err = types.GenerateAccount()
-		if err != nil {
-			return "", "", "", nil, err
-		}
-		pubkey = &privateKey.PublicKey
-		address = types.PubkeyToAddress(*pubkey)
+	privateKey, err = types.GenerateAccount()
+	if err != nil {
+		return "", "", "", nil, err
 	}
-
-	// Если после всех попыток все еще коллизия - возвращаем ошибку
-	if address == coinbaseAddr || address == faucetAddr {
-		return "", "", "", nil, fmt.Errorf("%w (after %d retries)", ErrFailedGenerateUniqueAddr, maxRetries)
-	}
+	pubkey = &privateKey.PublicKey
+	address = types.PubkeyToAddress(*pubkey)
 
 	// Проверяем, не существует ли уже аккаунт с таким адресом
 	if existing := v.accounts.GetAccount(address); existing != nil {
 		return "", "", "", nil, fmt.Errorf("%w: %s", ErrAddressAlreadyExists, address.Hex())
 	}
 
-	derBytes := types.EncodePrivateKeyToByte(privateKey)
+	// derBytes := types.EncodePrivateKeyToByte(privateKey)
 	var mpub [78]byte
 	copy(mpub[:], publicKey.B58Serialize())
 	newAccount := &types.StateAccount{
 		Address: address,
 		Nonce:   1,
 		//Balance:  types.FloatToBigInt(100.0),
-		Root:     v.rootHash,
-		CodeHash: derBytes,
-		Status:   0, // 0: OP_ACC_NEW
-		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Root: v.rootHash,
+		// CodeHash: derBytes,
+		Status: 0, // 0: OP_ACC_NEW
+		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -308,11 +304,8 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	newAccount.SetBalance(0.0)
 	v.accounts.Append(address, newAccount)
 	vaultAccountsTotal.Set(float64(v.accounts.Size()))
-	v.recomputeCirculatingSupply()
 
-	if !vlt.inMem {
-		SaveToVault(newAccount.Bytes(), vlt.path)
-	}
+	SaveToVault(newAccount.Bytes(), vlt.path)
 
 	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
 }
@@ -392,7 +385,6 @@ func (v *D5Vault) Put(address types.Address, acc *types.StateAccount) {
 	if v.accounts.GetAccount(address) == nil {
 		v.accounts.Append(address, acc)
 		vaultAccountsTotal.Set(float64(v.accounts.Size()))
-		v.recomputeCirculatingSupply()
 		return
 	}
 	v.accounts.Append(address, acc)
@@ -441,56 +433,48 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 
 	// metrics: transfer count and supply (internal transfers don't change supply, but we still recompute for safety)
 	vaultTransfersTotal.Inc()
-	v.recomputeCirculatingSupply()
 }
 
-// faucet method without creating transaction
-func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
-	// Validate faucet request against limits
-	if err := coinbase.CheckFaucetLimits(to, cnt); err != nil {
-		return err
-	}
-
+func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash common.Hash) (*types.StateAccount, error) {
 	if cnt == nil || cnt.Sign() <= 0 {
-		return nil
+		return nil, ErrInvalidMintAmount
 	}
-
-	var sa = v.Get(coinbase.GetFaucetAddress())
-	if sa == nil {
-		return ErrFaucetAccountNotFound
-	}
-
-	// Check if faucet has enough balance
-	if sa.GetBalanceBI().Cmp(cnt) < 0 {
-		return ErrFaucetInsufficientBalance
+	if err := v.CheckSupplyLimit(cnt); err != nil {
+		return nil, err
 	}
 
 	var saDest = v.Get(to)
 	if saDest == nil {
 		saDest = types.NewStateAccount(to, 0, v.rootHash)
 		v.accounts.Append(to, saDest)
+		vaultAccountsTotal.Set(float64(v.accounts.Size()))
 	}
 
-	// faucet = faucet - cnt
-	sa.SetBalanceBI(new(big.Int).Sub(sa.GetBalanceBI(), cnt))
-	// to = to + cnt
-	saDest.SetBalanceBI(new(big.Int).Add(saDest.GetBalanceBI(), cnt))
-
+	newBal := new(big.Int).Add(saDest.GetBalanceBI(), cnt)
+	saDest.SetBalanceBI(newBal)
 	saDest.AddInput(txHash, cnt)
-
-	// Record the faucet request for tracking
-	coinbase.RecordFaucetRequest(to, cnt)
 
 	if !v.inMem {
 		UpdateVault(saDest.Bytes(), v.path)
-		UpdateVault(sa.Bytes(), v.path)
 	}
 
-	// metrics: faucet amount increases circulating supply (faucet excluded), recompute
-	vaultFaucetAmountTotal.Add(types.BigIntToFloat(cnt))
-	v.recomputeCirculatingSupply()
+	v.updateSupplyMetrics()
+	return saDest, nil
+}
 
+// DropFaucet mints new coins directly to the destination account with faucet metrics.
+func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
+	if _, err := v.creditMintedAmount(to, cnt, txHash); err != nil {
+		return err
+	}
+	vaultFaucetAmountTotal.Add(types.BigIntToFloat(cnt))
 	return nil
+}
+
+// RewardMiner mints new coins for the miner (coinbase transaction execution).
+func (v *D5Vault) RewardMiner(to types.Address, cnt *big.Int, txHash common.Hash) error {
+	_, err := v.creditMintedAmount(to, cnt, txHash)
+	return err
 }
 
 func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) bool {

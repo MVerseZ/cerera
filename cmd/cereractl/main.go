@@ -20,7 +20,6 @@ import (
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
-	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
 	"github.com/cerera/internal/mesh"
 	"github.com/chzyer/readline"
@@ -49,11 +48,6 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 		return nil, fmt.Errorf("failed to init gigea: %w", err)
 	}
 
-	// coinbase
-	if err := coinbase.InitOperationData(); err != nil {
-		return nil, fmt.Errorf("failed to init coinbase: %w", err)
-	}
-
 	// Инициализация хранилища
 	vault, err := storage.NewD5Vault(ctx, cfg)
 	if err != nil {
@@ -62,7 +56,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	registry.Register(vault.ServiceName(), vault)
 
 	// Инициализация цепочки
-	chain, err := chain.InitBlockChain(cfg)
+	chain, err := chain.Mold(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init blockchain: %w", err)
 	}

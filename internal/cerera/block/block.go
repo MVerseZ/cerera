@@ -106,10 +106,18 @@ func NewBlockWithHeader(header *Header) *Block {
 	}
 }
 
-func (b *Block) Header() *Header { return CopyHeader(b.Head) }
+func (b *Block) Header() *Header {
+	if b == nil || b.Head == nil {
+		return nil
+	}
+	return CopyHeader(b.Head)
+}
 
 // Function for compare block headers, may be deprecated later.
 func (b *Block) EqHead(other *Header) bool {
+	if b == nil || b.Head == nil || other == nil {
+		return false
+	}
 	return b.Head.Ctx == other.Ctx &&
 		b.Head.Height == other.Height &&
 		b.Head.Difficulty == other.Difficulty &&
@@ -125,17 +133,13 @@ func (b *Block) EqHead(other *Header) bool {
 }
 
 func CopyHeader(h *Header) *Header {
+	if h == nil {
+		return nil
+	}
 	cpy := *h
 	cpy.Difficulty = h.Difficulty
-	// if len(h.Extra) > 0 {
-	// 	cpy.Extra = make([]byte, len(h.Extra))
-	// 	copy(cpy.Extra, h.Extra)
-	// }
 	cpy.Extra = h.Extra
 	cpy.ChainId = h.ChainId
-	// if cpy.ChainId = new(big.Int); h.ChainId != nil {
-	// 	cpy.ChainId.Set(h.ChainId)
-	// }
 	cpy.Root = h.Root
 	cpy.Ctx = h.Ctx
 	cpy.GasLimit = h.GasLimit
@@ -178,13 +182,10 @@ func GenerateGenesis(nodeAddress types.Address) *Block {
 		Nonce: 1,
 	}
 
-	// genesisHeader.HashH = rlpHeaderHash(*genesisHeader)
 	var genesisBlock = &Block{
 		Head: genesisHeader,
 	}
-	// genesisBlock.HashB = rlpBlockHash(*genesisBlock)
 	genesisBlock.Transactions = []types.GTransaction{}
-	//make([]common.Hash, 0)
 	gs, _ := json.Marshal(genesisBlock)
 	genesisBlock.Head.Size = len(gs)
 	return genesisBlock
@@ -235,20 +236,6 @@ func (Block) Read(p []byte) (n int, err error) {
 	return 1, nil
 }
 
-// func DetectGenesis(data []byte) (Block, error) {
-// 	var genesisBlock Block
-
-// 	var hash = common.BytesToHash(data)
-// 	fmt.Println(hash)
-
-// 	// common.Bytes.MarshalText(data)
-// 	err := json.Unmarshal(data, &genesisBlock)
-// 	if err != nil {
-// 		return genesisBlock, fmt.Errorf("error detect genesis block:: %s", err)
-// 	}
-// 	return genesisBlock, nil
-// }
-
 type Blocks []*Block
 
 func CrvBlockHash(block Block) (h common.Hash) {
@@ -267,8 +254,6 @@ func CrvBlockHash(block Block) (h common.Hash) {
 
 func CrvHeaderHash(header Header) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
-	// hw.Write(header.Extra)
-	// hw.Write(hea)
 	h.SetBytes(hw.Sum(nil))
 	return h
 }
@@ -277,9 +262,5 @@ func CrvHeaderHash(header Header) (h common.Hash) {
 func (b *Block) GetHash() common.Hash {
 	return b.Hash
 }
-
-// func (h *Header) Hash() common.Hash {
-// 	return CrvHeaderHash(*h)
-// }
 
 var EmptyBlock = Block{}

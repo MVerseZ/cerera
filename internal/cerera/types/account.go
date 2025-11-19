@@ -4,16 +4,23 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math/big"
 	"sync"
 
 	"github.com/cerera/internal/cerera/common"
 )
 
+const BaseAddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000f"
+const FaucetAddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000a"
+const CoreStakingAddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000b"
+
 type Input struct {
 	*sync.RWMutex
 	M map[common.Hash]*big.Int
 }
+
+const DEBUG = true
 
 type StateAccount struct {
 	Address    Address
@@ -101,79 +108,93 @@ func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
 func (sa *StateAccount) Bytes() []byte {
 	// add by order of length fields constant
 	var buf bytes.Buffer
-	fmt.Printf("Buffer before anything: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	if DEBUG {
+		fmt.Printf("Buffer length before: %d\n", buf.Len())
+	}
+
+	buf.WriteByte(sa.Type)
+	if DEBUG {
+		fmt.Printf("Buffer length after type: %d\n", buf.Len())
+	}
 
 	// Write Address (assuming Address is []byte or has Bytes() method)
 	addressBytes := sa.Address.Bytes()
-	fmt.Printf("Add address to buffer: %x\n", addressBytes)
+	// fmt.Printf("Add address to buffer: %x\n", addressBytes)
 	binary.Write(&buf, binary.LittleEndian, uint32(len(addressBytes)))
 	buf.Write(addressBytes)
-	fmt.Printf("Buffer after address: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	if DEBUG {
+		fmt.Printf("Buffer length after address: %s %d\n", sa.Address.Hex(), buf.Len())
+	}
 
 	// Write Passphrase
 	passphraseBytes := sa.Passphrase.Bytes()
 	buf.Write(passphraseBytes)
-	fmt.Printf("Buffer after passphrase: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// fmt.Printf("Buffer after passphrase: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after passphrase: %d\n", buf.Len())
+	}
 	// Write MPub
 	mpubBytes := sa.MPub[:]
 	binary.Write(&buf, binary.LittleEndian, uint32(len(mpubBytes)))
 	buf.Write(mpubBytes)
-	fmt.Printf("Buffer after mpub: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// fmt.Printf("Buffer after mpub: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after mpub: %d\n", buf.Len())
+	}
 	// Write Bloom
 	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.Bloom)))
 	buf.Write(sa.Bloom)
-	fmt.Printf("Buffer after bloom: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// fmt.Printf("Buffer after bloom: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after bloom: %d\n", buf.Len())
+	}
 	// Write CodeHash
-	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
-	buf.Write(sa.CodeHash)
-	fmt.Printf("Buffer after code hash: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	if sa.Address == HexToAddress(BaseAddressHex) || sa.Address == HexToAddress(FaucetAddressHex) || sa.Address == HexToAddress(CoreStakingAddressHex) {
+		zeroBuf := make([]byte, 4)
+		buf.Write(zeroBuf)
+	} else {
+		binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
+		buf.Write(sa.CodeHash)
+	}
+	// fmt.Printf("Buffer after code hash: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after code hash: %d\n", buf.Len())
+	}
 	// Write Nonce
 	binary.Write(&buf, binary.LittleEndian, sa.Nonce)
-	fmt.Printf("Buffer after nonce: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// fmt.Printf("Buffer after nonce: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after nonce: %d\n", buf.Len())
+	}
 	// Write Root (assuming common.Hash has Bytes() method)
 	rootBytes := sa.Root.Bytes()
 	buf.Write(rootBytes)
-	fmt.Printf("Buffer after root: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	// fmt.Printf("Buffer after root: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after root: %d\n", buf.Len())
+	}
 	// Write Status
 	statusBytes := sa.Status
 	buf.WriteByte(statusBytes)
-	fmt.Printf("Buffer after status: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+	if DEBUG {
+		fmt.Printf("Buffer length after status: %d\n", buf.Len())
+	}
 
 	// Write balance as big.Int bytes
 	balanceBytes := sa.balance.Bytes()
 	binary.Write(&buf, binary.LittleEndian, uint32(len(balanceBytes)))
 	buf.Write(balanceBytes)
-	fmt.Printf("Buffer after balance: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
-	// Write Inputs map
-	sa.Inputs.RLock()
-	inputCount := uint32(len(sa.Inputs.M))
-	sa.Inputs.RUnlock()
-	binary.Write(&buf, binary.LittleEndian, inputCount)
-	fmt.Printf("Buffer after input count: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
-	sa.Inputs.RLock()
-	for hash, amount := range sa.Inputs.M {
-		// Write hash
-		hashBytes := hash.Bytes()
-		buf.Write(hashBytes)
-		// Write amount
-		amountBytes := amount.Bytes()
-		binary.Write(&buf, binary.LittleEndian, uint32(len(amountBytes)))
-		buf.Write(amountBytes)
+	// fmt.Printf("Buffer after balance: %x\n", buf.Bytes())
+	if DEBUG {
+		fmt.Printf("Buffer length after balance: %d\n", buf.Len())
 	}
-	sa.Inputs.RUnlock()
-	fmt.Printf("Buffer after inputs: %x\n", buf.Bytes())
-	fmt.Printf("Buffer length: %d\n", buf.Len())
+
+	// Check if there's any '\n' byte in the buffer (typically end of serialized account line in file)
+	// if bytes.Contains(buf.Bytes(), []byte{'\n'}) {
+	// 	if DEBUG {
+	// 		fmt.Printf("Warning: Buffer contains newline (\\n) byte!\n")
+	// 	}
+	// }
 
 	return buf.Bytes()
 }
@@ -183,78 +204,119 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	sa := &StateAccount{}
 	buf := bytes.NewReader(data)
 
+	// Read Type (added to serialization in newer versions)
+	firstByte, err := buf.ReadByte()
+	if err != nil {
+		return nil
+	}
+	if firstByte <= 4 {
+		sa.Type = firstByte
+	} else {
+		// Older serialized accounts did not include Type,
+		// rewind and treat the byte as part of the address length.
+		sa.Type = 0
+		if _, err := buf.Seek(0, io.SeekStart); err != nil {
+			return nil
+		}
+	}
+
 	// Read Address
 	var addressLen uint32
-	binary.Read(buf, binary.LittleEndian, &addressLen)
+	if err := binary.Read(buf, binary.LittleEndian, &addressLen); err != nil {
+		return nil
+	}
 	addressBytes := make([]byte, addressLen)
-	buf.Read(addressBytes)
+	if addressLen > 0 {
+		if _, err := io.ReadFull(buf, addressBytes); err != nil {
+			return nil
+		}
+	}
 	sa.Address = BytesToAddress(addressBytes)
 
 	// Read Passphrase (32 bytes, no length prefix)
 	passphraseBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
-	buf.Read(passphraseBytes)
+	if _, err := io.ReadFull(buf, passphraseBytes); err != nil {
+		return nil
+	}
 	sa.Passphrase = common.Hash(passphraseBytes)
 
 	// Read MPub
 	var mpubLen uint32
-	binary.Read(buf, binary.LittleEndian, &mpubLen)
+	if err := binary.Read(buf, binary.LittleEndian, &mpubLen); err != nil {
+		return nil
+	}
 	mpubBytes := make([]byte, mpubLen)
-	buf.Read(mpubBytes)
+	if mpubLen > 0 {
+		if _, err := io.ReadFull(buf, mpubBytes); err != nil {
+			return nil
+		}
+	}
 	copy(sa.MPub[:], mpubBytes)
 
 	// Read Bloom
 	var bloomLen uint32
-	binary.Read(buf, binary.LittleEndian, &bloomLen)
+	if err := binary.Read(buf, binary.LittleEndian, &bloomLen); err != nil {
+		return nil
+	}
 	sa.Bloom = make([]byte, bloomLen)
-	buf.Read(sa.Bloom)
+	if bloomLen > 0 {
+		if _, err := io.ReadFull(buf, sa.Bloom); err != nil {
+			return nil
+		}
+	}
 
 	// Read CodeHash
 	var codeHashLen uint32
-	binary.Read(buf, binary.LittleEndian, &codeHashLen)
-	sa.CodeHash = make([]byte, codeHashLen)
-	buf.Read(sa.CodeHash)
+	if err := binary.Read(buf, binary.LittleEndian, &codeHashLen); err != nil {
+		return nil
+	}
+	if codeHashLen > 0 {
+		sa.CodeHash = make([]byte, codeHashLen)
+		if _, err := io.ReadFull(buf, sa.CodeHash); err != nil {
+			return nil
+		}
+	} else {
+		sa.CodeHash = make([]byte, 0)
+	}
 
 	// Read Nonce
-	binary.Read(buf, binary.LittleEndian, &sa.Nonce)
+	if err := binary.Read(buf, binary.LittleEndian, &sa.Nonce); err != nil {
+		return nil
+	}
 
 	// Read Root (32 bytes, no length prefix)
 	rootBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
-	buf.Read(rootBytes)
+	if _, err := io.ReadFull(buf, rootBytes); err != nil {
+		return nil
+	}
 	sa.Root = common.Hash(rootBytes)
 
 	// Read Status (1 byte, no length prefix)
-	statusByte, _ := buf.ReadByte()
+	statusByte, err := buf.ReadByte()
+	if err != nil {
+		return nil
+	}
 	sa.Status = statusByte
 
 	// Read balance as big.Int bytes
 	var balanceLen uint32
-	binary.Read(buf, binary.LittleEndian, &balanceLen)
+	if err := binary.Read(buf, binary.LittleEndian, &balanceLen); err != nil {
+		return nil
+	}
 	balanceBytes := make([]byte, balanceLen)
-	buf.Read(balanceBytes)
+	if balanceLen > 0 {
+		if _, err := io.ReadFull(buf, balanceBytes); err != nil {
+			return nil
+		}
+	}
 	sa.balance = new(big.Int).SetBytes(balanceBytes)
 
-	// Read Inputs map
-	var inputCount uint32
-	binary.Read(buf, binary.LittleEndian, &inputCount)
-	sa.Inputs = &Input{
-		RWMutex: &sync.RWMutex{},
-		M:       make(map[common.Hash]*big.Int),
-	}
-
-	for i := uint32(0); i < inputCount; i++ {
-		// Read hash
-		hashBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
-		buf.Read(hashBytes)
-		hash := common.Hash(hashBytes)
-
-		// Read amount
-		var amountLen uint32
-		binary.Read(buf, binary.LittleEndian, &amountLen)
-		amountBytes := make([]byte, amountLen)
-		buf.Read(amountBytes)
-		amount := new(big.Int).SetBytes(amountBytes)
-
-		sa.Inputs.M[hash] = amount
+	// Initialize Inputs if not already initialized
+	if sa.Inputs == nil {
+		sa.Inputs = &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		}
 	}
 
 	return sa

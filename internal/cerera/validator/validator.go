@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -18,7 +19,6 @@ import (
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
-	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
 
 	"github.com/cerera/internal/cerera/types"
@@ -86,7 +86,6 @@ func (err decError) Error() string { return err.msg }
 var v Validator
 
 type Validator interface {
-	coinbase.Stake
 	// CheckAddress(addr types.Address) bool
 	GasPrice() *big.Int
 	GetVersion() string
@@ -159,6 +158,8 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 			}
 		}
 	}
+	// preconfig chain
+	ConfigChain(v)
 	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
 	// Configure min gas price from config
@@ -193,53 +194,48 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 	var localVault = storage.GetVault()
 	var val = tx.Value()
 
-	// check if sender has enough balance
-	senderAcc := localVault.Get(tx.From())
-	if senderAcc == nil {
-		return NotEnoughtInputs
-	}
-
-	// Handle different transaction types
+	// Handle different transaction types first to avoid checking sender for faucet/coinbase
 	switch tx.Type() {
+	case types.FaucetTxType:
+		// Faucet transactions: no sender balance check needed
+		if tx.To() == nil {
+			return errors.New("faucet transaction missing recipient address")
+		}
+		if err := localVault.DropFaucet(*tx.To(), val, tx.Hash()); err != nil {
+			return err
+		}
+		// add tx to tx tree
+		storage.GetTxTable().Add(&tx)
+		valExecuteSuccess.Inc()
+		return nil
+
 	case types.CoinbaseTxType:
 		// Coinbase transactions: reward goes directly to miner
 		// Create shadow account for miner if it doesn't exist
-		minerAcc := localVault.Get(*tx.To())
-		if minerAcc == nil {
-			minerAcc = types.NewStateAccount(*tx.To(), 0, common.Hash{})
-			localVault.Put(*tx.To(), minerAcc)
+		if tx.To() == nil {
+			return errors.New("coinbase transaction missing recipient address")
 		}
-		// Update coinbase balance (debit from coinbase)
-		coinbaseAcc := localVault.Get(coinbase.GetCoinbaseAddress())
-		if coinbaseAcc != nil {
-			if big.NewInt(0).Sub(coinbaseAcc.GetBalanceBI(), val).Cmp(val) == 1 {
-				newCoinbaseBal := new(big.Int).Sub(coinbaseAcc.GetBalanceBI(), val)
-				coinbaseAcc.SetBalanceBI(newCoinbaseBal)
-
-				// Credit reward to miner
-				newMinerBal := new(big.Int).Add(minerAcc.GetBalanceBI(), val)
-				minerAcc.SetBalanceBI(newMinerBal)
-				minerAcc.AddInput(tx.Hash(), val)
-			}
+		if err := localVault.RewardMiner(*tx.To(), val, tx.Hash()); err != nil {
+			return err
 		}
 
-		// Persist changes if not in memory mode
-		// Note: vault persistence is handled internally by the vault
-
-	case types.FaucetTxType:
-		// Faucet transactions: no sender balance check needed
-		localVault.DropFaucet(*tx.To(), val, tx.Hash())
+		// add tx to tx tree
+		storage.GetTxTable().Add(&tx)
+		valExecuteSuccess.Inc()
+		return nil
 
 	case types.LegacyTxType:
 		// Regular transactions: check sender balance and deduct gas
-		gasCost := tx.Cost()
-		totalDebit := new(big.Int).Add(new(big.Int).Set(val), gasCost)
-
-		// Check sender balance using big.Int - ensure sender exists
+		if tx.To() == nil {
+			return errors.New("legacy transaction missing recipient address")
+		}
+		// check if sender has enough balance
 		senderAcc := localVault.Get(tx.From())
 		if senderAcc == nil {
 			return NotEnoughtInputs
 		}
+		gasCost := tx.Cost()
+		totalDebit := new(big.Int).Add(new(big.Int).Set(val), gasCost)
 		senderBal := senderAcc.GetBalanceBI()
 		if senderBal.Cmp(totalDebit) < 0 {
 			return NotEnoughtInputs
@@ -258,6 +254,7 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 
 	default:
 		vlogger.Printf("unknown tx type: %d from %s", tx.Type(), tx.From())
+		return fmt.Errorf("unknown transaction type: %d", tx.Type())
 	}
 
 	// add tx to tx tree
@@ -266,14 +263,6 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 	valExecuteSuccess.Inc()
 	return nil
 }
-
-// func (v *DDDDDValidator) Faucet(addrStr string, valFor int) error {
-// 	if valFor > 0 {
-// 		var vault = storage.GetVault()
-// 		return vault.FaucetBalance(types.HexToAddress(addrStr), valFor)
-// 	}
-// 	return errors.New("value < 0")
-// }
 
 func (v *CoreValidator) GasPrice() *big.Int {
 	return v.minGasPrice
@@ -303,6 +292,28 @@ func (v *CoreValidator) SetUp(chainId *big.Int) {
 	// default min gas price; can be overridden from config in NewValidator
 	v.minGasPrice = types.FloatToBigInt(0.000001)
 	v.signer = types.NewSimpleSigner(chainId)
+	if v.Chain == nil {
+		return
+	}
+	// config chain
+	if v.Chain.GetChainConfigStatus() == 0x0 {
+		for _, block := range v.Chain.GetData() {
+			for _, tx := range block.Transactions {
+				// Skip if transaction was already executed
+				if storage.GetTxTable().Get(tx.Hash()) != -1 {
+					continue
+				}
+				err := v.ExecuteTransaction(tx)
+				if err != nil {
+					vlogger.Printf("error while executing tx: %s, error: %v", tx.Hash(), err)
+					valExecuteError.Inc()
+					continue
+				}
+				v.UpdateTxTree(&tx, int(block.Header().Index))
+			}
+		}
+	}
+	v.Chain.SetChainConfigStatus(0x1)
 }
 
 func (v *CoreValidator) Signer() types.Signer {
@@ -544,4 +555,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		return nil
 	}
 	return nil
+}
+
+func ConfigChain(validator Validator) {
 }

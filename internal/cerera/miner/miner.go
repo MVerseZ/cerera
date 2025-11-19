@@ -76,10 +76,20 @@ func (m *miner) Start() {
 	fmt.Printf("[MINER] Pool service connected\n")
 
 	// Получаем последний блок
-	lastBlockIndex := service.ExecTyped("cerera.chain.height", nil).(int)
-	lastBlock := service.ExecTyped("cerera.chain.getBlockByIndex", []interface{}{float64(lastBlockIndex)}).(*block.Block)
+	lastBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
+	if lastBlockResult == nil {
+		panic("Failed to get latest block: result is nil")
+	}
+	lastBlock, ok := lastBlockResult.(*block.Block)
+	if !ok || lastBlock == nil || lastBlock.Head == nil {
+		panic("Failed to get latest block: block is nil or invalid")
+	}
+	header := lastBlock.Header()
+	if header == nil {
+		panic("Failed to get latest block: header is nil")
+	}
 	fmt.Printf("[MINER] Last block: Height=%d, Hash=%s\n",
-		lastBlock.Header().Height, lastBlock.GetHash())
+		header.Height, lastBlock.GetHash())
 
 	// Запускаем цикл майнинга
 	go m.miningLoop()
@@ -116,13 +126,21 @@ func (m *miner) mineBlock() {
 	// fmt.Printf("[MINER] Starting scheduled block mining...\n")
 
 	// Получаем последний блок
-
-	lastBlockIndex := service.ExecTyped("cerera.chain.height", nil).(int)
-	latestBlock := service.ExecTyped("cerera.chain.getBlockByIndex", []interface{}{float64(lastBlockIndex)}).(*block.Block)
-	// if lastBlock == nil {
-	// 	fmt.Printf("[MINER] No last block found\n")
-	// 	return
-	// }
+	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
+	if latestBlockResult == nil {
+		fmt.Printf("[MINER] No last block found\n")
+		return
+	}
+	latestBlock, ok := latestBlockResult.(*block.Block)
+	if !ok || latestBlock == nil || latestBlock.Head == nil {
+		fmt.Printf("[MINER] Invalid last block\n")
+		return
+	}
+	header := latestBlock.Header()
+	if header == nil {
+		fmt.Printf("[MINER] Last block header is nil\n")
+		return
+	}
 
 	// Получаем транзакции из пула
 	pendingTxs := m.pool.GetPendingTransactions()
@@ -147,14 +165,25 @@ func (m *miner) mineBlock() {
 }
 
 func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
+	if lastBlock == nil || lastBlock.Head == nil {
+		fmt.Printf("[MINER] createNewBlock: lastBlock is nil or invalid\n")
+		return nil
+	}
+
+	lastHeader := lastBlock.Header()
+	if lastHeader == nil {
+		fmt.Printf("[MINER] createNewBlock: lastBlock header is nil\n")
+		return nil
+	}
+
 	// Создаем заголовок нового блока
 	newHeader := &block.Header{
-		Ctx:        lastBlock.Header().Ctx,
-		Difficulty: lastBlock.Header().Difficulty,
+		Ctx:        lastHeader.Ctx,
+		Difficulty: lastHeader.Difficulty,
 		Extra:      [8]byte{0x1, 0xf, 0x0, 0x0, 0x0, 0x0, 0xd, 0xe},
-		Height:     lastBlock.Header().Height + 1,
-		Index:      lastBlock.Header().Index + 1,
-		GasLimit:   lastBlock.Header().GasLimit,
+		Height:     lastHeader.Height + 1,
+		Index:      lastHeader.Index + 1,
+		GasLimit:   lastHeader.GasLimit,
 		GasUsed:    0, // Будет рассчитано после обработки транзакций
 		ChainId:    m.config.Chain.ChainID,
 		Node:       m.config.NetCfg.ADDR, // Адрес майнера
@@ -168,7 +197,7 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 
 	// Создаем новый блок
 	newBlock := block.NewBlock(newHeader)
-	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastBlock.Header().Nonce, m.config.NetCfg.ADDR)
+	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastHeader.Nonce, m.config.NetCfg.ADDR)
 	newBlock.Transactions = append(transactions, coinbaaseTransaction)
 
 	// Рассчитываем размер блока
