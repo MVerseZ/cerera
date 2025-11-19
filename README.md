@@ -6,10 +6,8 @@ Cerera is a high-performance blockchain platform built in Go, designed for scala
 
 - **High Performance**: Optimized for high transaction throughput
 - **Secure Transactions**: Advanced cryptographic security with ECDSA signatures
-- **Smart Contract Support**: Built-in support for smart contracts and decentralized applications
 - **P2P Network**: Decentralized peer-to-peer networking using libp2p
 - **Faucet System**: Built-in faucet with rate limiting and security controls
-- **Mining Support**: Proof-of-Work consensus mechanism with RandomX
 - **Account Management**: Comprehensive account system with HD wallet support
 - **Storage Layer**: Efficient storage with Merkle trees and trie structures
 
