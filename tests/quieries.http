@@ -25,7 +25,7 @@ POST http://localhost:1337/app HTTP/1.1
 Content-Type: application/json
 
 {
-    "method": "accounts",
+    "method": "cerera.account.getAll",
     "jsonrpc": "2.0",
     "id": 3
 }
@@ -48,11 +48,10 @@ POST http://localhost:1337/app HTTP/1.1
 Content-Type: application/json
 
 {
-    "method": "create_account",
+    "method": "cerera.account.create",
     "jsonrpc": "2.0",
     "id": 11231,
     "params": [
-        "",
         ""
     ]
 }
@@ -62,11 +61,11 @@ POST http://localhost:1337/app HTTP/1.1
 Content-Type: application/json
 
 {
-    "method": "restore_account",
+    "method": "cerera.account.restore",
     "jsonrpc": "2.0",
     "id": 2,
     "params": [
-        "garbage figure dance fiscal subject angry minute divide love absent defy split machine section denial puzzle ugly claim fatigue label theme trend kit detect",
+        "holiday journey object dirt turn there clown picnic legend average organ dose obey viable october park wood license elephant spell tiger horror exhaust also",
         ""
     ]
 }
@@ -104,7 +103,7 @@ POST http://localhost:1337/app HTTP/1.1
 Content-Type: application/json
 
 {
-    "method": "getmempoolinfo",
+    "method": "cerera.pool.getInfo",
     "jsonrpc": "2.0",
     "id": 11231,
     "params": []
@@ -131,3 +130,24 @@ Content-Type: application/json
     "jsonrpc": "2.0",
     "id": 11231
 }
+
+
+###
+
+POST http://localhost:1337/app HTTP/1.1
+Content-Type: application/json
+
+{
+    "method": "miner.status",
+    "jsonrpc": "2.0",
+    "id": 11231
+}
+###
+POST http://localhost:1337/app HTTP/1.1
+Content-Type: application/json
+
+{
+    "method": "chain.getMinimumGasValue",
+    "jsonrpc": "2.0",
+    "id": 11231
+}   
