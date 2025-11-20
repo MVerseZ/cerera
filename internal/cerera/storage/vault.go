@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
@@ -74,6 +75,10 @@ type D5Vault struct {
 	// channels
 	// stChan chan [32]byte
 	Service_Name string
+
+	// Faucet tracking
+	faucetLastRequest map[types.Address]time.Time
+	faucetMu          sync.RWMutex
 }
 
 var vlt D5Vault
@@ -161,9 +166,10 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	var rootHashAddress = cfg.NetCfg.ADDR
 
 	vlt = D5Vault{
-		accounts: GetAccountsTrie(),
-		rootHash: common.EmptyHash(),
-		inMem:    cfg.IN_MEM,
+		accounts:          GetAccountsTrie(),
+		rootHash:          common.EmptyHash(),
+		inMem:             cfg.IN_MEM,
+		faucetLastRequest: make(map[types.Address]time.Time),
 		// stChan:   make(chan [32]byte),
 	}
 
@@ -196,15 +202,15 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 
 	vlt.initiator = rootSA
 
-	// if vlt.inMem {
-	// 	var cbAcc = coinbase.CoinBaseStateAccount()
-	// 	vlt.accounts.Append(coinbase.GetCoinbaseAddress(), &cbAcc)
+	if vlt.inMem {
+		vlt.accounts.Append(rootSA.Address, rootSA)
+		vlt.status = 0xa
+		vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
+		vlt.updateSupplyMetrics()
 
-	// 	var faucetAddr = coinbase.FaucetAccount()
-	// 	vlt.accounts.Append(coinbase.GetFaucetAddress(), &faucetAddr)
+		return &vlt, nil
+	}
 
-	// 	vlt.accounts.Append(rootSA.Address, rootSA)
-	// } else {
 	// Initialize vault path if not set
 	if cfg.Vault.PATH == "EMPTY" {
 		cfg.UpdateVaultPath("./vault.dat")
@@ -305,7 +311,9 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	v.accounts.Append(address, newAccount)
 	vaultAccountsTotal.Set(float64(v.accounts.Size()))
 
-	SaveToVault(newAccount.Bytes(), vlt.path)
+	if !v.inMem {
+		SaveToVault(newAccount.Bytes(), vlt.path)
+	}
 
 	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
 }
@@ -464,9 +472,53 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 
 // DropFaucet mints new coins directly to the destination account with faucet metrics.
 func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash) error {
+	// Check amount limits
+	if cnt == nil || cnt.Sign() <= 0 {
+		return ErrInvalidMintAmount
+	}
+
+	// Check minimum amount
+	if cnt.Cmp(coinbase.MinFaucetAmount) < 0 {
+		return fmt.Errorf("faucet amount %s is below minimum %s", cnt.String(), coinbase.MinFaucetAmount.String())
+	}
+
+	// Check maximum amount
+	if cnt.Cmp(coinbase.MaxFaucetAmount) > 0 {
+		return fmt.Errorf("faucet amount %s exceeds maximum %s", cnt.String(), coinbase.MaxFaucetAmount.String())
+	}
+
+	// Initialize faucetLastRequest if nil (safety check)
+	v.faucetMu.Lock()
+	if v.faucetLastRequest == nil {
+		v.faucetLastRequest = make(map[types.Address]time.Time)
+	}
+	v.faucetMu.Unlock()
+
+	// Check cooldown period
+	v.faucetMu.RLock()
+	lastRequest, exists := v.faucetLastRequest[to]
+	v.faucetMu.RUnlock()
+
+	if exists {
+		cooldownDuration := time.Duration(coinbase.FaucetCooldownHours) * time.Hour
+		timeSinceLastRequest := time.Since(lastRequest)
+		if timeSinceLastRequest < cooldownDuration {
+			remainingTime := cooldownDuration - timeSinceLastRequest
+			return fmt.Errorf("faucet cooldown period not expired: please wait %v before next request", remainingTime.Round(time.Minute))
+		}
+	}
+
+	// Mint the coins
 	if _, err := v.creditMintedAmount(to, cnt, txHash); err != nil {
 		return err
 	}
+
+	// Update last request time
+	v.faucetMu.Lock()
+	v.faucetLastRequest[to] = time.Now()
+	v.faucetMu.Unlock()
+
+	// Update metrics
 	vaultFaucetAmountTotal.Add(types.BigIntToFloat(cnt))
 	return nil
 }

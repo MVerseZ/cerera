@@ -18,6 +18,8 @@ var commands = map[string]int{
 
 var descriptions = map[string]string{
 	"status": "Print current status",
+	"exit":   "Exit the program",
+	"help":   "Show available commands",
 	"test":   "Test command",
 }
 

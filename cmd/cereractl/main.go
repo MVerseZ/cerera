@@ -21,7 +21,6 @@ import (
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/gigea"
-	"github.com/cerera/internal/mesh"
 	"github.com/chzyer/readline"
 )
 
@@ -205,12 +204,47 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Интерактивный ввод параметров
-	cfg, mode, port, httpPort, mine, _ := parseInteractive()
+	// Проверяем наличие конфига
+	var cfg config.Config
+	var mode string
+	var port string
+	var httpPort int
+	var mine bool
+
+	if _, err := os.Stat("config.json"); err == nil {
+		// Конфиг существует, загружаем его
+		cfgPtr := config.GenerageConfig()
+		cfg = *cfgPtr
+
+		// Используем значения из конфига
+		if cfg.NetCfg.P2P != 0 {
+			port = strconv.Itoa(cfg.NetCfg.P2P)
+		} else {
+			port = "31000"
+		}
+		if cfg.NetCfg.RPC != 0 {
+			httpPort = cfg.NetCfg.RPC
+		} else {
+			httpPort = 1337
+		}
+
+		// Значения по умолчанию для параметров, которых нет в конфиге
+		mode = "p2p"
+		mine = true
+	} else {
+		// Конфига нет, используем интерактивный ввод
+		cfg, mode, port, httpPort, mine, _ = parseInteractive()
+	}
 
 	// Создание контекста с обработкой сигналов
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	fmt.Println("cfg: ", cfg)
+	fmt.Println("mode: ", mode)
+	fmt.Println("port: ", port)
+	fmt.Println("httpPort: ", httpPort)
+	fmt.Println("mine: ", mine)
 
 	// Инициализация приложения
 	app, err := NewCerera(&cfg, ctx, mode, port, httpPort, mine)
@@ -219,11 +253,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	dht, err := mesh.Start(&cfg, ctx, port)
-	if err != nil {
-		log.Printf("Failed to initialize DHT: %v", err)
-		os.Exit(1)
-	}
+	// dht, err := mesh.Start(&cfg, ctx, port)
+	// if err != nil {
+	// 	log.Printf("Failed to initialize DHT: %v", err)
+	// 	os.Exit(1)
+	// }
 	// mesh.Connect(app.cmdChan)
 
 	rl, err := readline.New("> ")
@@ -238,34 +272,42 @@ func main() {
 		}
 		input := strings.Split(line, " ")
 		switch input[0] {
-		case "store":
-			id, err := dht.Store([]byte(input[1]))
-			if err != nil {
-				fmt.Println(err.Error())
-			}
-			fmt.Println("Stored ID: " + id)
-		case "get":
-			data, exists, err := dht.Get(input[1])
-			if err != nil {
-				fmt.Println(err.Error())
-			}
-			fmt.Println("Searching for", input[1])
-			if exists {
-				fmt.Println("..Found data:", string(data))
-			} else {
-				fmt.Println("..Nothing found for this key!")
-			}
-		case "info":
-			nodes := dht.NumNodes()
-			self := dht.GetSelfID()
-			addr := dht.GetNetworkAddr()
-			fmt.Println("Addr: " + addr)
-			fmt.Println("ID: " + self)
-			fmt.Println("Known Nodes: " + strconv.Itoa(nodes))
+		// case "store":
+		// 	id, err := dht.Store([]byte(input[1]))
+		// 	if err != nil {
+		// 		fmt.Println(err.Error())
+		// 	}
+		// 	fmt.Println("Stored ID: " + id)
+		// case "get":
+		// 	data, exists, err := dht.Get(input[1])
+		// 	if err != nil {
+		// 		fmt.Println(err.Error())
+		// 	}
+		// 	fmt.Println("Searching for", input[1])
+		// 	if exists {
+		// 		fmt.Println("..Found data:", string(data))
+		// 	} else {
+		// 		fmt.Println("..Nothing found for this key!")
+		// 	}
+		// case "info":
+		// 	nodes := dht.NumNodes()
+		// 	self := dht.GetSelfID()
+		// 	addr := dht.GetNetworkAddr()
+		// 	fmt.Println("Addr: " + addr)
+		// 	fmt.Println("ID: " + self)
+		// 	fmt.Println("Known Nodes: " + strconv.Itoa(nodes))
+		case "balance":
+			fmt.Println("Node balance")
+		case "send":
+			fmt.Println("Send transaction")
 		case "status":
 			fmt.Printf("Status: %x\n", app.status)
+		case "help":
+			fmt.Println(Usage())
+		case "exit":
+			os.Exit(0)
 		default:
-			fmt.Println("Unknown command")
+			fmt.Println("Unknown command, use help to see available commands")
 		}
 	}
 

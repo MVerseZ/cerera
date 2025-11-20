@@ -106,7 +106,7 @@ func (m *miner) Stop() {
 
 func (m *miner) miningLoop() {
 
-	ticker := time.NewTicker(3 * time.Second) // Майним каждые 7 секунд
+	ticker := time.NewTicker(10 * time.Second) // Майним каждые 7 секунд
 	defer ticker.Stop()
 
 	for {
@@ -122,8 +122,8 @@ func (m *miner) miningLoop() {
 	}
 }
 
+// fmt.Printf("[MINER] Starting scheduled block mining...\n")
 func (m *miner) mineBlock() {
-	// fmt.Printf("[MINER] Starting scheduled block mining...\n")
 
 	// Получаем последний блок
 	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
