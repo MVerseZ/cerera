@@ -10,52 +10,16 @@ import (
 	"log"
 	"os"
 
+	"github.com/akrylysov/pogreb"
 	"github.com/cerera/internal/cerera/types"
-	"go.mills.io/bitcask/v2"
 )
 
 var vaultSrcLogger = log.New(os.Stdout, "[vault_source] ", log.LstdFlags|log.Lmicroseconds)
 var IS_DEGUG = true
 
-// getBitcaskDB returns the vault's database instance, opening it if needed
-func getBitcaskDB(vaultPath string) (*bitcask.Bitcask, error) {
-	vault := GetVault()
-
-	// If database is already open, return it
-	vault.dbMu.RLock()
-	if vault.db != nil {
-		db := vault.db
-		vault.dbMu.RUnlock()
-		return db, nil
-	}
-	vault.dbMu.RUnlock()
-
-	// Database not open, try to open it
-	vault.dbMu.Lock()
-	defer vault.dbMu.Unlock()
-
-	// Double check after acquiring write lock
-	if vault.db != nil {
-		return vault.db, nil
-	}
-
-	// Extract directory from path (bitcask needs a directory, not a file)
-	dbDir := vaultPath
-	// Ensure directory exists
-	if err := os.MkdirAll(dbDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create vault directory: %w", err)
-	}
-
-	// Open bitcask database
-	db, err := bitcask.Open(dbDir, bitcask.WithSyncWrites(false))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open bitcask database: %w", err)
-	}
-
-	// Store in vault
-	vault.db = db
-
-	return db, nil
+func getLocalSource(vaultPath string) error {
+	// vault := GetVault()
+	return nil
 }
 
 func encrypt(data []byte, key []byte) ([]byte, error) {
@@ -94,36 +58,81 @@ func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
+// getPogrebDB returns the vault's database instance, opening it if needed
+func getPogrebDB(vaultPath string) (*pogreb.DB, error) {
+	vault := GetVault()
+
+	// If database is already open, return it
+	vault.dbMu.RLock()
+	if vault.db != nil {
+		db := vault.db
+		vault.dbMu.RUnlock()
+		return db, nil
+	}
+	vault.dbMu.RUnlock()
+
+	// Database not open, try to open it
+	vault.dbMu.Lock()
+	defer vault.dbMu.Unlock()
+
+	// Double check after acquiring write lock
+	if vault.db != nil {
+		return vault.db, nil
+	}
+
+	// Extract directory from path (pogreb needs a directory, not a file)
+	dbDir := vaultPath
+	// Ensure directory exists
+	if err := os.MkdirAll(dbDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create vault directory: %w", err)
+	}
+
+	// Open pogreb database
+	db, err := pogreb.Open(dbDir, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open pogreb database: %w", err)
+	}
+
+	// Store in vault
+	vault.db = db
+
+	return db, nil
+}
+
 func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
-	// Get bitcask database from vault
-	db, err := getBitcaskDB(vaultPath)
+	// Get pogreb database from vault
+	db, err := getPogrebDB(vaultPath)
 	if err != nil {
 		return err
 	}
 
 	// Use address bytes as key (shorter than hex string)
 	key := rootSa.Address.Bytes()
-	if db.Has(key) {
+	has, err := db.Has(key)
+	if err != nil {
+		return fmt.Errorf("failed to check if key exists: %w", err)
+	}
+	if has {
 		return fmt.Errorf("vault already exists: %s", vaultPath)
 	}
 
 	// Save account data
 	accountData := rootSa.Bytes()
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("Writing account data to bitcask: %s", rootSa.Address.Hex())
+		vaultSrcLogger.Printf("Writing account data to pogreb: %s", rootSa.Address.Hex())
 	}
 
 	if err := db.Put(key, accountData); err != nil {
-		return fmt.Errorf("failed to write account data to bitcask: %w", err)
+		return fmt.Errorf("failed to write account data to pogreb: %w", err)
 	}
 
 	return nil
 }
 
-// load from bitcask database
+// load from pogreb database
 func SyncVault(path string) error {
-	// Get bitcask database from vault
-	db, err := getBitcaskDB(path)
+	// Get pogreb database from vault
+	db, err := getPogrebDB(path)
 	if err != nil {
 		return err
 	}
@@ -131,28 +140,33 @@ func SyncVault(path string) error {
 	// Clear existing accounts in memory
 	GetVault().Clear()
 
-	// Iterate over all keys in the database
-	err = db.Scan([]byte{}, func(key bitcask.Key) error {
-		// Get account data
-		accountData, err := db.Get(key)
+	// Iterate over all items in the database
+	it := db.Items()
+	for {
+		key, accountData, err := it.Next()
+		if err == pogreb.ErrIterationDone {
+			break
+		}
 		if err != nil {
 			if IS_DEGUG {
-				vaultSrcLogger.Printf("SyncVault: failed to get account data for key %x: %v", key, err)
+				vaultSrcLogger.Printf("SyncVault: failed to get next item: %v", err)
 			}
-			return nil // Continue with next key
+			continue
 		}
 
 		// Try to deserialize account, skip on error
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					vltlogger.Printf("Skipping corrupted account data in vault: %v (key: %x, data length: %d)", r, key, len(accountData))
+					if IS_DEGUG {
+						vaultSrcLogger.Printf("Skipping corrupted account data: %v (key: %x, data length: %d)", r, key, len(accountData))
+					}
 				}
 			}()
 			account := types.BytesToStateAccount(accountData)
 			if account != nil {
 				if IS_DEGUG {
-					vltlogger.Printf("Read account from bitcask vault: %s", account.Address.Hex())
+					vaultSrcLogger.Printf("Read account from pogreb vault: %s", account.Address.Hex())
 				}
 				GetVault().accounts.Append(account.Address, account)
 			} else {
@@ -161,16 +175,10 @@ func SyncVault(path string) error {
 					previewLen = len(accountData)
 				}
 				if IS_DEGUG {
-					vltlogger.Printf("Failed to deserialize account from vault (key: %x, data length: %d, first bytes: %x)", key, len(accountData), accountData[:previewLen])
+					vaultSrcLogger.Printf("Failed to deserialize account (key: %x, data length: %d, first bytes: %x)", key, len(accountData), accountData[:previewLen])
 				}
 			}
 		}()
-
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to scan bitcask database: %w", err)
 	}
 
 	return nil
@@ -183,27 +191,26 @@ func SaveToVault(account []byte, vaultPath string) error {
 		return fmt.Errorf("failed to decode account data")
 	}
 
-	// Get bitcask database from vault
-	db, err := getBitcaskDB(vaultPath)
+	// Get pogreb database from vault
+	db, err := getPogrebDB(vaultPath)
 	if err != nil {
 		return err
 	}
 
-	// Use address bytes as key (shorter than hex string)
+	// Use address bytes as key
 	key := accountData.Address.Bytes()
-
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("Writing account data to bitcask: %s", accountData.Address.Hex())
+		vaultSrcLogger.Printf("Writing account data to pogreb: %s", accountData.Address.Hex())
 	}
 
 	if err := db.Put(key, account); err != nil {
-		return fmt.Errorf("failed to write account data to bitcask: %w", err)
+		return fmt.Errorf("failed to write account data to pogreb: %w", err)
 	}
 
 	return nil
 }
 
-// UpdateVault updates an account in the bitcask database.
+// UpdateVault updates an account in the pogreb database.
 func UpdateVault(account []byte, vaultPath string) error {
 	// Decode account from bytes
 	updatedAccount := types.BytesToStateAccount(account)
@@ -211,22 +218,22 @@ func UpdateVault(account []byte, vaultPath string) error {
 		return fmt.Errorf("failed to decode account data for update")
 	}
 
-	// Get bitcask database from vault
-	db, err := getBitcaskDB(vaultPath)
+	// Get pogreb database from vault
+	db, err := getPogrebDB(vaultPath)
 	if err != nil {
 		return err
 	}
 
-	// Use address bytes as key (shorter than hex string)
+	// Use address bytes as key
 	key := updatedAccount.Address.Bytes()
 
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("UpdateVault: updating account %s in bitcask", updatedAccount.Address.Hex())
+		vaultSrcLogger.Printf("UpdateVault: updating account %s in pogreb", updatedAccount.Address.Hex())
 	}
 
 	// Put will overwrite if key exists, or create if it doesn't
 	if err := db.Put(key, account); err != nil {
-		return fmt.Errorf("failed to update account in bitcask: %w", err)
+		return fmt.Errorf("failed to update account in pogreb: %w", err)
 	}
 
 	if IS_DEGUG {
@@ -237,16 +244,24 @@ func UpdateVault(account []byte, vaultPath string) error {
 }
 
 func VaultSourceSize(vaultPath string) (int64, error) {
-	// Get bitcask database from vault
-	db, err := getBitcaskDB(vaultPath)
+	// Get pogreb database from vault
+	db, err := getPogrebDB(vaultPath)
 	if err != nil {
 		return 0, err
 	}
 
-	// Get database stats
-	stats, err := db.Stats()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get bitcask stats: %w", err)
+	// Pogreb doesn't have Stats() method, so we count items manually
+	count := int64(0)
+	it := db.Items()
+	for {
+		_, _, err := it.Next()
+		if err == pogreb.ErrIterationDone {
+			break
+		}
+		if err != nil {
+			return 0, fmt.Errorf("failed to iterate database: %w", err)
+		}
+		count++
 	}
-	return int64(stats.Size), nil
+	return count, nil
 }

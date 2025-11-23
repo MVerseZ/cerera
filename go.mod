@@ -3,6 +3,7 @@ module github.com/cerera
 go 1.25.3
 
 require (
+	github.com/akrylysov/pogreb v0.10.2
 	github.com/anacrolix/utp v0.2.0
 	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792
 	github.com/ccding/go-stun/stun v0.0.0-20200514191101-4dc67bcdb029
@@ -20,17 +21,12 @@ require (
 )
 
 require (
-	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
 	github.com/anacrolix/missinggo v1.3.0 // indirect
 	github.com/anacrolix/missinggo/perf v1.0.0 // indirect
 	github.com/anacrolix/missinggo/v2 v2.5.1 // indirect
 	github.com/anacrolix/sync v0.4.0 // indirect
-	github.com/gofrs/flock v0.8.1 // indirect
-	github.com/hashicorp/go-immutable-radix/v2 v2.0.0 // indirect
+	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
-	github.com/mattetti/filebuffer v1.0.1 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
-	go.mills.io/bitcask/v2 v2.1.5 // indirect
 	golang.org/x/telemetry v0.0.0-20251008203120-078029d740a8 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
 )

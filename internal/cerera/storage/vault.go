@@ -17,10 +17,10 @@ import (
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
 
+	"github.com/akrylysov/pogreb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
-	"go.mills.io/bitcask/v2"
 )
 
 // vltlogger is a dedicated console logger for chain
@@ -82,8 +82,8 @@ type D5Vault struct {
 	faucetLastRequest map[types.Address]time.Time
 	faucetMu          sync.RWMutex
 
-	// Bitcask database (only for non-in-memory mode)
-	db   *bitcask.Bitcask
+	// Pogreb database (only for non-in-memory mode)
+	db   *pogreb.DB
 	dbMu sync.RWMutex
 }
 
@@ -223,28 +223,32 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		return &vlt, nil
 	}
 
-	// Initialize vault path if not set (bitcask uses directory, not file)
+	// Initialize vault path if not set (pogreb uses directory, not file)
 	if cfg.Vault.PATH == "EMPTY" {
 		cfg.UpdateVaultPath("./vault")
 	}
 
 	vlt.path = cfg.Vault.PATH
 
-	// Open bitcask database once and store it
+	// Open pogreb database once and store it
 	dbDir := vlt.path
 	if err := os.MkdirAll(dbDir, 0700); err != nil {
 		panic(fmt.Errorf("failed to create vault directory: %w", err))
 	}
 
-	db, err := bitcask.Open(dbDir, bitcask.WithSyncWrites(false))
+	db, err := pogreb.Open(dbDir, nil)
 	if err != nil {
-		panic(fmt.Errorf("failed to open bitcask database: %w", err))
+		panic(fmt.Errorf("failed to open pogreb database: %w", err))
 	}
 	vlt.db = db
 
 	// Check if rootSA already exists in database
 	key := rootSA.Address.Bytes()
-	if !db.Has(key) {
+	has, err := db.Has(key)
+	if err != nil {
+		panic(fmt.Errorf("failed to check if root account exists: %w", err))
+	}
+	if !has {
 		// Create new vault with rootSA
 		accountData := rootSA.Bytes()
 		if err := db.Put(key, accountData); err != nil {
@@ -438,11 +442,20 @@ func (v *D5Vault) Size() int64 {
 	if v.inMem || v.db == nil {
 		return int64(v.accounts.Size())
 	}
-	stats, err := v.db.Stats()
-	if err != nil {
-		return -1
+	// Pogreb doesn't have Stats() method, so we count items manually
+	count := int64(0)
+	it := v.db.Items()
+	for {
+		_, _, err := it.Next()
+		if err == pogreb.ErrIterationDone {
+			break
+		}
+		if err != nil {
+			return -1
+		}
+		count++
 	}
-	return int64(stats.Size)
+	return count
 }
 
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
@@ -614,7 +627,7 @@ func (v *D5Vault) ServiceName() string {
 	return VAULT_SERVICE_NAME
 }
 
-// SyncFromDB loads all accounts from the bitcask database into memory
+// SyncFromDB loads all accounts from the pogreb database into memory
 func (v *D5Vault) SyncFromDB() error {
 	if v.db == nil {
 		return fmt.Errorf("database not initialized")
@@ -626,15 +639,16 @@ func (v *D5Vault) SyncFromDB() error {
 
 	v.accounts.Clear()
 
-	// Iterate over all keys in the database
-	err := v.db.Scan([]byte{}, func(key bitcask.Key) error {
-		// Get account data
-		accountData, err := v.db.Get(key)
+	// Iterate over all items in the database
+	it := v.db.Items()
+	for {
+		key, accountData, err := it.Next()
+		if err == pogreb.ErrIterationDone {
+			break
+		}
 		if err != nil {
-			if true { // Always log for debugging
-				vltlogger.Printf("syncFromDB: failed to get account data for key %x: %v", key, err)
-			}
-			return nil // Continue with next key
+			vltlogger.Printf("syncFromDB: failed to get next item: %v", err)
+			continue
 		}
 
 		// Try to deserialize account, skip on error
@@ -647,7 +661,7 @@ func (v *D5Vault) SyncFromDB() error {
 			account := types.BytesToStateAccount(accountData)
 			if account != nil {
 				if true { // Always log for debugging
-					vltlogger.Printf("Read account from bitcask vault: %s", account.Address.Hex())
+					vltlogger.Printf("Read account from pogreb vault: %s", account.Address.Hex())
 				}
 				v.accounts.Append(account.Address, account)
 			} else {
@@ -660,31 +674,30 @@ func (v *D5Vault) SyncFromDB() error {
 				}
 			}
 		}()
-
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to scan bitcask database: %w", err)
 	}
 
 	return nil
 }
 
-// Close closes the bitcask database
+// Close closes the pogreb database
 func (v *D5Vault) Close() error {
 	v.dbMu.Lock()
 	defer v.dbMu.Unlock()
 
-	if err := v.db.Sync(); err != nil {
-		return err
+	if v.db == nil {
+		vltlogger.Printf("Close(): database is already closed or not initialized")
+		return nil
 	}
 
-	if v.db != nil {
-		err := v.db.Close()
+	// Close the database (pogreb handles syncing internally)
+	if err := v.db.Close(); err != nil {
+		vltlogger.Printf("Close(): error closing database: %v", err)
 		v.db = nil
-		return err
+		return fmt.Errorf("failed to close pogreb database: %w", err)
 	}
+
+	vltlogger.Printf("Close(): pogreb database closed successfully")
+	v.db = nil
 	return nil
 }
 

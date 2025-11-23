@@ -171,7 +171,7 @@ func main() {
 			if err := (*app.v).Close(); err != nil {
 				log.Printf("Ошибка при закрытии vault: %v", err)
 			} else {
-				log.Println("Vault успешно закрыт, но базу данных не закрывает")
+				log.Println("Vault успешно закрыт")
 			}
 		}
 		time.Sleep(2 * time.Second)
