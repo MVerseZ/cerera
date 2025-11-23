@@ -120,12 +120,14 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	http := flag.Int("http", 8080, "Порт для http сервера")
 	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
 	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
+	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
 	flag.Parse()
 
 	cfg := config.GenerageConfig()
 	cfg.SetNodeKey(*keyPath)
 	cfg.SetAutoGen(true)
 	cfg.SetInMem(*inMem)
+	cfg.SEC.HTTP.TLS = *tls
 
 	return *cfg, *mode, *port, *http, *mine, *inMem
 }
