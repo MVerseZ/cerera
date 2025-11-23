@@ -129,57 +129,57 @@ func Mold(cfg *config.Config) (*Chain, error) {
 	dataBlocks := make([]*block.Block, 0)
 	var list []trie.Content
 
-	// if cfg.IN_MEM {
-	// 	clogger.Print("Using in-memory storage\n")
-	// 	dataBlocks = append(dataBlocks, genesisBlock)
-	// } else {
-	clogger.Print("Using D5 storage\n")
-	// Determine chain file path
-	chainPath := cfg.Chain.Path
-	if chainPath == "EMPTY" {
-		chainPath = "./chain.dat"
-		cfg.UpdateChainPath(chainPath)
-	}
-	// Check if chain file exists
-	if _, err := os.Stat(chainPath); os.IsNotExist(err) {
-		// File doesn't exist, create new chain with genesis block
-		list = append(list, genesisBlock)
-		stats.Total += 1
-		stats.ChainWork += genesisBlock.Head.Size
-		InitChainVaultWithPath(genesisBlock, chainPath)
+	if cfg.IN_MEM {
+		clogger.Print("Using in-memory storage\n")
+		dataBlocks = append(dataBlocks, genesisBlock)
 	} else {
-		// File exists, load blocks from file
-		readBlocks, err := SyncVaultWithPath(chainPath)
-		if err != nil {
-			clogger.Printf("Failed to sync vault, using genesis block: %v", err)
-			// Fallback to genesis if sync fails
-			list = append(list, genesisBlock)
-			stats.Total += 1
-			stats.ChainWork += genesisBlock.Head.Size
-		} else if len(readBlocks) > 0 {
-			// Load blocks from file
-			dataBlocks = readBlocks
-			for _, blk := range readBlocks {
-				list = append(list, blk)
-				stats.Total += 1
-				stats.ChainWork += blk.Head.Size
-				stats.Latest = blk.GetHash()
-			}
-			clogger.Printf("Loaded %d blocks from chain file: %s", len(readBlocks), chainPath)
-		} else {
-			// File exists but is empty, use genesis block
+		clogger.Print("Using D5 storage\n")
+		// Determine chain file path
+		chainPath := cfg.Chain.Path
+		if chainPath == "EMPTY" {
+			chainPath = "./chain.dat"
+			cfg.UpdateChainPath(chainPath)
+		}
+		// Check if chain file exists
+		if _, err := os.Stat(chainPath); os.IsNotExist(err) {
+			// File doesn't exist, create new chain with genesis block
 			list = append(list, genesisBlock)
 			stats.Total += 1
 			stats.ChainWork += genesisBlock.Head.Size
 			InitChainVaultWithPath(genesisBlock, chainPath)
+		} else {
+			// File exists, load blocks from file
+			readBlocks, err := SyncVaultWithPath(chainPath)
+			if err != nil {
+				clogger.Printf("Failed to sync vault, using genesis block: %v", err)
+				// Fallback to genesis if sync fails
+				list = append(list, genesisBlock)
+				stats.Total += 1
+				stats.ChainWork += genesisBlock.Head.Size
+			} else if len(readBlocks) > 0 {
+				// Load blocks from file
+				dataBlocks = readBlocks
+				for _, blk := range readBlocks {
+					list = append(list, blk)
+					stats.Total += 1
+					stats.ChainWork += blk.Head.Size
+					stats.Latest = blk.GetHash()
+				}
+				clogger.Printf("Loaded %d blocks from chain file: %s", len(readBlocks), chainPath)
+			} else {
+				// File exists but is empty, use genesis block
+				list = append(list, genesisBlock)
+				stats.Total += 1
+				stats.ChainWork += genesisBlock.Head.Size
+				InitChainVaultWithPath(genesisBlock, chainPath)
+			}
 		}
+		t, err = trie.NewTree(list)
+		if err != nil {
+			clogger.Printf("trie validation error: %v", err)
+		}
+		t.VerifyTree()
 	}
-	t, err = trie.NewTree(list)
-	if err != nil {
-		clogger.Printf("trie validation error: %v", err)
-	}
-	t.VerifyTree()
-
 	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
 	// Set current block safely
 	var currentBlock *block.Block

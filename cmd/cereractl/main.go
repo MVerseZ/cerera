@@ -296,7 +296,8 @@ func main() {
 		// 	fmt.Println("Addr: " + addr)
 		// 	fmt.Println("ID: " + self)
 		// 	fmt.Println("Known Nodes: " + strconv.Itoa(nodes))
-		case "balance":
+		case "balance", "b":
+			// app.ExecuteCli("balance")
 			fmt.Println("Node balance")
 		case "send":
 			fmt.Println("Send transaction")
@@ -313,6 +314,17 @@ func main() {
 
 	// Ожидание сигнала завершения
 	<-ctx.Done()
+
+	log.Println("Получен сигнал завершения, начинаем graceful shutdown...")
+
+	// Закрываем vault (закрывает bitcask базу данных)
+	if app.v != nil {
+		if err := (*app.v).Close(); err != nil {
+			log.Printf("Ошибка при закрытии vault: %v", err)
+		} else {
+			log.Println("Vault успешно закрыт")
+		}
+	}
 
 	// Создаем контекст с таймаутом для graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)

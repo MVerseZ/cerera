@@ -20,7 +20,7 @@ type Input struct {
 	M map[common.Hash]*big.Int
 }
 
-const DEBUG = true
+const DEBUG = false
 
 type StateAccount struct {
 	Address    Address

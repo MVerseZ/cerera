@@ -119,7 +119,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
 	http := flag.Int("http", 8080, "Порт для http сервера")
 	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
-	inMem := flag.Bool("mem", true, "Хранение данных память/диск")
+	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
 	flag.Parse()
 
 	cfg := config.GenerageConfig()
@@ -145,7 +145,7 @@ func main() {
 	defer cancel()
 
 	// Инициализация приложения
-	_, err := NewCerera(&cfg, ctx, mode, port, httpPort, mine)
+	app, err := NewCerera(&cfg, ctx, mode, port, httpPort, mine)
 	if err != nil {
 		log.Printf("Failed to initialize Cerera: %v", err)
 		os.Exit(1)
@@ -158,20 +158,43 @@ func main() {
 	// }
 	// mesh.Connect(app.cmdChan)
 
-	// Ожидание сигнала завершения
-	<-ctx.Done()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	// Создаем контекст с таймаутом для graceful shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
+	done := make(chan bool, 1)
 
-	// Ждем завершения или таймаута
-	select {
-	case <-shutdownCtx.Done():
-		log.Println("Таймаут graceful shutdown, принудительное завершение")
-		os.Exit(1)
-	default:
-		log.Println("Приложение корректно завершено")
-	}
+	go func() {
+		sig := <-sigs
+		fmt.Println("Received signal: ", sig)
+		// // Закрываем vault (закрывает bitcask базу данных)
+		if app != nil && app.v != nil {
+			if err := (*app.v).Close(); err != nil {
+				log.Printf("Ошибка при закрытии vault: %v", err)
+			} else {
+				log.Println("Vault успешно закрыт, но базу данных не закрывает")
+			}
+		}
+		time.Sleep(2 * time.Second)
+		done <- true
+	}()
+
+	<-done
+
+	// // Ожидание сигнала завершения
+	// <-ctx.Done()
+
+	// log.Println("Получен сигнал завершения, начинаем graceful shutdown...")
+
+	// // Останавливаем другие компоненты через registry, если они поддерживают остановку
+	// if app.registry != nil {
+	// 	if err := app.registry.StopAllServices(); err != nil {
+	// 		log.Printf("Ошибка при остановке сервисов: %v", err)
+	// 	}
+	// }
+
+	// // Даем время на завершение операций записи в базу данных
+	// time.Sleep(100 * time.Millisecond)
+
+	// log.Println("Приложение корректно завершено")
 
 }

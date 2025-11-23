@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
+	"go.mills.io/bitcask/v2"
 )
 
 // vltlogger is a dedicated console logger for chain
@@ -62,6 +63,7 @@ type Vault interface {
 	Status() byte
 	VerifyAccount(address types.Address, pass string) (types.Address, error)
 	Exec(method string, params []interface{}) interface{}
+	Close() error
 }
 
 type D5Vault struct {
@@ -79,6 +81,10 @@ type D5Vault struct {
 	// Faucet tracking
 	faucetLastRequest map[types.Address]time.Time
 	faucetMu          sync.RWMutex
+
+	// Bitcask database (only for non-in-memory mode)
+	db   *bitcask.Bitcask
+	dbMu sync.RWMutex
 }
 
 var vlt D5Vault
@@ -175,13 +181,18 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 
 	entropy, _ := bip39.NewEntropy(256)
 	mnemonic, _ := bip39.NewMnemonic(entropy)
-	seed := bip39.NewSeed(mnemonic, "GENESISNODE")
+	seed := bip39.NewSeed(mnemonic, "NODE_PASS")
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
 	var mpub [78]byte
-	copy(mpub[:], publicKey.B58Serialize())
+	pubKeyStr := publicKey.B58Serialize()
+	copy(mpub[:], []byte(pubKeyStr))
 
 	vltlogger.Printf("Init vault with %s_serv_%s\r\n", rootHashAddress, VAULT_SERVICE_NAME)
+	vltlogger.Printf("Copy this mnemonic phrase to restore your account: %s\r\n", mnemonic)
+	vltlogger.Printf("Copy this password to restore your account: %s\r\n", "NODE_PASS")
+	vltlogger.Printf("Node (vault) master key: %s\r\n", masterKey.B58Serialize())
+	vltlogger.Printf("Node (vault) public key: %s\r\n", publicKey.B58Serialize())
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &types.StateAccount{
@@ -203,6 +214,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vlt.initiator = rootSA
 
 	if vlt.inMem {
+		vltlogger.Printf("INFO: Vault is in memory mode, no file operations will be performed")
 		vlt.accounts.Append(rootSA.Address, rootSA)
 		vlt.status = 0xa
 		vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
@@ -211,34 +223,46 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		return &vlt, nil
 	}
 
-	// Initialize vault path if not set
+	// Initialize vault path if not set (bitcask uses directory, not file)
 	if cfg.Vault.PATH == "EMPTY" {
-		cfg.UpdateVaultPath("./vault.dat")
+		cfg.UpdateVaultPath("./vault")
 	}
 
 	vlt.path = cfg.Vault.PATH
 
-	// Check if vault file exists, if not create it
-	_, err := os.Stat(cfg.Vault.PATH)
-	if errors.Is(err, os.ErrNotExist) {
+	// Open bitcask database once and store it
+	dbDir := vlt.path
+	if err := os.MkdirAll(dbDir, 0700); err != nil {
+		panic(fmt.Errorf("failed to create vault directory: %w", err))
+	}
+
+	db, err := bitcask.Open(dbDir, bitcask.WithSyncWrites(false))
+	if err != nil {
+		panic(fmt.Errorf("failed to open bitcask database: %w", err))
+	}
+	vlt.db = db
+
+	// Check if rootSA already exists in database
+	key := rootSA.Address.Bytes()
+	if !db.Has(key) {
 		// Create new vault with rootSA
-		if err := InitSecureVault(rootSA, cfg.Vault.PATH); err != nil {
-			panic(err)
+		accountData := rootSA.Bytes()
+		if err := db.Put(key, accountData); err != nil {
+			panic(fmt.Errorf("failed to write root account: %w", err))
 		}
 		// Add rootSA to accounts
 		vlt.accounts.Append(rootSA.Address, rootSA)
-	} else if err != nil {
-		// Handle other errors (permissions, etc.)
-		panic(fmt.Errorf("failed to check vault file: %w", err))
 	} else {
 		// Sync with existing vault
-		if err := SyncVault(cfg.Vault.PATH); err != nil {
-			panic(err)
+		if err := vlt.SyncFromDB(); err != nil {
+			panic(fmt.Errorf("failed to sync vault: %w", err))
 		}
 		// Ensure rootSA is in accounts after sync (may not exist in old vaults)
 		if vlt.accounts.GetAccount(rootSA.Address) == nil {
 			vlt.accounts.Append(rootSA.Address, rootSA)
-			SaveToVault(rootSA.Bytes(), cfg.Vault.PATH)
+			if err := db.Put(key, rootSA.Bytes()); err != nil {
+				panic(fmt.Errorf("failed to save root account: %w", err))
+			}
 		}
 	}
 
@@ -291,7 +315,8 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 
 	// derBytes := types.EncodePrivateKeyToByte(privateKey)
 	var mpub [78]byte
-	copy(mpub[:], publicKey.B58Serialize())
+	pubKeyStr := publicKey.B58Serialize()
+	copy(mpub[:], []byte(pubKeyStr))
 	newAccount := &types.StateAccount{
 		Address: address,
 		Nonce:   1,
@@ -311,8 +336,13 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	v.accounts.Append(address, newAccount)
 	vaultAccountsTotal.Set(float64(v.accounts.Size()))
 
-	if !v.inMem {
-		SaveToVault(newAccount.Bytes(), vlt.path)
+	if !v.inMem && v.db != nil {
+		key := newAccount.Address.Bytes()
+		if err := v.db.Put(key, newAccount.Bytes()); err != nil {
+			vltlogger.Printf("ERROR: Failed to save account to vault: %s, error: %v", address.Hex(), err)
+			return "", "", "", nil, fmt.Errorf("failed to save account to vault: %w", err)
+		}
+		vltlogger.Printf("Account saved to vault: %s", address.Hex())
 	}
 
 	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
@@ -326,6 +356,13 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 	// Validate input parameters
 	if mnemonic == "" {
 		return types.EmptyAddress(), "", "", ErrMnemonicEmpty
+	}
+
+	// Sync vault from database if not in memory mode
+	if !v.inMem && v.db != nil {
+		if err := v.SyncFromDB(); err != nil {
+			return types.EmptyAddress(), "", "", fmt.Errorf("failed to sync vault: %w", err)
+		}
 	}
 
 	// entropy := bip39.EntropyFromMnemonic(mnemonic)
@@ -398,12 +435,14 @@ func (v *D5Vault) Put(address types.Address, acc *types.StateAccount) {
 	v.accounts.Append(address, acc)
 }
 func (v *D5Vault) Size() int64 {
-	var s, err = VaultSourceSize(v.path)
+	if v.inMem || v.db == nil {
+		return int64(v.accounts.Size())
+	}
+	stats, err := v.db.Stats()
 	if err != nil {
 		return -1
-	} else {
-		return s
 	}
+	return int64(stats.Size)
 }
 
 func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.Int, txHash common.Hash) {
@@ -434,9 +473,15 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 
 	saDest.AddInput(txHash, cnt)
 
-	if !v.inMem {
-		UpdateVault(saDest.Bytes(), v.path)
-		UpdateVault(saFrom.Bytes(), v.path)
+	if !v.inMem && v.db != nil {
+		destKey := saDest.Address.Bytes()
+		fromKey := saFrom.Address.Bytes()
+		if err := v.db.Put(destKey, saDest.Bytes()); err != nil {
+			vltlogger.Printf("Failed to update destination account in database: %v", err)
+		}
+		if err := v.db.Put(fromKey, saFrom.Bytes()); err != nil {
+			vltlogger.Printf("Failed to update source account in database: %v", err)
+		}
 	}
 
 	// metrics: transfer count and supply (internal transfers don't change supply, but we still recompute for safety)
@@ -462,8 +507,11 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 	saDest.SetBalanceBI(newBal)
 	saDest.AddInput(txHash, cnt)
 
-	if !v.inMem {
-		UpdateVault(saDest.Bytes(), v.path)
+	if !v.inMem && v.db != nil {
+		destKey := saDest.Address.Bytes()
+		if err := v.db.Put(destKey, saDest.Bytes()); err != nil {
+			vltlogger.Printf("Failed to update account in database: %v", err)
+		}
 	}
 
 	v.updateSupplyMetrics()
@@ -566,6 +614,80 @@ func (v *D5Vault) ServiceName() string {
 	return VAULT_SERVICE_NAME
 }
 
+// SyncFromDB loads all accounts from the bitcask database into memory
+func (v *D5Vault) SyncFromDB() error {
+	if v.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	if v.accounts == nil {
+		v.accounts = GetAccountsTrie()
+	}
+
+	v.accounts.Clear()
+
+	// Iterate over all keys in the database
+	err := v.db.Scan([]byte{}, func(key bitcask.Key) error {
+		// Get account data
+		accountData, err := v.db.Get(key)
+		if err != nil {
+			if true { // Always log for debugging
+				vltlogger.Printf("syncFromDB: failed to get account data for key %x: %v", key, err)
+			}
+			return nil // Continue with next key
+		}
+
+		// Try to deserialize account, skip on error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					vltlogger.Printf("Skipping corrupted account data: %v (key: %x, data length: %d)", r, key, len(accountData))
+				}
+			}()
+			account := types.BytesToStateAccount(accountData)
+			if account != nil {
+				if true { // Always log for debugging
+					vltlogger.Printf("Read account from bitcask vault: %s", account.Address.Hex())
+				}
+				v.accounts.Append(account.Address, account)
+			} else {
+				previewLen := 20
+				if len(accountData) < previewLen {
+					previewLen = len(accountData)
+				}
+				if true { // Always log for debugging
+					vltlogger.Printf("Failed to deserialize account (key: %x, data length: %d, first bytes: %x)", key, len(accountData), accountData[:previewLen])
+				}
+			}
+		}()
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to scan bitcask database: %w", err)
+	}
+
+	return nil
+}
+
+// Close closes the bitcask database
+func (v *D5Vault) Close() error {
+	v.dbMu.Lock()
+	defer v.dbMu.Unlock()
+
+	if err := v.db.Sync(); err != nil {
+		return err
+	}
+
+	if v.db != nil {
+		err := v.db.Close()
+		v.db = nil
+		return err
+	}
+	return nil
+}
+
 func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 	switch method {
 	case "getAll":
@@ -605,7 +727,7 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		}
 		addr, mk, pk, err := vlt.Restore(mnemonic, pass)
 		if err != nil {
-			return ErrErrorWhileRestore.Error()
+			return err.Error()
 		}
 		type res struct {
 			Addr types.Address `json:"address,omitempty"`

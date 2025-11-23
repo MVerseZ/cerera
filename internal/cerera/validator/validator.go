@@ -331,6 +331,7 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 	}
 	var vlt = storage.GetVault()
 	var signBytes = vlt.GetKey(signKey)
+	fmt.Printf("signBytes: %x\n", signBytes)
 	if len(signBytes) == 0 {
 		valSignError.Inc()
 		return errors.New("signing key not found in vault")
@@ -485,7 +486,8 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 				if err != nil {
 					return err
 				}
-				tx, err := types.CreateUnbroadcastTransactionWei(gigea.GetAndIncrementNonce(), addrTo, wei, p.Gas, p.Msg)
+				nonce := gigea.GetAndIncrementNonce()
+				tx, err := types.CreateUnbroadcastTransactionWei(nonce, addrTo, wei, p.Gas, p.Msg)
 				if err != nil {
 					return err
 				}
@@ -515,10 +517,10 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		var addrTo = types.HexToAddress(addrStr)
 		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, gas, msg)
 		if err != nil {
-			return err
+			return err.Error()
 		}
 		if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
-			return err
+			return err.Error()
 		}
 		pool.Get().QueueTransaction(tx)
 		return tx.Hash()

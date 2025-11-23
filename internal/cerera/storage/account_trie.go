@@ -2,7 +2,7 @@ package storage
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/cerera/internal/cerera/types"
@@ -52,10 +52,26 @@ func (at *AccountsTrie) GetAccount(addr types.Address) *types.StateAccount {
 }
 
 func (at *AccountsTrie) GetKBytes(pubKey *bip32.Key) []byte {
-	// at.mu.Lock()
-	// defer at.mu.Unlock()
+	at.mu.RLock()
+	defer at.mu.RUnlock()
+	pubKeyBytes := []byte(pubKey.B58Serialize())
+
+	// MPub is [78]byte, so we can only store up to 78 bytes
+	// Compare only the first 78 bytes (or less) of both keys
+	maxCompareLen := 78 // MPub array size
+
 	for _, account := range at.accounts {
-		if bytes.Equal([]byte(pubKey.B58Serialize()), account.MPub[:]) {
+		// Determine how many bytes to compare
+		compareLen := maxCompareLen
+		if len(pubKeyBytes) < compareLen {
+			compareLen = len(pubKeyBytes)
+		}
+		if len(account.MPub) < compareLen {
+			compareLen = len(account.MPub)
+		}
+
+		// Compare the first compareLen bytes
+		if compareLen > 0 && bytes.Equal(pubKeyBytes[:compareLen], account.MPub[:compareLen]) {
 			return account.CodeHash
 		}
 	}
@@ -87,12 +103,31 @@ func (at *AccountsTrie) GetByIndex(idx int64) *types.StateAccount {
 
 // FindAddrByPub searches for an address by its public key serialization
 func (at *AccountsTrie) FindAddrByPub(pubKey string) (types.Address, error) {
-	at.mu.Lock()
-	defer at.mu.Unlock()
+	at.mu.RLock()
+	defer at.mu.RUnlock()
+	pubKeyBytes := []byte(pubKey)
+	totalAccounts := len(at.accounts)
+
+	// MPub is [78]byte, so we can only store up to 78 bytes
+	// When saving, copy() truncates to 78 bytes if the key is longer
+	// So we need to compare only the first 78 bytes (or less) of both keys
+	maxCompareLen := 78 // MPub array size
+
 	for _, account := range at.accounts {
-		if bytes.Equal([]byte(pubKey), account.MPub[:]) {
+		// Determine how many bytes to compare
+		compareLen := maxCompareLen
+		if len(pubKeyBytes) < compareLen {
+			compareLen = len(pubKeyBytes)
+		}
+		if len(account.MPub) < compareLen {
+			compareLen = len(account.MPub)
+		}
+
+		// Compare the first compareLen bytes
+		if compareLen > 0 && bytes.Equal(pubKeyBytes[:compareLen], account.MPub[:compareLen]) {
 			return account.Address, nil
 		}
 	}
-	return types.EmptyAddress(), errors.New("public key not found")
+	// Return more informative error
+	return types.EmptyAddress(), fmt.Errorf("public key not found (searched %d accounts, pubKey length: %d)", totalAccounts, len(pubKeyBytes))
 }

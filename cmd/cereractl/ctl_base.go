@@ -9,25 +9,28 @@ var commands = map[string]int{
 	"config":    100,
 	"ipconfig":  101,
 	"showpeers": 110,
-	"start":     111,
 	"status":    1000,
-	"stop":      1001,
-	"test":      1010,
-	"verify":    1100,
+	"help":      1010,
+	"exit":      1100,
 }
 
 var descriptions = map[string]string{
-	"status": "Print current status",
-	"exit":   "Exit the program",
-	"help":   "Show available commands",
-	"test":   "Test command",
+	"config":    "Show or modify configuration",
+	"ipconfig":  "Show IP configuration",
+	"showpeers": "Show connected peers",
+	"status":    "Print current status",
+	"help":      "Show available commands",
+	"exit":      "Exit the program",
 }
 
 func Usage() string {
-	mymap := make(map[int]string)
-	keys := make([]string, 0, len(mymap))
+	keys := make([]string, 0, len(commands))
 	for k := range commands {
-		keys = append(keys, fmt.Sprintf("\t%s: %s\r\n", k, descriptions[k]))
+		desc := descriptions[k]
+		if desc == "" {
+			desc = "No description available"
+		}
+		keys = append(keys, fmt.Sprintf("\t%s: %s\r\n", k, desc))
 	}
 	return strings.Join(keys, "")
 }
