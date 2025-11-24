@@ -200,7 +200,9 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		Nonce:   1,
 		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
 		Root: vlt.rootHash,
-		// CodeHash: types.EncodePrivateKeyToByte(types.DecodePrivKey(cfg.NetCfg.PRIV)),
+		CodeHash: types.EncodePrivateKeyToByte(
+			types.DecodePrivKey(cfg.NetCfg.PRIV),
+		),
 		Status: 3, // 3: OP_ACC_NODE
 		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
@@ -317,7 +319,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		return "", "", "", nil, fmt.Errorf("%w: %s", ErrAddressAlreadyExists, address.Hex())
 	}
 
-	// derBytes := types.EncodePrivateKeyToByte(privateKey)
+	codeHash := types.EncodePrivateKeyToByte(privateKey)
 	var mpub [78]byte
 	pubKeyStr := publicKey.B58Serialize()
 	copy(mpub[:], []byte(pubKeyStr))
@@ -325,10 +327,10 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		Address: address,
 		Nonce:   1,
 		//Balance:  types.FloatToBigInt(100.0),
-		Root: v.rootHash,
-		// CodeHash: derBytes,
-		Status: 0, // 0: OP_ACC_NEW
-		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Root:     v.rootHash,
+		CodeHash: codeHash,
+		Status:   0, // 0: OP_ACC_NEW
+		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -408,6 +410,7 @@ func (v *D5Vault) GetPos(pos int64) *types.StateAccount {
 func (v *D5Vault) GetKey(signKey string) []byte {
 	pubKey, err := bip32.B58Deserialize(signKey)
 	if err != nil || pubKey == nil {
+		vltlogger.Printf("GetKey: failed to deserialize public key: %v", err)
 		return []byte{0x0, 0x0, 0xf, 0xf}
 	}
 
@@ -416,6 +419,7 @@ func (v *D5Vault) GetKey(signKey string) []byte {
 	if fp != nil {
 		return fp
 	} else {
+		vltlogger.Printf("GetKey: failed to get key from accounts: %v", err)
 		return []byte{0x0, 0x0, 0xf, 0xf}
 	}
 }

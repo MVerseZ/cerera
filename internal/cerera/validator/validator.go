@@ -331,7 +331,7 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 	}
 	var vlt = storage.GetVault()
 	var signBytes = vlt.GetKey(signKey)
-	fmt.Printf("signBytes: %x\n", signBytes)
+	// fmt.Printf("signBytes: %x\n", signBytes)
 	if len(signBytes) == 0 {
 		valSignError.Inc()
 		return errors.New("signing key not found in vault")
