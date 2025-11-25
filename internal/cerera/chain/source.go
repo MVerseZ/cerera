@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/logger"
 )
 
-var chainSrcLogger = log.New(os.Stdout, "[chain_source] ", log.LstdFlags|log.Lmicroseconds)
+var chainSrcLogger = logger.Named("chain_source")
 
 func InitChainVault(initBLock *block.Block) {
 	InitChainVaultWithPath(initBLock, "./chain.dat")
@@ -59,8 +59,7 @@ func SyncVaultWithPath(chainPath string) ([]*block.Block, error) {
 		err := json.Unmarshal(line, bl)
 		if err != nil {
 			// Log error but continue processing other blocks
-			chainSrcLogger.Printf("Skipping corrupted block: %v\r\n", err)
-			chainSrcLogger.Printf("Block data: %s\r\n", string(line))
+			chainSrcLogger.Warnw("Skipping corrupted block", "err", err, "data", string(line))
 			continue
 		}
 		readBlocks = append(readBlocks, bl)
@@ -69,7 +68,7 @@ func SyncVaultWithPath(chainPath string) ([]*block.Block, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to read block data from file: %w", err)
 	}
-	chainSrcLogger.Printf("Loaded %d blocks from chain file: %s", len(readBlocks), chainPath)
+	chainSrcLogger.Infow("Loaded blocks from chain file", "count", len(readBlocks), "path", chainPath)
 
 	return readBlocks, nil
 }

@@ -2,7 +2,6 @@ package chain
 
 import (
 	"errors"
-	"log"
 	"math/big"
 	"os"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/logger"
 
 	"github.com/cerera/internal/cerera/trie"
 	"github.com/cerera/internal/cerera/types"
@@ -20,8 +20,7 @@ import (
 
 const CHAIN_SERVICE_NAME = "CHAIN_CERERA_001_1_7"
 
-// clogger is a dedicated console logger for chain
-var clogger = log.New(os.Stdout, "[chain] ", log.LstdFlags|log.Lmicroseconds)
+var clogger = logger.Named("chain")
 
 var (
 	chainBlocksTotal = prometheus.NewCounter(prometheus.CounterOpts{
@@ -130,10 +129,10 @@ func Mold(cfg *config.Config) (*Chain, error) {
 	var list []trie.Content
 
 	if cfg.IN_MEM {
-		clogger.Print("Using in-memory storage\n")
+		clogger.Info("Using in-memory storage")
 		dataBlocks = append(dataBlocks, genesisBlock)
 	} else {
-		clogger.Print("Using D5 storage\n")
+		clogger.Info("Using D5 storage")
 		// Determine chain file path
 		chainPath := cfg.Chain.Path
 		if chainPath == "EMPTY" {
@@ -151,7 +150,7 @@ func Mold(cfg *config.Config) (*Chain, error) {
 			// File exists, load blocks from file
 			readBlocks, err := SyncVaultWithPath(chainPath)
 			if err != nil {
-				clogger.Printf("Failed to sync vault, using genesis block: %v", err)
+				clogger.Warnw("Failed to sync vault, using genesis block", "err", err)
 				// Fallback to genesis if sync fails
 				list = append(list, genesisBlock)
 				stats.Total += 1
@@ -165,7 +164,7 @@ func Mold(cfg *config.Config) (*Chain, error) {
 					stats.ChainWork += blk.Head.Size
 					stats.Latest = blk.GetHash()
 				}
-				clogger.Printf("Loaded %d blocks from chain file: %s", len(readBlocks), chainPath)
+				clogger.Infow("Loaded blocks from chain file", "count", len(readBlocks), "path", chainPath)
 			} else {
 				// File exists but is empty, use genesis block
 				list = append(list, genesisBlock)
@@ -176,7 +175,7 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		}
 		t, err = trie.NewTree(list)
 		if err != nil {
-			clogger.Printf("trie validation error: %v", err)
+			clogger.Warnw("trie validation error", "err", err)
 		}
 		t.VerifyTree()
 	}
@@ -368,10 +367,10 @@ func (bc *Chain) ServiceName() string {
 }
 
 func (bc *Chain) Start() {
-	clogger.Printf("chain started: chainId=%d, owner=%s, total=%d", bc.chainId, bc.currentAddress, bc.info.Total)
+	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", bc.info.Total)
 	for {
 		<-bc.maintainTicker.C
-		clogger.Println("chain tick maintain")
+		clogger.Debug("chain tick maintain")
 	}
 }
 

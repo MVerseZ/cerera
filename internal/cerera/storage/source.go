@@ -7,14 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/akrylysov/pogreb"
+	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/types"
 )
 
-var vaultSrcLogger = log.New(os.Stdout, "[vault_source] ", log.LstdFlags|log.Lmicroseconds)
+var vaultSrcLogger = logger.Named("vault.source")
 var IS_DEGUG = true
 
 func getLocalSource(vaultPath string) error {
@@ -119,7 +119,7 @@ func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
 	// Save account data
 	accountData := rootSa.Bytes()
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("Writing account data to pogreb: %s", rootSa.Address.Hex())
+		vaultSrcLogger.Infow("Writing account data to pogreb", "address", rootSa.Address.Hex())
 	}
 
 	if err := db.Put(key, accountData); err != nil {
@@ -149,7 +149,7 @@ func SyncVault(path string) error {
 		}
 		if err != nil {
 			if IS_DEGUG {
-				vaultSrcLogger.Printf("SyncVault: failed to get next item: %v", err)
+				vaultSrcLogger.Warnw("SyncVault: failed to get next item", "err", err)
 			}
 			continue
 		}
@@ -159,14 +159,18 @@ func SyncVault(path string) error {
 			defer func() {
 				if r := recover(); r != nil {
 					if IS_DEGUG {
-						vaultSrcLogger.Printf("Skipping corrupted account data: %v (key: %x, data length: %d)", r, key, len(accountData))
+						vaultSrcLogger.Warnw("Skipping corrupted account data",
+							"reason", r,
+							"key", fmt.Sprintf("%x", key),
+							"length", len(accountData),
+						)
 					}
 				}
 			}()
 			account := types.BytesToStateAccount(accountData)
 			if account != nil {
 				if IS_DEGUG {
-					vaultSrcLogger.Printf("Read account from pogreb vault: %s", account.Address.Hex())
+					vaultSrcLogger.Infow("Read account from pogreb vault", "address", account.Address.Hex())
 				}
 				GetVault().accounts.Append(account.Address, account)
 			} else {
@@ -175,7 +179,11 @@ func SyncVault(path string) error {
 					previewLen = len(accountData)
 				}
 				if IS_DEGUG {
-					vaultSrcLogger.Printf("Failed to deserialize account (key: %x, data length: %d, first bytes: %x)", key, len(accountData), accountData[:previewLen])
+					vaultSrcLogger.Errorw("Failed to deserialize account",
+						"key", fmt.Sprintf("%x", key),
+						"length", len(accountData),
+						"preview", fmt.Sprintf("%x", accountData[:previewLen]),
+					)
 				}
 			}
 		}()
@@ -200,7 +208,7 @@ func SaveToVault(account []byte, vaultPath string) error {
 	// Use address bytes as key
 	key := accountData.Address.Bytes()
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("Writing account data to pogreb: %s", accountData.Address.Hex())
+		vaultSrcLogger.Infow("Writing account data to pogreb", "address", accountData.Address.Hex())
 	}
 
 	if err := db.Put(key, account); err != nil {
@@ -228,7 +236,7 @@ func UpdateVault(account []byte, vaultPath string) error {
 	key := updatedAccount.Address.Bytes()
 
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("UpdateVault: updating account %s in pogreb", updatedAccount.Address.Hex())
+		vaultSrcLogger.Infow("UpdateVault: updating account in pogreb", "address", updatedAccount.Address.Hex())
 	}
 
 	// Put will overwrite if key exists, or create if it doesn't
@@ -237,7 +245,7 @@ func UpdateVault(account []byte, vaultPath string) error {
 	}
 
 	if IS_DEGUG {
-		vaultSrcLogger.Printf("UpdateVault: successfully updated account %s", updatedAccount.Address.Hex())
+		vaultSrcLogger.Infow("UpdateVault: successfully updated account", "address", updatedAccount.Address.Hex())
 	}
 
 	return nil

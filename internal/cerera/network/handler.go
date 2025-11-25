@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/btcsuite/websocket"
+	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/types"
 )
+
+var handlerLogger = logger.Named("handler")
 
 func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDDDDPoa, m prometheus.Counter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +73,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		_, err = w.Write(responseData)
 		// m.Inc()
 		if err != nil {
-			log.Println("Failed to write response:", err)
+			handlerLogger.Errorw("Failed to write response", "err", err)
 		}
 
 		// select {
@@ -106,7 +108,7 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Println("Failed to upgrade WebSocket connection:", err)
+			handlerLogger.Errorw("Failed to upgrade WebSocket connection", "err", err)
 			return
 		}
 
@@ -120,7 +122,7 @@ func HandleWebSockerRequest(ctx context.Context) http.HandlerFunc {
 			for {
 				_, message, err := conn.ReadMessage()
 				if err != nil {
-					log.Println("Failed to read message from WebSocket:", err)
+					handlerLogger.Errorw("Failed to read message from WebSocket", "err", err)
 					break
 				}
 				if string(message) == "ping" {

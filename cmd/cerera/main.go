@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/miner"
 	"github.com/cerera/internal/cerera/network"
 	"github.com/cerera/internal/cerera/pool"
@@ -20,6 +20,8 @@ import (
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/gigea"
 )
+
+var appLog = logger.Named("cmd.cerera")
 
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
@@ -75,7 +77,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 
 	// Инициализация http сервера
 	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
-		log.Printf("HTTP server error: %v", err)
+		appLog.Warnw("HTTP server error", "err", err)
 	}
 
 	// Инициализация майнера
@@ -103,14 +105,15 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 
 // setupLogging настраивает логирование в файл.
 func setupLogging() error {
-	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		return fmt.Errorf("error opening log file: %w", err)
-	}
-	log.SetOutput(f)
-	return nil
+	_, err := logger.Init(logger.Config{
+		Path:    "logfile",
+		Level:   "info",
+		Console: true,
+	})
+	return err
 }
 
+// twin live change famous blue aspect control edge choose dragon sleep tissue drip match predict leopard weekend orient clap aim fluid toy fall nuclear
 // parseFlags разбирает аргументы командной строки.
 func parseFlags() (config.Config, string, string, int, bool, bool) {
 	port := flag.String("port", "31000", "p2p port for connection")
@@ -138,6 +141,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
 		os.Exit(1)
 	}
+	defer logger.Sync()
 
 	// Парсинг флагов и создание конфигурации
 	cfg, mode, port, httpPort, mine, _ := parseFlags()
@@ -149,7 +153,7 @@ func main() {
 	// Инициализация приложения
 	app, err := NewCerera(&cfg, ctx, mode, port, httpPort, mine)
 	if err != nil {
-		log.Printf("Failed to initialize Cerera: %v", err)
+		appLog.Errorw("Failed to initialize Cerera", "err", err)
 		os.Exit(1)
 	}
 
@@ -171,9 +175,9 @@ func main() {
 		// // Закрываем vault (закрывает bitcask базу данных)
 		if app != nil && app.v != nil {
 			if err := (*app.v).Close(); err != nil {
-				log.Printf("Ошибка при закрытии vault: %v", err)
+				appLog.Errorw("Ошибка при закрытии vault", "err", err)
 			} else {
-				log.Println("Vault успешно закрыт")
+				appLog.Infow("Vault успешно закрыт")
 			}
 		}
 		time.Sleep(2 * time.Second)

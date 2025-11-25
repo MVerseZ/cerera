@@ -2,12 +2,14 @@ package network
 
 import (
 	"context"
-	"log"
 	"sync"
 
 	"github.com/btcsuite/websocket"
 	"github.com/cerera/internal/cerera/chain"
+	"github.com/cerera/internal/cerera/logger"
 )
+
+var wsLogger = logger.Named("websocket")
 
 // WsManager manages WebSocket connections
 type WsManager struct {
@@ -45,7 +47,7 @@ func (manager *WsManager) Start(ctx context.Context) error {
 			manager.mutex.Lock()
 			manager.clients[conn] = true
 			manager.mutex.Unlock()
-			log.Printf("New client connected. Total clients: %d", len(manager.clients))
+			wsLogger.Infow("New client connected", "totalClients", len(manager.clients))
 
 		case conn := <-manager.unregister:
 			manager.mutex.Lock()
@@ -54,14 +56,14 @@ func (manager *WsManager) Start(ctx context.Context) error {
 				conn.Close()
 			}
 			manager.mutex.Unlock()
-			log.Printf("Client disconnected. Total clients: %d", len(manager.clients))
+			wsLogger.Infow("Client disconnected", "totalClients", len(manager.clients))
 
 		case message := <-manager.broadcast:
 			manager.mutex.Lock()
 			for conn := range manager.clients {
 				err := conn.WriteMessage(websocket.TextMessage, message)
 				if err != nil {
-					log.Println("Error writing message:", err)
+					wsLogger.Errorw("Error writing message", "err", err)
 					conn.Close()
 					delete(manager.clients, conn)
 				}
@@ -72,7 +74,7 @@ func (manager *WsManager) Start(ctx context.Context) error {
 			for conn := range manager.clients {
 				err := conn.WriteMessage(websocket.TextMessage, message)
 				if err != nil {
-					log.Println("Error writing message:", err)
+					wsLogger.Errorw("Error writing message", "err", err)
 					conn.Close()
 					delete(manager.clients, conn)
 				}

@@ -7,15 +7,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
-	"os"
 	"time"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
@@ -33,8 +32,7 @@ var (
 	NotEnoughtInputs = &decError{"not enought inputs"}
 )
 
-// vlogger is a dedicated console logger for validator
-var vlogger = log.New(os.Stdout, "[validator] ", log.LstdFlags|log.Lmicroseconds)
+var vlogger = logger.Named("validator")
 
 var (
 	valTxCreated = prometheus.NewCounter(prometheus.CounterOpts{
@@ -253,7 +251,10 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 
 	default:
-		vlogger.Printf("unknown tx type: %d from %s", tx.Type(), tx.From())
+		vlogger.Warnw("unknown transaction type",
+			"type", tx.Type(),
+			"from", tx.From(),
+		)
 		return fmt.Errorf("unknown transaction type: %d", tx.Type())
 	}
 
@@ -305,7 +306,10 @@ func (v *CoreValidator) SetUp(chainId *big.Int) {
 				}
 				err := v.ExecuteTransaction(tx)
 				if err != nil {
-					vlogger.Printf("error while executing tx: %s, error: %v", tx.Hash(), err)
+					vlogger.Errorw("error while executing tx",
+						"hash", tx.Hash(),
+						"err", err,
+					)
 					valExecuteError.Inc()
 					continue
 				}
@@ -360,7 +364,10 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 	// fmt.Printf("Sing tx: %s\r\n", tx.Hash())
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
 	if err2 != nil {
-		vlogger.Printf("error while sign tx: %s", tx.Hash())
+		vlogger.Errorw("error while sign tx",
+			"hash", tx.Hash(),
+			"err", err2,
+		)
 		valSignError.Inc()
 		return errors.New("error while sign tx")
 	}
