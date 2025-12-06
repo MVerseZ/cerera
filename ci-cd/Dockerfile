@@ -1,8 +1,11 @@
 # Этап сборки
-FROM golang:1.25-rc-alpine AS builder
+FROM golang:alpine AS builder
 
 # Устанавливаем зависимости
 RUN apk add --no-cache git make gcc musl-dev
+
+# Устанавливаем GOTOOLCHAIN=auto для автоматического выбора версии инструментов
+ENV GOTOOLCHAIN=auto
 
 WORKDIR /app
 

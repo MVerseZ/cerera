@@ -278,11 +278,143 @@ func (v *CoreValidator) GetVersion() string {
 }
 
 func (v *CoreValidator) ProposeBlock(b *block.Block) {
+	// Проверяем готовность Ice (bootstrap соединение)
+	if !v.isIceReady() {
+		vlogger.Warnw("Ice not ready - waiting for bootstrap connection", "block_hash", b.GetHash())
+		// Ждем готовности Ice
+		v.waitForIceReady()
+		vlogger.Infow("Ice is ready - proceeding with block proposal", "block_hash", b.GetHash())
+	}
+
+	// Проверяем, начался ли консенсус
+	if !v.isConsensusStarted() {
+		v.printConsensusStatus(b.GetHash())
+		vlogger.Warnw("Consensus not started - waiting for consensus signal", "block_hash", b.GetHash())
+		// Ждем начала консенсуса
+		v.waitForConsensus()
+		vlogger.Infow("Consensus started - proceeding with block proposal", "block_hash", b.GetHash())
+	}
+
 	for _, btx := range b.Transactions {
 		v.ExecuteTransaction(btx)
 		v.UpdateTxTree(&btx, int(b.Header().Index))
 	}
 	v.UpdateChain(b)
+}
+
+// isIceReady проверяет, готов ли Ice компонент (bootstrap соединение установлено)
+func (v *CoreValidator) isIceReady() bool {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		vlogger.Debugw("Registry not available for Ice check", "err", err)
+		return false
+	}
+
+	// Пробуем найти Ice сервис по имени "ice" или по полному имени
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		// Пробуем найти по полному имени сервиса
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			vlogger.Debugw("Ice service not found in registry")
+			return false
+		}
+	}
+
+	// Вызываем метод проверки готовности через Exec
+	result := iceService.Exec("isBootstrapReady", nil)
+	if ready, ok := result.(bool); ok {
+		return ready
+	}
+
+	return false
+}
+
+// waitForIceReady блокирует выполнение до готовности Ice
+func (v *CoreValidator) waitForIceReady() {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		vlogger.Errorw("Registry not available for Ice wait", "err", err)
+		return
+	}
+
+	// Пробуем найти Ice сервис по имени "ice" или по полному имени
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		// Пробуем найти по полному имени сервиса
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			vlogger.Errorw("Ice service not found in registry")
+			return
+		}
+	}
+
+	// Вызываем метод ожидания готовности через Exec (блокирующий вызов)
+	iceService.Exec("waitForBootstrapReady", nil)
+}
+
+// isConsensusStarted проверяет, начался ли консенсус
+func (v *CoreValidator) isConsensusStarted() bool {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		vlogger.Debugw("Registry not available for consensus check", "err", err)
+		return false
+	}
+
+	// Пробуем найти Ice сервис по имени "ice" или по полному имени
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		// Пробуем найти по полному имени сервиса
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			vlogger.Debugw("Ice service not found in registry for consensus check")
+			return false
+		}
+	}
+
+	// Вызываем метод проверки консенсуса через Exec
+	result := iceService.Exec("isConsensusStarted", nil)
+	if started, ok := result.(bool); ok {
+		return started
+	}
+
+	return false
+}
+
+// waitForConsensus блокирует выполнение до начала консенсуса
+func (v *CoreValidator) waitForConsensus() {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		vlogger.Errorw("Registry not available for consensus wait", "err", err)
+		return
+	}
+
+	// Пробуем найти Ice сервис по имени "ice" или по полному имени
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		// Пробуем найти по полному имени сервиса
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			vlogger.Errorw("Ice service not found in registry for consensus wait")
+			return
+		}
+	}
+
+	// Вызываем метод ожидания консенсуса через Exec (блокирующий вызов)
+	iceService.Exec("waitForConsensus", nil)
+}
+
+// printConsensusStatus выводит текущий статус консенсуса
+func (v *CoreValidator) printConsensusStatus(blockHash common.Hash) {
+	consensusInfo := gigea.GetConsensusInfo()
+	vlogger.Warnw("Consensus not started - current consensus status",
+		"block_hash", blockHash.Hex(),
+		"status", consensusInfo["status"],
+		"voters", consensusInfo["voters"],
+		"nodes", consensusInfo["nodes"],
+		"nonce", consensusInfo["nonce"],
+		"address", consensusInfo["address"],
+	)
 }
 
 func (v *CoreValidator) ServiceName() string {

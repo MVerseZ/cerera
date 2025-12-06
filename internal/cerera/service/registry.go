@@ -80,6 +80,9 @@ func (r *Registry) GetService(name string) (Service, bool) {
 	if name == "transaction" || name == "validator" {
 		srvName = "CERERA_VALIDATOR_54013.10.25"
 	}
+	if name == "ice" {
+		srvName = "ICE_CERERA_001_1_0"
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s, ok := r.services[srvName]

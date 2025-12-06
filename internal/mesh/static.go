@@ -36,6 +36,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*DHT, error) {
 	var bootstrapNodes []*NetworkNode
 	if currentIP+":"+port != bIP+":"+bPort {
 		bootstrapNode := NewNetworkNode(bIP, bPort)
+		meshLogger.Println("Add node to bootstrap nodes: ", bootstrapNode.IP.String(), bootstrapNode.Port)
 		bootstrapNodes = append(bootstrapNodes, bootstrapNode)
 	}
 

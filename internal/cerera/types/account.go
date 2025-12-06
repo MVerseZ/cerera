@@ -311,13 +311,5 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	}
 	sa.balance = new(big.Int).SetBytes(balanceBytes)
 
-	// Initialize Inputs if not already initialized
-	if sa.Inputs == nil {
-		sa.Inputs = &Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		}
-	}
-
 	return sa
 }
