@@ -263,6 +263,8 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 	if isBootstrap {
 		i.mu.Lock()
 		i.connectedNodes[*nodeAddr] = conn
+		// Сбрасываем подтверждения при подключении нового узла
+		i.confirmedNodes = make(map[types.Address]int)
 		connectedCount := len(i.connectedNodes)
 		i.mu.Unlock()
 		icelogger().Infow("Saved connection for node",
@@ -614,11 +616,82 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 			"node_nonce", nodeNonce,
 			"bootstrap_nonce", currentNonce,
 		)
-	} else {
-		icelogger().Infow("Node confirmed successfully with matching nonce",
-			"remote_addr", remoteAddr,
-			"node_count", nodeCount,
-			"nonce", nodeNonce,
+		return
+	}
+
+	// Находим адрес узла по соединению
+	var nodeAddr *types.Address
+	i.mu.Lock()
+	for addr, storedConn := range i.connectedNodes {
+		if storedConn == conn {
+			nodeAddr = &addr
+			break
+		}
+	}
+	i.mu.Unlock()
+
+	if nodeAddr == nil {
+		icelogger().Warnw("Could not find node address for NODE_OK", "remote_addr", remoteAddr)
+		return
+	}
+
+	// Увеличиваем счетчик подтверждений для узла
+	i.mu.Lock()
+	i.confirmedNodes[*nodeAddr]++
+	confirmations := i.confirmedNodes[*nodeAddr]
+	// connectedNodes содержит только подключенные узлы (не bootstrap), поэтому bootstrap не учитывается
+	connectedCount := len(i.connectedNodes)
+
+	// Подсчитываем, сколько узлов подтвердили 2 раза
+	// Bootstrap узел не учитывается, так как он не отправляет NODE_OK
+	nodesConfirmedTwice := 0
+	for addr, count := range i.confirmedNodes {
+		// Дополнительная проверка: убеждаемся, что это не bootstrap узел
+		if addr != i.address && count >= 2 {
+			nodesConfirmedTwice++
+		}
+	}
+	i.mu.Unlock()
+
+	icelogger().Infow("Node confirmed successfully with matching nonce",
+		"remote_addr", remoteAddr,
+		"node_address", nodeAddr.Hex(),
+		"node_count", nodeCount,
+		"nonce", nodeNonce,
+		"confirmations", confirmations,
+		"nodes_confirmed_twice", nodesConfirmedTwice,
+		"total_connected", connectedCount,
+	)
+
+	// Проверяем, все ли узлы подтвердили 2 раза
+	if nodesConfirmedTwice >= connectedCount && connectedCount > 0 {
+		icelogger().Infow("All nodes confirmed twice - advancing to next consensus period",
+			"nodes_confirmed_twice", nodesConfirmedTwice,
+			"total_nodes", connectedCount,
+			"current_nonce", currentNonce,
 		)
+
+		icelogger().Infow("Transitioning to next consensus period - all nodes have confirmed twice",
+			"nodes_confirmed_twice", nodesConfirmedTwice,
+			"total_connected_nodes", connectedCount,
+			"current_period_nonce", currentNonce,
+		)
+
+		// Переходим на следующий период (увеличиваем nonce)
+		newNonce := currentNonce + 1
+		gigea.SetNonce(newNonce)
+
+		// Сбрасываем подтверждения для нового периода
+		i.mu.Lock()
+		i.confirmedNodes = make(map[types.Address]int)
+		i.mu.Unlock()
+
+		icelogger().Infow("Consensus period advanced",
+			"old_nonce", currentNonce,
+			"new_nonce", newNonce,
+		)
+
+		// Рассылаем обновленный nonce всем узлам
+		i.broadcastConsensusStatus()
 	}
 }

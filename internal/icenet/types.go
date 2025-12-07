@@ -42,6 +42,7 @@ type Ice struct {
 	listener          net.Listener               // listener для входящих подключений
 	bootstrapConn     net.Conn                   // постоянное соединение с bootstrap
 	connectedNodes    map[types.Address]net.Conn // активные соединения с узлами (только для bootstrap)
+	confirmedNodes    map[types.Address]int      // количество подтверждений от каждого узла (только для bootstrap)
 	mu                sync.Mutex                 // мьютекс для потокобезопасности
 	lastSentBlockHash common.Hash                // хеш последнего отправленного блока
 	bootstrapReady    bool                       // флаг готовности bootstrap соединения
@@ -87,6 +88,7 @@ func NewIce(cfg *config.Config, ctx context.Context, port string) (*Ice, error) 
 		consensusStarted: false,
 		consensusChan:    make(chan struct{}),
 		connectedNodes:   make(map[types.Address]net.Conn), // инициализируем map для хранения соединений
+		confirmedNodes:   make(map[types.Address]int),      // инициализируем map для отслеживания подтверждений (каждый узел должен подтвердить 2 раза)
 	}
 
 	icelogger().Infow("Ice component created",

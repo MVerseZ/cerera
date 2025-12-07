@@ -66,6 +66,9 @@ func (i *Ice) connectToBootstrap() {
 		// Отправляем keep-alive пакеты периодически
 		go i.sendKeepAlive(conn)
 
+		// Отправляем периодические подтверждения NODE_OK
+		go i.sendPeriodicNodeOk(conn)
+
 		// Ждем разрыва соединения
 		// Проверяем соединение периодически
 		ticker := time.NewTicker(10 * time.Second)
@@ -203,6 +206,53 @@ func (i *Ice) sendKeepAlive(conn net.Conn) {
 				icelogger().Warnw("Failed to send keep-alive", "err", err)
 				return
 			}
+		case <-i.ctx.Done():
+			return
+		}
+	}
+}
+
+// sendPeriodicNodeOk периодически отправляет NODE_OK на bootstrap для подтверждения
+// Используется только обычными узлами (не bootstrap)
+func (i *Ice) sendPeriodicNodeOk(conn net.Conn) {
+	// Отправляем первое подтверждение сразу после подключения (уже отправляется в processNodesCountMessage)
+	// Затем отправляем периодически с интервалом
+	ticker := time.NewTicker(15 * time.Second) // Отправляем каждые 15 секунд
+	defer ticker.Stop()
+
+	// Пропускаем первый тик, так как первое подтверждение уже отправлено
+	<-ticker.C
+
+	for {
+		select {
+		case <-ticker.C:
+			i.mu.Lock()
+			started := i.started
+			currentConn := i.bootstrapConn
+			bootstrapReady := i.bootstrapReady
+			i.mu.Unlock()
+
+			if !started || currentConn != conn || !bootstrapReady {
+				continue
+			}
+
+			// Получаем текущее количество узлов и nonce
+			nodes := gigea.GetNodes()
+			actualCount := len(nodes)
+			currentNonce := gigea.GetNonce()
+
+			// Отправляем периодическое подтверждение NODE_OK
+			message := fmt.Sprintf("NODE_OK|%d|%d\n", actualCount, currentNonce)
+			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if _, err := conn.Write([]byte(message)); err != nil {
+				icelogger().Warnw("Failed to send periodic NODE_OK to bootstrap", "err", err)
+				return
+			}
+
+			icelogger().Debugw("Sent periodic NODE_OK to bootstrap",
+				"node_count", actualCount,
+				"nonce", currentNonce,
+			)
 		case <-i.ctx.Done():
 			return
 		}
