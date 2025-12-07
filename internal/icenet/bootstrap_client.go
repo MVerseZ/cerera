@@ -125,17 +125,19 @@ func (i *Ice) readFromBootstrap(conn net.Conn) {
 				"data", data,
 			)
 
+			// Проверяем, является ли это структурированным сообщением REQ
+			// REQ содержит READY, NODES и NONCE в одном сообщении
+			// REQ - многострочное сообщение, обрабатываем весь буфер
+			if i.isREQMessage(data) {
+				i.processREQMessage(data)
+				continue
+			}
+
 			// Разбиваем данные по строкам для обработки нескольких сообщений
 			lines := strings.Split(data, "\n")
 			for _, line := range lines {
 				line = strings.TrimSpace(line)
 				if line == "" {
-					continue
-				}
-
-				// Проверяем, является ли это подтверждающим ответом о готовности
-				if i.isReadyResponse(line) {
-					i.setBootstrapReady()
 					continue
 				}
 
@@ -145,21 +147,15 @@ func (i *Ice) readFromBootstrap(conn net.Conn) {
 					continue
 				}
 
-				// Проверяем, содержит ли сообщение COUNT узлов (проверяем первым, так как более специфично)
+				// Проверяем, содержит ли сообщение COUNT узлов (для broadcast сообщений)
 				if i.isNodesCountMessage(line) {
 					i.processNodesCountMessage(line)
 					continue
 				}
 
-				// Проверяем, содержит ли сообщение список узлов для консенсуса
+				// Проверяем, содержит ли сообщение список узлов (для broadcast сообщений)
 				if i.isNodeListMessage(line) {
 					i.processNodeListMessage(line)
-					continue
-				}
-
-				// Проверяем, содержит ли сообщение nonce для синхронизации
-				if i.isNonceMessage(line) {
-					i.processNonceMessage(line)
 					continue
 				}
 
@@ -213,6 +209,78 @@ func (i *Ice) sendKeepAlive(conn net.Conn) {
 	}
 }
 
+// processREQMessage обрабатывает структурированное сообщение REQ
+// Используется только обычными узлами (не bootstrap)
+func (i *Ice) processREQMessage(data string) {
+	req, err := parseREQ(data)
+	if err != nil {
+		icelogger().Errorw("Failed to parse REQ message", "err", err, "data", data)
+		return
+	}
+
+	icelogger().Infow("Processing REQ message",
+		"bootstrap_address", req.Address.Hex(),
+		"bootstrap_network_addr", req.NetworkAddr,
+		"nodes_count", len(req.Nodes),
+		"nonce", req.Nonce,
+	)
+
+	// Устанавливаем флаг готовности (это заменяет READY)
+	i.setBootstrapReady()
+
+	// Обрабатываем список узлов (это заменяет NODES)
+	addedCount := 0
+	for _, nodeInfo := range req.Nodes {
+		// Пропускаем себя
+		if nodeInfo.Address == i.address {
+			continue
+		}
+
+		// Добавляем узел в консенсус
+		gigea.AddVoter(nodeInfo.Address)
+		gigea.AddNode(nodeInfo.Address, nodeInfo.NetworkAddr)
+		addedCount++
+
+		icelogger().Debugw("Added node from REQ",
+			"address", nodeInfo.Address.Hex(),
+			"network_addr", nodeInfo.NetworkAddr,
+		)
+	}
+
+	if addedCount > 0 {
+		icelogger().Infow("Processed nodes from REQ",
+			"nodes_added", addedCount,
+		)
+
+		// Обновляем консенсус после получения списка узлов
+		i.updateConsensusAfterNodes()
+
+		// Сверяем узлы со своими и проверяем IP адреса
+		i.verifyNodesIPAddresses()
+	}
+
+	// Обновляем nonce (это заменяет NONCE)
+	currentNonce := gigea.GetNonce()
+	if req.Nonce != currentNonce {
+		icelogger().Infow("Updating consensus nonce from REQ",
+			"old_nonce", currentNonce,
+			"new_nonce", req.Nonce,
+		)
+		gigea.SetNonce(req.Nonce)
+	} else {
+		icelogger().Debugw("Nonce already synchronized", "nonce", req.Nonce)
+	}
+
+	// Получаем обновленную информацию о консенсусе
+	consensusInfo := gigea.GetConsensusInfo()
+	icelogger().Infow("REQ message processed successfully",
+		"voters", consensusInfo["voters"],
+		"nodes", consensusInfo["nodes"],
+		"status", consensusInfo["status"],
+		"nonce", consensusInfo["nonce"],
+	)
+}
+
 // isNodeListMessage проверяет, содержит ли сообщение список узлов
 func (i *Ice) isNodeListMessage(data string) bool {
 	// Формат: NODES|address1#network_addr1,address2#network_addr2,...
@@ -253,9 +321,9 @@ func (i *Ice) processNodeListMessage(data string) {
 			addedCount++
 
 			// Обновляем nonce при добавлении узла
-			currentNonce := gigea.GetNonce()
-			newNonce := currentNonce + 1
-			gigea.SetNonce(newNonce)
+			// currentNonce := gigea.GetNonce()
+			// newNonce := currentNonce + 1
+			// gigea.SetNonce(newNonce)
 
 			icelogger().Debugw("Added node to consensus",
 				"address", nodeAddr.Hex(),
@@ -330,42 +398,18 @@ func (i *Ice) processNodesCountMessage(data string) {
 		icelogger().Infow("Node count validated successfully",
 			"count", expectedCount,
 		)
-	}
-}
-
-// isNonceMessage проверяет, содержит ли сообщение nonce
-func (i *Ice) isNonceMessage(data string) bool {
-	// Формат: NONCE|{nonce_value}
-	return len(data) > 5 && data[:5] == "NONCE"
-}
-
-// processNonceMessage обрабатывает сообщение с nonce и обновляет консенсус
-// Используется только обычными узлами (не bootstrap)
-func (i *Ice) processNonceMessage(data string) {
-	// Формат: NONCE|{nonce_value}
-	parts := splitMessage(data, "|")
-	if len(parts) < 2 {
-		icelogger().Warnw("Invalid nonce message format", "data", data)
-		return
-	}
-
-	nonceStr := trimResponse(parts[1])
-	var nonce uint64
-	if _, err := fmt.Sscanf(nonceStr, "%d", &nonce); err != nil {
-		icelogger().Warnw("Failed to parse nonce", "nonce_str", nonceStr, "err", err)
-		return
-	}
-
-	// Обновляем nonce в консенсусе
-	currentNonce := gigea.GetNonce()
-	if nonce != currentNonce {
-		icelogger().Infow("Updating consensus nonce",
-			"old_nonce", currentNonce,
-			"new_nonce", nonce,
-		)
-		gigea.SetNonce(nonce)
-	} else {
-		icelogger().Debugw("Nonce already synchronized", "nonce", nonce)
+		// Отправляем сообщение "NODE_OK" на bootstrap, подтверждая успешную обработку количества узлов
+		i.mu.Lock()
+		conn := i.bootstrapConn
+		i.mu.Unlock()
+		if conn != nil {
+			// Отправляем подтверждение NODE_OK, количество узлов и nonce в одном пакете формата: NODE_OK|count|nonce
+			currentNonce := gigea.GetNonce()
+			message := fmt.Sprintf("NODE_OK|%d|%d\n", actualCount, currentNonce)
+			if _, err := conn.Write([]byte(message)); err != nil {
+				icelogger().Warnw("Failed to send NODE_OK|count|nonce to bootstrap", "err", err)
+			}
+		}
 	}
 }
 
@@ -411,19 +455,6 @@ func (i *Ice) processBroadcastNonceMessage(data string) {
 			icelogger().Debugw("Received node list with broadcast nonce", "node_list", nodeListStr)
 		}
 	}
-}
-
-// isReadyResponse проверяет, является ли ответ подтверждением готовности
-func (i *Ice) isReadyResponse(data string) bool {
-	// Проверяем различные варианты ответов о готовности
-	responses := []string{"READY", "READY_OK", "OK", "ACCEPTED"}
-	data = trimResponse(data)
-	for _, resp := range responses {
-		if data == resp {
-			return true
-		}
-	}
-	return false
 }
 
 // isConsensusStartCommand проверяет, является ли сообщение командой начала консенсуса

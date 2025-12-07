@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/cerera/internal/cerera/types"
@@ -307,22 +308,40 @@ func (i *Ice) handleConnection(conn net.Conn) {
 				"data", data,
 			)
 
-			// Обрабатываем READY_REQUEST
-			if i.isReadyRequest(data) {
-				icelogger().Infow("Processing READY_REQUEST", "data", data)
-				i.handleReadyRequest(conn, data, remoteAddr)
-			}
+			// Разбиваем данные по строкам для обработки нескольких сообщений
+			lines := strings.Split(data, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
 
-			// Обрабатываем WHO_IS запрос (только для bootstrap узла)
-			if i.isWhoIsRequest(data) {
-				icelogger().Infow("Received WHO_IS request", "remote_addr", remoteAddr, "data", data)
-				i.handleWhoIsRequest(conn, data, remoteAddr)
-			}
+				// Обрабатываем READY_REQUEST
+				if i.isReadyRequest(line) {
+					icelogger().Infow("Processing READY_REQUEST", "data", line)
+					i.handleReadyRequest(conn, line, remoteAddr)
+					continue
+				}
 
-			// WHO_IS_RESPONSE и CONSENSUS_STATUS обрабатываются только в readFromBootstrap
-			// для обычных узлов, которые получают эти сообщения от bootstrap.
-			// Bootstrap узел не должен получать эти сообщения через handleConnection.
-			// Обычные узлы не должны получать эти сообщения от других узлов (только от bootstrap).
+				// Обрабатываем WHO_IS запрос (только для bootstrap узла)
+				if i.isWhoIsRequest(line) {
+					icelogger().Infow("Received WHO_IS request", "remote_addr", remoteAddr, "data", line)
+					i.handleWhoIsRequest(conn, line, remoteAddr)
+					continue
+				}
+
+				// Обрабатываем NODE_OK (только для bootstrap узла)
+				if i.isNodeOkMessage(line) {
+					icelogger().Infow("Received NODE_OK", "remote_addr", remoteAddr, "data", line)
+					i.handleNodeOk(conn, line, remoteAddr)
+					continue
+				}
+
+				// WHO_IS_RESPONSE и CONSENSUS_STATUS обрабатываются только в readFromBootstrap
+				// для обычных узлов, которые получают эти сообщения от bootstrap.
+				// Bootstrap узел не должен получать эти сообщения через handleConnection.
+				// Обычные узлы не должны получать эти сообщения от других узлов (только от bootstrap).
+			}
 		}
 	}
 }

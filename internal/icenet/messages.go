@@ -10,6 +10,129 @@ import (
 	"github.com/cerera/internal/gigea"
 )
 
+// REQ представляет структурированное сообщение с данными для нового узла
+// Формат:
+// REQ
+// A<address>
+// NA<network_address>
+// N
+// NA<node_address1>
+// NNA<node_network_address1>
+// NA<node_address2>
+// NNA<node_network_address2>
+// ...
+// NONCE<nonce_value>
+type REQ struct {
+	Address     types.Address // A - адрес bootstrap узла
+	NetworkAddr string        // NA - сетевой адрес bootstrap узла
+	Nodes       []NodeInfo    // N - список узлов
+	Nonce       uint64        // NONCE - текущий nonce
+}
+
+// NodeInfo представляет информацию об узле в списке
+type NodeInfo struct {
+	Address     types.Address // NA - адрес узла
+	NetworkAddr string        // NNA - сетевой адрес узла
+}
+
+// serializeREQ сериализует структуру REQ в строку для отправки
+func (r *REQ) serialize() string {
+	var sb strings.Builder
+
+	sb.WriteString("REQ\n")
+	sb.WriteString(fmt.Sprintf("A%s\n", r.Address.Hex()))
+	sb.WriteString(fmt.Sprintf("NA%s\n", r.NetworkAddr))
+	sb.WriteString("N\n")
+
+	for _, node := range r.Nodes {
+		sb.WriteString(fmt.Sprintf("NA%s\n", node.Address.Hex()))
+		sb.WriteString(fmt.Sprintf("NNA%s\n", node.NetworkAddr))
+	}
+
+	sb.WriteString(fmt.Sprintf("NONCE%d\n", r.Nonce))
+
+	return sb.String()
+}
+
+// parseREQ парсит строку и создает структуру REQ
+func parseREQ(data string) (*REQ, error) {
+	req := &REQ{
+		Nodes: make([]NodeInfo, 0),
+	}
+
+	lines := strings.Split(data, "\n")
+	inNodesSection := false
+	var currentNode *NodeInfo
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		if line == "REQ" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "A") && !inNodesSection {
+			addrStr := strings.TrimPrefix(line, "A")
+			addr := types.HexToAddress(addrStr)
+			if addr == (types.Address{}) {
+				return nil, fmt.Errorf("invalid address: %s", addrStr)
+			}
+			req.Address = addr
+			continue
+		}
+
+		if strings.HasPrefix(line, "NA") && !inNodesSection {
+			req.NetworkAddr = strings.TrimPrefix(line, "NA")
+			continue
+		}
+
+		if line == "N" {
+			inNodesSection = true
+			continue
+		}
+
+		if inNodesSection {
+			if strings.HasPrefix(line, "NA") {
+				addrStr := strings.TrimPrefix(line, "NA")
+				addr := types.HexToAddress(addrStr)
+				if addr == (types.Address{}) {
+					continue // пропускаем невалидные адреса
+				}
+				currentNode = &NodeInfo{Address: addr}
+				continue
+			}
+
+			if strings.HasPrefix(line, "NNA") && currentNode != nil {
+				currentNode.NetworkAddr = strings.TrimPrefix(line, "NNA")
+				req.Nodes = append(req.Nodes, *currentNode)
+				currentNode = nil
+				continue
+			}
+
+			if strings.HasPrefix(line, "NONCE") {
+				nonceStr := strings.TrimPrefix(line, "NONCE")
+				var nonce uint64
+				if _, err := fmt.Sscanf(nonceStr, "%d", &nonce); err != nil {
+					return nil, fmt.Errorf("invalid nonce: %s", nonceStr)
+				}
+				req.Nonce = nonce
+				inNodesSection = false
+				break
+			}
+		}
+	}
+
+	return req, nil
+}
+
+// isREQMessage проверяет, является ли сообщение REQ
+func (i *Ice) isREQMessage(data string) bool {
+	return strings.HasPrefix(data, "REQ")
+}
+
 // isReadyRequest проверяет, является ли сообщение запросом на включение
 func (i *Ice) isReadyRequest(data string) bool {
 	// Формат: READY_REQUEST|{address}|{network_addr}
@@ -164,29 +287,39 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 		"node_address", nodeAddr.Hex(),
 	)
 
-	// Отправляем ответ READY
-	readyResponse := "READY\n"
-	if _, err := conn.Write([]byte(readyResponse)); err != nil {
-		icelogger().Errorw("Error sending READY response", "remote_addr", remoteAddr, "err", err)
-		// Удаляем соединение при ошибке
-		if i.isBootstrapNode() {
-			i.mu.Lock()
-			delete(i.connectedNodes, *nodeAddr)
-			i.mu.Unlock()
-		}
-		return
-	}
-
-	icelogger().Infow("Sent READY response", "remote_addr", remoteAddr)
-
-	// Отправляем список узлов
-	i.sendNodeList(conn, remoteAddr)
-
-	// Отправляем текущий nonce для синхронизации (уже обновленный)
+	// Формируем структурированное сообщение REQ
 	currentNonce := gigea.GetNonce()
-	nonceMessage := fmt.Sprintf("NONCE|%d\n", currentNonce)
-	if _, err := conn.Write([]byte(nonceMessage)); err != nil {
-		icelogger().Errorw("Error sending nonce", "remote_addr", remoteAddr, "err", err)
+
+	// Получаем список узлов
+	nodes := gigea.GetNodes()
+	nodeList := make([]NodeInfo, 0)
+	for addr, node := range nodes {
+		if node.IsConnected {
+			nodeList = append(nodeList, NodeInfo{
+				Address:     types.HexToAddress(addr),
+				NetworkAddr: node.NetworkAddr,
+			})
+		}
+	}
+
+	// Добавляем bootstrap узел в список
+	nodeList = append(nodeList, NodeInfo{
+		Address:     i.address,
+		NetworkAddr: i.GetNetworkAddr(),
+	})
+
+	// Создаем REQ структуру
+	req := &REQ{
+		Address:     i.address,
+		NetworkAddr: i.GetNetworkAddr(),
+		Nodes:       nodeList,
+		Nonce:       currentNonce,
+	}
+
+	// Сериализуем и отправляем REQ
+	reqMessage := req.serialize()
+	if _, err := conn.Write([]byte(reqMessage)); err != nil {
+		icelogger().Errorw("Error sending REQ message", "remote_addr", remoteAddr, "err", err)
 		// Удаляем соединение при ошибке
 		if i.isBootstrapNode() {
 			i.mu.Lock()
@@ -196,8 +329,11 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 		return
 	}
 
-	icelogger().Infow("Sent nonce to new node",
+	icelogger().Infow("Sent REQ message to new node",
 		"remote_addr", remoteAddr,
+		"address", i.address.Hex(),
+		"network_addr", i.GetNetworkAddr(),
+		"nodes_count", len(nodeList),
 		"nonce", currentNonce,
 	)
 
@@ -210,47 +346,6 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 		icelogger().Warnw("Not calling broadcastConsensusStatus - not a bootstrap node",
 			"network_addr", i.GetNetworkAddr(),
 			"bootstrap_addr", i.GetBootstrapAddr(),
-		)
-	}
-}
-
-// sendNodeList отправляет список узлов подключенному узлу
-func (i *Ice) sendNodeList(conn net.Conn, remoteAddr string) {
-	nodes := gigea.GetNodes()
-	if len(nodes) == 0 {
-		return
-	}
-
-	// Формируем список узлов: address1#network_addr1,address2#network_addr2,...
-	var nodeList []string
-	for addr, node := range nodes {
-		if node.IsConnected {
-			nodeList = append(nodeList, fmt.Sprintf("%s#%s", addr, node.NetworkAddr))
-		}
-	}
-
-	nodeList = append(nodeList, fmt.Sprintf("%s#%s", i.address.Hex(), i.GetNetworkAddr())) // добавляем себя в список узлов (bootstrap узел)
-
-	if len(nodeList) > 0 {
-		nodeListStr := ""
-		for idx, nodeInfo := range nodeList {
-			if idx > 0 {
-				nodeListStr += ","
-			}
-			nodeListStr += nodeInfo
-		}
-
-		message := fmt.Sprintf("NODES|%s\n", nodeListStr)
-		countMessage := fmt.Sprintf("NODES_COUNT|%d\n", len(nodeList))
-		fullMessage := message + countMessage
-		if _, err := conn.Write([]byte(fullMessage)); err != nil {
-			icelogger().Errorw("Error sending node list", "remote_addr", remoteAddr, "err", err)
-			return
-		}
-
-		icelogger().Infow("Sent node list to new node",
-			"remote_addr", remoteAddr,
-			"nodes_count", len(nodeList),
 		)
 	}
 }
@@ -465,9 +560,65 @@ func (i *Ice) broadcastNodeList() {
 	)
 }
 
-// handleConsensusStatus обрабатывает сообщение CONSENSUS_STATUS
-func (i *Ice) handleConsensusStatus(data string) {
-	icelogger().Infow("Received CONSENSUS_STATUS message")
-	// Используем общую функцию обработки из bootstrap_client.go
-	i.processConsensusStatusMessage(data)
+// isNodeOkMessage проверяет, является ли сообщение подтверждением NODE_OK
+func (i *Ice) isNodeOkMessage(data string) bool {
+	// Формат: NODE_OK|{count}|{nonce}
+	return len(data) > 7 && strings.HasPrefix(data, "NODE_OK")
+}
+
+// handleNodeOk обрабатывает сообщение NODE_OK от узла
+// Используется только на bootstrap узле
+func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
+	if !i.isBootstrapNode() {
+		icelogger().Debugw("Ignoring NODE_OK - not a bootstrap node")
+		return
+	}
+
+	// Формат: NODE_OK|{count}|{nonce}
+	parts := i.splitMessage(data, "|")
+	if len(parts) < 3 {
+		icelogger().Warnw("Invalid NODE_OK message format", "data", data)
+		return
+	}
+
+	countStr := i.trimResponse(parts[1])
+	nonceStr := i.trimResponse(parts[2])
+
+	var nodeCount int
+	var nodeNonce uint64
+
+	if _, err := fmt.Sscanf(countStr, "%d", &nodeCount); err != nil {
+		icelogger().Warnw("Failed to parse count from NODE_OK", "count_str", countStr, "err", err)
+		return
+	}
+
+	if _, err := fmt.Sscanf(nonceStr, "%d", &nodeNonce); err != nil {
+		icelogger().Warnw("Failed to parse nonce from NODE_OK", "nonce_str", nonceStr, "err", err)
+		return
+	}
+
+	// Получаем текущий nonce bootstrap узла
+	currentNonce := gigea.GetNonce()
+
+	icelogger().Infow("Received NODE_OK from node",
+		"remote_addr", remoteAddr,
+		"node_count", nodeCount,
+		"node_nonce", nodeNonce,
+		"bootstrap_nonce", currentNonce,
+	)
+
+	// Проверяем синхронизацию nonce
+	if nodeNonce != currentNonce {
+		icelogger().Warnw("Nonce mismatch in NODE_OK",
+			"remote_addr", remoteAddr,
+			"node_nonce", nodeNonce,
+			"bootstrap_nonce", currentNonce,
+		)
+	} else {
+		icelogger().Infow("Node confirmed successfully with matching nonce",
+			"remote_addr", remoteAddr,
+			"node_count", nodeCount,
+			"nonce", nodeNonce,
+		)
+	}
 }
