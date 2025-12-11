@@ -115,6 +115,22 @@ func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
 	}
 }
 
+// GetAllInputs возвращает копию всех инпутов (без mutex) для безопасного использования
+func (sa *StateAccount) GetAllInputs() map[common.Hash]*big.Int {
+	if sa.Inputs == nil {
+		return make(map[common.Hash]*big.Int)
+	}
+	sa.Inputs.RLock()
+	defer sa.Inputs.RUnlock()
+
+	// Создаем копию map и значений
+	result := make(map[common.Hash]*big.Int, len(sa.Inputs.M))
+	for hash, val := range sa.Inputs.M {
+		result[hash] = new(big.Int).Set(val)
+	}
+	return result
+}
+
 // ToBytes converts StateAccount to custom binary format
 func (sa *StateAccount) Bytes() []byte {
 	// add by order of length fields constant
@@ -198,6 +214,30 @@ func (sa *StateAccount) Bytes() []byte {
 	// fmt.Printf("Buffer after balance: %x\n", buf.Bytes())
 	if DEBUG {
 		fmt.Printf("Buffer length after balance: %d\n", buf.Len())
+	}
+
+	// Write Inputs map
+	sa.Inputs.RLock()
+	inputsCount := uint32(len(sa.Inputs.M))
+	binary.Write(&buf, binary.LittleEndian, inputsCount)
+
+	// Записываем каждую пару (hash, value)
+	for txHash, val := range sa.Inputs.M {
+		// Записываем hash (32 bytes)
+		hashBytes := txHash.Bytes()
+		buf.Write(hashBytes)
+
+		// Записываем значение big.Int
+		valBytes := val.Bytes()
+		binary.Write(&buf, binary.LittleEndian, uint32(len(valBytes)))
+		if len(valBytes) > 0 {
+			buf.Write(valBytes)
+		}
+	}
+	sa.Inputs.RUnlock()
+
+	if DEBUG {
+		fmt.Printf("Buffer length after inputs (%d entries): %d\n", inputsCount, buf.Len())
 	}
 
 	// Check if there's any '\n' byte in the buffer (typically end of serialized account line in file)
@@ -327,6 +367,43 @@ func BytesToStateAccount(data []byte) *StateAccount {
 		RWMutex: &sync.RWMutex{},
 		M:       make(map[common.Hash]*big.Int),
 	}
+
+	// Read Inputs map
+	var inputsCount uint32
+	if err := binary.Read(buf, binary.LittleEndian, &inputsCount); err != nil {
+		// Если не удалось прочитать (старая версия без инпутов), просто возвращаем
+		// Inputs уже инициализирован пустым
+		return sa
+	}
+
+	// Читаем каждую пару (hash, value)
+	sa.Inputs.Lock()
+	for i := uint32(0); i < inputsCount; i++ {
+		// Читаем hash (32 bytes)
+		hashBytes := make([]byte, 32)
+		if _, err := io.ReadFull(buf, hashBytes); err != nil {
+			sa.Inputs.Unlock()
+			return nil
+		}
+		txHash := common.Hash(hashBytes)
+
+		// Читаем значение big.Int
+		var valLen uint32
+		if err := binary.Read(buf, binary.LittleEndian, &valLen); err != nil {
+			sa.Inputs.Unlock()
+			return nil
+		}
+		valBytes := make([]byte, valLen)
+		if valLen > 0 {
+			if _, err := io.ReadFull(buf, valBytes); err != nil {
+				sa.Inputs.Unlock()
+				return nil
+			}
+		}
+		val := new(big.Int).SetBytes(valBytes)
+		sa.Inputs.M[txHash] = val
+	}
+	sa.Inputs.Unlock()
 
 	return sa
 }

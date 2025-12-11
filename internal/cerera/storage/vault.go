@@ -838,7 +838,12 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 		if !ok1 {
 			return ErrErrorParsingParameters.Error()
 		}
-		return v.Get(types.HexToAddress(addr)).Inputs
+		account := v.Get(types.HexToAddress(addr))
+		if account == nil {
+			return make(map[common.Hash]*big.Int) // Возвращаем пустую map
+		}
+		// Возвращаем копию инпутов без mutex для безопасной сериализации в JSON
+		return account.GetAllInputs()
 	}
 	return nil
 }
