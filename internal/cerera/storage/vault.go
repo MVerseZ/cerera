@@ -244,12 +244,14 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	// Open pogreb database once and store it
 	dbDir := vlt.path
 	if err := os.MkdirAll(dbDir, 0700); err != nil {
-		panic(fmt.Errorf("failed to create vault directory: %w", err))
+		vltlogger().Errorw("Failed to create vault directory", "path", dbDir, "err", err)
+		return nil, fmt.Errorf("failed to create vault directory: %w", err)
 	}
 
 	db, err := pogreb.Open(dbDir, nil)
 	if err != nil {
-		panic(fmt.Errorf("failed to open pogreb database: %w", err))
+		vltlogger().Errorw("Failed to open pogreb database", "path", dbDir, "err", err)
+		return nil, fmt.Errorf("failed to open pogreb database: %w", err)
 	}
 	vlt.db = db
 
@@ -257,28 +259,38 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	key := rootSA.Address.Bytes()
 	has, err := db.Has(key)
 	if err != nil {
-		panic(fmt.Errorf("failed to check if root account exists: %w", err))
+		vltlogger().Errorw("Failed to check if root account exists", "err", err)
+		db.Close()
+		return nil, fmt.Errorf("failed to check if root account exists: %w", err)
 	}
 	if !has {
 		// Create new vault with rootSA
 		accountData := rootSA.Bytes()
 		if err := db.Put(key, accountData); err != nil {
-			panic(fmt.Errorf("failed to write root account: %w", err))
+			vltlogger().Errorw("Failed to write root account", "err", err)
+			db.Close()
+			return nil, fmt.Errorf("failed to write root account: %w", err)
 		}
 		// Add rootSA to accounts
 		vlt.accounts.Append(rootSA.Address, rootSA)
+		vltlogger().Info("Created new vault with root account")
 	} else {
 		// Sync with existing vault
 		if err := vlt.SyncFromDB(); err != nil {
-			panic(fmt.Errorf("failed to sync vault: %w", err))
+			vltlogger().Errorw("Failed to sync vault", "err", err)
+			db.Close()
+			return nil, fmt.Errorf("failed to sync vault: %w", err)
 		}
 		// Ensure rootSA is in accounts after sync (may not exist in old vaults)
 		if vlt.accounts.GetAccount(rootSA.Address) == nil {
 			vlt.accounts.Append(rootSA.Address, rootSA)
 			if err := db.Put(key, rootSA.Bytes()); err != nil {
-				panic(fmt.Errorf("failed to save root account: %w", err))
+				vltlogger().Errorw("Failed to save root account", "err", err)
+				db.Close()
+				return nil, fmt.Errorf("failed to save root account: %w", err)
 			}
 		}
+		vltlogger().Info("Synced existing vault")
 	}
 
 	vlt.status = 0xa

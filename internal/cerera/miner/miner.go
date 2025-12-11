@@ -1,12 +1,14 @@
 package miner
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
@@ -17,9 +19,20 @@ import (
 
 const MINER_ID = "CERERA_MINER:937"
 
+var (
+	ErrServiceRegistryNotFound = errors.New("service registry not found")
+	ErrChainServiceNotFound    = errors.New("chain service not found")
+	ErrPoolServiceNotFound     = errors.New("pool service not found")
+	ErrLatestBlockNotFound     = errors.New("latest block not found")
+	ErrInvalidBlock            = errors.New("invalid block")
+	ErrBlockHeaderNil          = errors.New("block header is nil")
+)
+
+var minerLog = logger.Named("miner")
+
 type Miner interface {
 	GetID() string
-	Start()
+	Start() error
 	Stop()
 	Status() byte
 	Update(tx *types.GTransaction)
@@ -38,62 +51,81 @@ func (m *miner) GetID() string {
 	return MINER_ID
 }
 
-func (m *miner) Start() {
+func (m *miner) Start() error {
 	m.status = 0x1
 	m.mining = true
 	m.stopChan = make(chan struct{})
 
-	fmt.Printf("[MINER] Starting miner with ID: %s\n", m.GetID())
+	minerLog.Infow("Starting miner", "id", m.GetID())
 
 	// Получаем конфигурацию
 	m.config = config.GenerageConfig()
-	fmt.Printf("[MINER] Chain config loaded: ChainID=%d, Type=%s\n",
-		m.config.Chain.ChainID, m.config.Chain.Type)
+	minerLog.Infow("Chain config loaded",
+		"chain_id", m.config.Chain.ChainID,
+		"type", m.config.Chain.Type)
 
 	// Получаем доступ к сервисам через реестр
 	registry, err := service.GetRegistry()
 	if err != nil {
-		fmt.Printf("[MINER] Error getting service registry: %v\n", err)
-		return
+		minerLog.Errorw("Failed to get service registry", "err", err)
+		m.status = 0x0
+		m.mining = false
+		return fmt.Errorf("%w: %v", ErrServiceRegistryNotFound, err)
 	}
 
 	// Получаем цепочку
 	_, ok := registry.GetService("chain")
 	if !ok {
-		fmt.Printf("[MINER] Chain service not found\n")
-		return
+		minerLog.Errorw("Chain service not found")
+		m.status = 0x0
+		m.mining = false
+		return ErrChainServiceNotFound
 	}
-	// m.chain = chain.GetBlockChain()
-	// connect chain to miner by validator
-	fmt.Printf("[MINER] Chain service connected\n")
+	minerLog.Info("Chain service connected")
 
 	// Получаем пул транзакций
 	_, ok = registry.GetService("pool")
 	if !ok {
-		fmt.Printf("[MINER] Pool service not found\n")
-		return
+		minerLog.Errorw("Pool service not found")
+		m.status = 0x0
+		m.mining = false
+		return ErrPoolServiceNotFound
 	}
 	m.pool = pool.Get()
-	fmt.Printf("[MINER] Pool service connected\n")
+	minerLog.Info("Pool service connected")
 
 	// Получаем последний блок
 	lastBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
 	if lastBlockResult == nil {
-		panic("Failed to get latest block: result is nil")
+		minerLog.Errorw("Failed to get latest block: result is nil")
+		m.status = 0x0
+		m.mining = false
+		return ErrLatestBlockNotFound
 	}
 	lastBlock, ok := lastBlockResult.(*block.Block)
 	if !ok || lastBlock == nil || lastBlock.Head == nil {
-		panic("Failed to get latest block: block is nil or invalid")
+		minerLog.Errorw("Failed to get latest block: block is nil or invalid",
+			"ok", ok,
+			"block_nil", lastBlock == nil,
+			"head_nil", lastBlock != nil && lastBlock.Head == nil)
+		m.status = 0x0
+		m.mining = false
+		return ErrInvalidBlock
 	}
 	header := lastBlock.Header()
 	if header == nil {
-		panic("Failed to get latest block: header is nil")
+		minerLog.Errorw("Failed to get latest block: header is nil")
+		m.status = 0x0
+		m.mining = false
+		return ErrBlockHeaderNil
 	}
-	fmt.Printf("[MINER] Last block: Height=%d, Hash=%s\n",
-		header.Height, lastBlock.GetHash())
+	minerLog.Infow("Last block retrieved",
+		"height", header.Height,
+		"hash", lastBlock.GetHash())
 
 	// Запускаем цикл майнинга
 	go m.miningLoop()
+	return nil
 }
 
 func (m *miner) Stop() {
@@ -102,7 +134,7 @@ func (m *miner) Stop() {
 	if m.stopChan != nil {
 		close(m.stopChan)
 	}
-	fmt.Printf("[MINER] Stopped\n")
+	minerLog.Info("Miner stopped")
 }
 
 func (m *miner) miningLoop() {
@@ -122,7 +154,7 @@ func (m *miner) miningLoop() {
 				m.mineBlock()
 			}
 		case <-m.stopChan:
-			fmt.Printf("[MINER] Mining loop stopped\n")
+			minerLog.Info("Mining loop stopped")
 			return
 		}
 	}
@@ -154,52 +186,59 @@ func (m *miner) isConsensusStarted() bool {
 // printConsensusStatus выводит текущий статус консенсуса
 func (m *miner) printConsensusStatus() {
 	consensusInfo := gigea.GetConsensusInfo()
-	fmt.Printf("[MINER] Consensus not started - current consensus status:\n")
-	fmt.Printf("  Status: %d\n", consensusInfo["status"])
-	fmt.Printf("  Voters: %d\n", consensusInfo["voters"])
-	fmt.Printf("  Nodes: %d\n", consensusInfo["nodes"])
-	fmt.Printf("  Nonce: %d\n", consensusInfo["nonce"])
-	fmt.Printf("  Address: %s\n", consensusInfo["address"])
-	fmt.Printf("[MINER] Skipping block creation - waiting for consensus to start\n")
+	minerLog.Debugw("Consensus not started, skipping block creation",
+		"status", consensusInfo["status"],
+		"voters", consensusInfo["voters"],
+		"nodes", consensusInfo["nodes"],
+		"nonce", consensusInfo["nonce"],
+		"address", consensusInfo["address"])
 }
 
-// fmt.Printf("[MINER] Starting scheduled block mining...\n")
 func (m *miner) mineBlock() {
-
 	// Получаем последний блок
 	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
 	if latestBlockResult == nil {
-		fmt.Printf("[MINER] No last block found\n")
+		minerLog.Warnw("No last block found, skipping mining cycle")
 		return
 	}
 	latestBlock, ok := latestBlockResult.(*block.Block)
 	if !ok || latestBlock == nil || latestBlock.Head == nil {
-		fmt.Printf("[MINER] Invalid last block\n")
+		minerLog.Warnw("Invalid last block, skipping mining cycle",
+			"ok", ok,
+			"block_nil", latestBlock == nil,
+			"head_nil", latestBlock != nil && latestBlock.Head == nil)
 		return
 	}
 	header := latestBlock.Header()
 	if header == nil {
-		fmt.Printf("[MINER] Last block header is nil\n")
+		minerLog.Warnw("Last block header is nil, skipping mining cycle")
 		return
 	}
 
 	// Получаем транзакции из пула
 	pendingTxs := m.pool.GetPendingTransactions()
-	// fmt.Printf("[MINER] Found %d pending transactions\n", len(pendingTxs))
+	minerLog.Debugw("Mining block", "pending_txs", len(pendingTxs), "height", header.Height+1)
 
 	// Создаем новый блок
 	newBlock := m.createNewBlock(latestBlock, pendingTxs)
 	if newBlock == nil {
-		fmt.Printf("[MINER] Failed to create new block\n")
+		minerLog.Errorw("Failed to create new block")
 		return
 	}
 
 	// Выполняем майнинг (поиск nonce)
-	m.performMining(newBlock)
+	if err := m.performMining(newBlock); err != nil {
+		minerLog.Errorw("Mining failed", "err", err)
+		return
+	}
 
 	// Добавляем блок в цепочку через validator
 	var validator = validator.Get()
 	validator.ProposeBlock(newBlock)
+	minerLog.Infow("Block mined and proposed",
+		"height", newBlock.Header().Height,
+		"hash", newBlock.GetHash(),
+		"txs", len(newBlock.Transactions))
 
 	// Очищаем пул от обработанных транзакций
 	m.clearProcessedTransactions(newBlock.Transactions)
@@ -207,13 +246,13 @@ func (m *miner) mineBlock() {
 
 func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
 	if lastBlock == nil || lastBlock.Head == nil {
-		fmt.Printf("[MINER] createNewBlock: lastBlock is nil or invalid\n")
+		minerLog.Errorw("createNewBlock: lastBlock is nil or invalid")
 		return nil
 	}
 
 	lastHeader := lastBlock.Header()
 	if lastHeader == nil {
-		fmt.Printf("[MINER] createNewBlock: lastBlock header is nil\n")
+		minerLog.Errorw("createNewBlock: lastBlock header is nil")
 		return nil
 	}
 
@@ -255,21 +294,23 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 	return newBlock
 }
 
-func (m *miner) performMining(block *block.Block) {
-	// fmt.Printf("[MINER] Performing simplified mining for block Height=%d\n", block.Header().Height)
-
+func (m *miner) performMining(block *block.Block) error {
 	// Простой майнинг - просто устанавливаем случайный nonce
 	block.Header().Nonce = uint64(time.Now().UnixNano() % 1000000)
 
 	// Рассчитываем хеш блока
 	blockHash, err := block.CalculateHash()
 	if err != nil {
-		fmt.Printf("[MINER] Error calculating block hash: %v\n", err)
-		return
+		minerLog.Errorw("Error calculating block hash", "err", err, "height", block.Header().Height)
+		return fmt.Errorf("failed to calculate block hash: %w", err)
 	}
 
 	block.Hash = common.BytesToHash(blockHash)
-	// fmt.Printf("[MINER] Block mined with nonce: %d, hash: %x\n", block.Header().Nonce, blockHash)
+	minerLog.Debugw("Block mined",
+		"height", block.Header().Height,
+		"nonce", block.Header().Nonce,
+		"hash", fmt.Sprintf("%x", blockHash))
+	return nil
 }
 
 func (m *miner) clearProcessedTransactions(processedTxs []types.GTransaction) {
@@ -279,7 +320,9 @@ func (m *miner) clearProcessedTransactions(processedTxs []types.GTransaction) {
 		}
 		err := m.pool.RemoveFromPool(tx.Hash())
 		if err != nil {
-			fmt.Printf("[MINER] Error removing transaction from pool: %v\n", err)
+			minerLog.Warnw("Error removing transaction from pool",
+				"tx_hash", tx.Hash(),
+				"err", err)
 		}
 	}
 }
@@ -290,13 +333,15 @@ func (m *miner) Status() byte {
 
 func (m *miner) Update(tx *types.GTransaction) {
 	if m.status != 0x1 || !m.mining {
-		fmt.Printf("[MINER] Miner not active, ignoring transaction update\n")
+		minerLog.Debugw("Miner not active, ignoring transaction update",
+			"status", m.status,
+			"mining", m.mining,
+			"tx_hash", tx.Hash())
 		return
 	}
 
-	// fmt.Printf("[MINER] Received transaction update: %s (will be included in next mining cycle)\n", tx.Hash())
-
-	// Не рестартуем майнинг - ждем следующий цикл через 7 секунд
+	minerLog.Debugw("Received transaction update, will be included in next mining cycle",
+		"tx_hash", tx.Hash())
 	// Транзакция будет включена в следующий блок при следующем майнинге
 }
 

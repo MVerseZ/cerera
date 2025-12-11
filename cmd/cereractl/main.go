@@ -87,7 +87,10 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
 	if mine {
-		miner.Start()
+		if err := miner.Start(); err != nil {
+			log.Printf("Failed to start miner: %v", err)
+			return nil, fmt.Errorf("failed to start miner: %w", err)
+		}
 	}
 
 	// gigea.E.Register(chain)

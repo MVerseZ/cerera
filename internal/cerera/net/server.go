@@ -82,13 +82,8 @@ type Node struct {
 }
 
 func (n *Node) streamStateTo(ctx context.Context, topic *pubsub.Topic) {
-	// reader := bufio.NewReader(os.Stdin)
 	for {
 		select {
-		// s, err := reader.ReadString('\n')
-		// if err != nil {
-		// 	panic(err)
-		// }
 		case d := <-n.ch: // channel from miner with blocks
 			p2plog.Debug("received channel")
 			if err := topic.Publish(ctx, d); err != nil {
@@ -318,7 +313,7 @@ func BroadcastConsensusRequest(operation string) {
 	CereraNode.sch <- []byte(msg)
 }
 
-func StartNode(addr string, laddr types.Address) *Node {
+func StartNode(addr string, laddr types.Address) (*Node, error) {
 	p2plog.Infow("startup params", "addr", addr, "laddr", laddr)
 	ctx := context.Background()
 	// h, err := libp2p.New(
@@ -329,7 +324,8 @@ func StartNode(addr string, laddr types.Address) *Node {
 	hAddr := fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", addr)
 	h, err := libp2p.New(libp2p.ListenAddrStrings(hAddr))
 	if err != nil {
-		panic(err)
+		p2plog.Errorw("Failed to create libp2p host", "err", err, "addr", hAddr)
+		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
 	}
 	defer h.Close()
 	CereraNode = NewNode(h, laddr)
@@ -376,22 +372,25 @@ func StartNode(addr string, laddr types.Address) *Node {
 
 	ps, err := pubsub.NewGossipSub(ctx, h)
 	if err != nil {
-		panic(err)
+		p2plog.Errorw("Failed to create GossipSub", "err", err)
+		return nil, fmt.Errorf("failed to create GossipSub: %w", err)
 	}
 	topic, err := ps.Join(topicName)
 	if err != nil {
-		panic(err)
+		p2plog.Errorw("Failed to join topic", "err", err, "topic", topicName)
+		return nil, fmt.Errorf("failed to join topic: %w", err)
 	}
 
 	go CereraNode.streamStateTo(ctx, topic)
 
 	sub, err := topic.Subscribe()
 	if err != nil {
-		panic(err)
+		p2plog.Errorw("Failed to subscribe to topic", "err", err)
+		return nil, fmt.Errorf("failed to subscribe to topic: %w", err)
 	}
 	printMessagesFrom(ctx, sub, h.ID())
 
-	return CereraNode
+	return CereraNode, nil
 }
 
 func getHostAddress(ha host.Host) string {
@@ -411,17 +410,19 @@ func getHostAddress(ha host.Host) string {
 	return addr.Encapsulate(hostAddr).String()
 }
 
-func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
+func initDHT(ctx context.Context, h host.Host) (*dht.IpfsDHT, error) {
 	// Start a DHT, for use in peer discovery. We can't just make a new DHT
 	// client because we want each peer to maintain its own local copy of the
 	// DHT, so that the bootstrapping node of the DHT can go down without
 	// inhibiting future peer discovery.
 	kademliaDHT, err := dht.New(ctx, h)
 	if err != nil {
-		panic(err)
+		p2plog.Errorw("Failed to create DHT", "err", err)
+		return nil, fmt.Errorf("failed to create DHT: %w", err)
 	}
 	if err = kademliaDHT.Bootstrap(ctx); err != nil {
-		panic(err)
+		p2plog.Errorw("Failed to bootstrap DHT", "err", err)
+		return nil, fmt.Errorf("failed to bootstrap DHT: %w", err)
 	}
 	var wg sync.WaitGroup
 	for _, peerAddr := range dht.DefaultBootstrapPeers {
@@ -436,11 +437,15 @@ func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
 	}
 	wg.Wait()
 
-	return kademliaDHT
+	return kademliaDHT, nil
 }
 
 func discoverPeers(ctx context.Context, h host.Host, n *Node) {
-	kademliaDHT := initDHT(ctx, h)
+	kademliaDHT, err := initDHT(ctx, h)
+	if err != nil {
+		p2plog.Errorw("Failed to initialize DHT, peer discovery disabled", "err", err)
+		return
+	}
 	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, routingDiscovery, topicName)
 
@@ -452,7 +457,10 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 		p2plog.Debugw("fallback counter", "count", n.FallBackCounter)
 		peerChan, err := routingDiscovery.FindPeers(ctx, topicName)
 		if err != nil {
-			panic(err)
+			p2plog.Errorw("Failed to find peers", "err", err)
+			// Continue trying after a delay
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		for peer := range peerChan {
 			if peer.ID == h.ID() {
@@ -490,7 +498,15 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription, hostID pee
 	for {
 		m, err := sub.Next(ctx)
 		if err != nil {
-			panic(err)
+			// Context cancelled or subscription closed
+			if err == context.Canceled || err == context.DeadlineExceeded {
+				p2plog.Info("Subscription context cancelled, stopping message handler")
+				return
+			}
+			p2plog.Errorw("Error reading from subscription", "err", err)
+			// Continue trying after a short delay
+			time.Sleep(1 * time.Second)
+			continue
 		}
 		var msgData = string(m.Message.Data)
 		if m.ReceivedFrom != hostID {
