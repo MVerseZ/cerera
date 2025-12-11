@@ -6,17 +6,17 @@ import requests
 from os import listdir
 from os.path import isfile, join
 path = "D:/Pictures/tmp_vid/w"
-# onlyfiles = [f for f in listdir(path) if isfile(join(path, f))]
+onlyfiles = [f for f in listdir(path) if isfile(join(path, f))]
 
-# enc_f = []
-# for f in onlyfiles:
-#     # with open(f"{path}/{f}", "rb") as image_file:
-#         img = cv2.imread(f"{path}/{f}")        
-#         jpg_img = cv2.imencode('.jpg', img)
-#         b64_string = base64.b64encode(jpg_img[1]).decode('utf-8')
-#         enc_f.append(b64_string)       
+enc_f = []
+for f in onlyfiles:
+    # with open(f"{path}/{f}", "rb") as image_file:
+    img = cv2.imread(f"{path}/{f}")        
+    jpg_img = cv2.imencode('.jpg', img)
+    b64_string = base64.b64encode(jpg_img[1]).decode('utf-8')
+    enc_f.append(b64_string)       
 
-# pref = "data:image/jpeg;base64,"
+pref = "data:image/jpeg;base64,"
 
 # {
 #     "jsonrpc": "2.0",
@@ -28,24 +28,46 @@ path = "D:/Pictures/tmp_vid/w"
 #     "id": 11231
 # }
 
+# Create sender account
+sender_req = {
+    "method": "cerera.account.create",
+    "jsonrpc": "2.0",
+    "id": 1001,
+    "params": ["sender", "password123"]
+}
+sender_resp = requests.post("http://localhost:1337/app", json=sender_req)
+sender_data = sender_resp.json()["result"]
+
+# Create receiver account
+receiver_req = {
+    "method": "cerera.account.create",
+    "jsonrpc": "2.0",
+    "id": 1002,
+    "params": ["receiver", "password456"]
+}
+receiver_resp = requests.post("http://localhost:1337/app", json=receiver_req)
+receiver_data = receiver_resp.json()["result"]
+
+print(f"Sender address: {sender_data['address']}")
+print(f"Receiver address: {receiver_data['address']}")
+
 for i in range(100):
-    # ii = randrange(len(enc_f))
-    # data = pref+enc_f[ii]
-    data = "HELLO"
+    ii = randrange(len(enc_f))
+    data = pref+enc_f[ii]
     data_req = {
-        "method": "send_tx",
+        "method": "cerera.transaction.send",
         "jsonrpc": "2.0",
         "id": i+1000,
         "params":[
-            "xpub661MyMwAqRbcGC2tJvvVUF9UJmTYnTd7kbk1JHmDy9A1LZzFPfEdNH9ZQqaBYBWNHmn9ygPJG3ihKG2uhj1UXoJDjRos669Tey3awVnvhBd",
-            "0x08b33a1def335ffa2d344c817525c8fffef10bbcf72dbc26b1b7182189142c9dbe16822384f5485d4a5e9f03a19f7a31",
+            sender_data['pub'],  # Use sender's private key
+            receiver_data['address'],  # Use receiver's address
             10,
-            50000000,
+            1,
             data,
         ]
     }
     r = requests.post("http://localhost:1337/app", json=data_req)
-    print(r.text)
+    print(f"Tx {i}: {r.text}")
     if i % 1000 == 0:
         time.sleep(13)
     # time.sleep(0.001)

@@ -99,9 +99,20 @@ func (sa *StateAccount) BloomDown() {
 }
 
 func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
+	if sa.Inputs == nil {
+		sa.Inputs = &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		}
+	}
 	sa.Inputs.Lock()
 	defer sa.Inputs.Unlock()
-	sa.Inputs.M[txHash] = cnt
+	// Store a copy of cnt to avoid external modifications
+	if cnt != nil {
+		sa.Inputs.M[txHash] = new(big.Int).Set(cnt)
+	} else {
+		sa.Inputs.M[txHash] = big.NewInt(0)
+	}
 }
 
 // ToBytes converts StateAccount to custom binary format
@@ -310,6 +321,12 @@ func BytesToStateAccount(data []byte) *StateAccount {
 		}
 	}
 	sa.balance = new(big.Int).SetBytes(balanceBytes)
+
+	// Initialize Inputs (not serialized, but must be initialized to avoid nil pointer)
+	sa.Inputs = &Input{
+		RWMutex: &sync.RWMutex{},
+		M:       make(map[common.Hash]*big.Int),
+	}
 
 	return sa
 }
