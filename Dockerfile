@@ -1,8 +1,11 @@
 # Этап сборки
-FROM golang:1.25-rc-alpine AS builder
+FROM golang:alpine AS builder
 
 # Устанавливаем зависимости
 RUN apk add --no-cache git make gcc musl-dev
+
+# Устанавливаем GOTOOLCHAIN=auto для автоматического выбора версии инструментов
+ENV GOTOOLCHAIN=auto
 
 WORKDIR /app
 
@@ -27,9 +30,9 @@ RUN apk add --no-cache ca-certificates
 # Копируем собранный бинарник из этапа сборки
 COPY --from=builder /app/cerera /usr/local/bin/cerera
 
-# Копируем файл ключа (если он должен быть в контейнере)
-# Предполагаем, что nodekey.pem находится в текущей директории при сборке
-COPY ddddd.nodekey.pem /etc/cerera/ddddd.nodekey.pem
+# Создаем директорию для ключа и копируем файл из builder stage
+RUN mkdir -p /etc/cerera
+# COPY --from=builder /app/ddddd.nodekey.pem /etc/cerera/ddddd.nodekey.pem
 
 # Рабочая директория
 WORKDIR /app
@@ -38,4 +41,5 @@ WORKDIR /app
 EXPOSE 1337 31000
 
 # Команда запуска
-CMD ["cerera", "--key=/etc/cerera/${nodekey}", "--mode=p2p", "--http=1337", "--mem=true", "--miner"]
+# Используем shell форму для правильной подстановки переменной окружения
+CMD ["sh", "-c", "cerera --key=/etc/cerera/ddddd.nodekey.pem --mode=p2p --http=1337 --mem=true --miner"]

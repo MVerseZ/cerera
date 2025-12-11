@@ -12,6 +12,7 @@ import (
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/internal/gigea"
 )
 
 const MINER_ID = "CERERA_MINER:937"
@@ -106,13 +107,18 @@ func (m *miner) Stop() {
 
 func (m *miner) miningLoop() {
 
-	ticker := time.NewTicker(2 * time.Second) // Майним каждые 7 секунд
+	ticker := time.NewTicker(60 * time.Second) // Майним каждые 60 секунд
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			if m.mining {
+				// Проверяем, начался ли консенсус перед созданием блока
+				if !m.isConsensusStarted() {
+					m.printConsensusStatus()
+					continue
+				}
 				m.mineBlock()
 			}
 		case <-m.stopChan:
@@ -120,6 +126,41 @@ func (m *miner) miningLoop() {
 			return
 		}
 	}
+}
+
+// isConsensusStarted проверяет, начался ли консенсус
+func (m *miner) isConsensusStarted() bool {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		return false
+	}
+
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			return false
+		}
+	}
+
+	result := iceService.Exec("isConsensusStarted", nil)
+	if started, ok := result.(bool); ok {
+		return started
+	}
+
+	return false
+}
+
+// printConsensusStatus выводит текущий статус консенсуса
+func (m *miner) printConsensusStatus() {
+	consensusInfo := gigea.GetConsensusInfo()
+	fmt.Printf("[MINER] Consensus not started - current consensus status:\n")
+	fmt.Printf("  Status: %d\n", consensusInfo["status"])
+	fmt.Printf("  Voters: %d\n", consensusInfo["voters"])
+	fmt.Printf("  Nodes: %d\n", consensusInfo["nodes"])
+	fmt.Printf("  Nonce: %d\n", consensusInfo["nonce"])
+	fmt.Printf("  Address: %s\n", consensusInfo["address"])
+	fmt.Printf("[MINER] Skipping block creation - waiting for consensus to start\n")
 }
 
 // fmt.Printf("[MINER] Starting scheduled block mining...\n")

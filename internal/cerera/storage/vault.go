@@ -21,9 +21,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
+	"go.uber.org/zap"
 )
 
-var vltlogger = logger.Named("vault")
+// vltlogger returns a sugared logger for the vault package.
+// It is defined as a function (not a global variable) so that it always
+// uses the logger configured by logger.Init(), even if this package is
+// imported before logging is set up in main().
+func vltlogger() *zap.SugaredLogger {
+	return logger.Named("vault")
+}
 
 const VAULT_SERVICE_NAME = "D5_VAULT_CERERA_001_1_7"
 
@@ -187,14 +194,14 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	pubKeyStr := publicKey.B58Serialize()
 	copy(mpub[:], []byte(pubKeyStr))
 
-	vltlogger.Infow("Init vault",
+	vltlogger().Infow("Init vault",
 		"address", rootHashAddress.String(),
 		"service", VAULT_SERVICE_NAME,
 	)
-	vltlogger.Infow("Vault recovery mnemonic generated", "mnemonic", mnemonic)
-	vltlogger.Infow("Vault recovery password generated", "password", "NODE_PASS")
-	vltlogger.Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
-	vltlogger.Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
+	vltlogger().Infow("Vault recovery mnemonic generated", "mnemonic", mnemonic)
+	vltlogger().Infow("Vault recovery password generated", "password", "NODE_PASS")
+	vltlogger().Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
+	vltlogger().Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &types.StateAccount{
@@ -218,7 +225,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vlt.initiator = rootSA
 
 	if vlt.inMem {
-		vltlogger.Infow("Vault running in memory mode")
+		vltlogger().Infow("Vault running in memory mode")
 		vlt.accounts.Append(rootSA.Address, rootSA)
 		vlt.status = 0xa
 		vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
@@ -347,13 +354,13 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	if !v.inMem && v.db != nil {
 		key := newAccount.Address.Bytes()
 		if err := v.db.Put(key, newAccount.Bytes()); err != nil {
-			vltlogger.Errorw("Failed to save account to vault",
+			vltlogger().Errorw("Failed to save account to vault",
 				"address", address.Hex(),
 				"err", err,
 			)
 			return "", "", "", nil, fmt.Errorf("failed to save account to vault: %w", err)
 		}
-		vltlogger.Infow("Account saved to vault", "address", address.Hex())
+		vltlogger().Infow("Account saved to vault", "address", address.Hex())
 	}
 
 	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
@@ -415,7 +422,7 @@ func (v *D5Vault) GetPos(pos int64) *types.StateAccount {
 func (v *D5Vault) GetKey(signKey string) []byte {
 	pubKey, err := bip32.B58Deserialize(signKey)
 	if err != nil || pubKey == nil {
-		vltlogger.Warnw("GetKey: failed to deserialize public key",
+		vltlogger().Warnw("GetKey: failed to deserialize public key",
 			"signKey", signKey,
 			"err", err,
 		)
@@ -427,7 +434,7 @@ func (v *D5Vault) GetKey(signKey string) []byte {
 	if fp != nil {
 		return fp
 	} else {
-		vltlogger.Warnw("GetKey: key not found in accounts", "signKey", signKey)
+		vltlogger().Warnw("GetKey: key not found in accounts", "signKey", signKey)
 		return []byte{0x0, 0x0, 0xf, 0xf}
 	}
 }
@@ -502,10 +509,10 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 		destKey := saDest.Address.Bytes()
 		fromKey := saFrom.Address.Bytes()
 		if err := v.db.Put(destKey, saDest.Bytes()); err != nil {
-			vltlogger.Errorw("Failed to update destination account in database", "err", err)
+			vltlogger().Errorw("Failed to update destination account in database", "err", err)
 		}
 		if err := v.db.Put(fromKey, saFrom.Bytes()); err != nil {
-			vltlogger.Errorw("Failed to update source account in database", "err", err)
+			vltlogger().Errorw("Failed to update source account in database", "err", err)
 		}
 	}
 
@@ -535,7 +542,7 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 	if !v.inMem && v.db != nil {
 		destKey := saDest.Address.Bytes()
 		if err := v.db.Put(destKey, saDest.Bytes()); err != nil {
-			vltlogger.Errorw("Failed to update account in database", "err", err)
+			vltlogger().Errorw("Failed to update account in database", "err", err)
 		}
 	}
 
@@ -659,7 +666,7 @@ func (v *D5Vault) SyncFromDB() error {
 			break
 		}
 		if err != nil {
-			vltlogger.Errorw("syncFromDB: failed to get next item", "err", err)
+			vltlogger().Errorw("syncFromDB: failed to get next item", "err", err)
 			continue
 		}
 
@@ -667,7 +674,7 @@ func (v *D5Vault) SyncFromDB() error {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					vltlogger.Warnw("Skipping corrupted account data",
+					vltlogger().Warnw("Skipping corrupted account data",
 						"reason", r,
 						"key", fmt.Sprintf("%x", key),
 						"length", len(accountData),
@@ -676,14 +683,14 @@ func (v *D5Vault) SyncFromDB() error {
 			}()
 			account := types.BytesToStateAccount(accountData)
 			if account != nil {
-				vltlogger.Infow("Read account from pogreb vault", "address", account.Address.Hex())
+				vltlogger().Infow("Read account from pogreb vault", "address", account.Address.Hex())
 				v.accounts.Append(account.Address, account)
 			} else {
 				previewLen := 20
 				if len(accountData) < previewLen {
 					previewLen = len(accountData)
 				}
-				vltlogger.Errorw("Failed to deserialize account",
+				vltlogger().Errorw("Failed to deserialize account",
 					"key", fmt.Sprintf("%x", key),
 					"length", len(accountData),
 					"preview", fmt.Sprintf("%x", accountData[:previewLen]),
@@ -701,18 +708,18 @@ func (v *D5Vault) Close() error {
 	defer v.dbMu.Unlock()
 
 	if v.db == nil {
-		vltlogger.Infow("Close(): database is already closed or not initialized")
+		vltlogger().Infow("Close(): database is already closed or not initialized")
 		return nil
 	}
 
 	// Close the database (pogreb handles syncing internally)
 	if err := v.db.Close(); err != nil {
-		vltlogger.Errorw("Close(): error closing database", "err", err)
+		vltlogger().Errorw("Close(): error closing database", "err", err)
 		v.db = nil
 		return fmt.Errorf("failed to close pogreb database: %w", err)
 	}
 
-	vltlogger.Infow("Close(): pogreb database closed successfully")
+	vltlogger().Infow("Close(): pogreb database closed successfully")
 	v.db = nil
 	return nil
 }

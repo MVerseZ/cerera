@@ -245,3 +245,10 @@ func GetNonce() uint64 {
 	defer mu.RUnlock()
 	return C.Nonce
 }
+
+// SetNonce safely sets the consensus nonce
+func SetNonce(nonce uint64) {
+	mu.Lock()
+	defer mu.Unlock()
+	C.Nonce = nonce
+}

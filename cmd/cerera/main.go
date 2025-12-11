@@ -19,6 +19,7 @@ import (
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/gigea"
+	"github.com/cerera/internal/icenet"
 )
 
 var appLog = logger.Named("cmd.cerera")
@@ -31,6 +32,7 @@ type Cerera struct {
 	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
 	v        *storage.Vault
 	registry *service.Registry
+	ice      *icenet.Ice
 	status   [8]byte
 }
 
@@ -93,12 +95,24 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	// gigea.E.Register(miner.GetMiner())
 	mempool.Register(miner)
 
+	// Инициализация Ice компонента
+	ice, err := icenet.Start(cfg, ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Ice: %w", err)
+	}
+	registry.Register(ice.ServiceName(), ice)
+	appLog.Infow("Ice component initialized",
+		"address", ice.GetAddress().Hex(),
+		"network_addr", ice.GetNetworkAddr(),
+	)
+
 	return &Cerera{
 		bc:       chain,
 		g:        &validator,
 		p:        mempool,
 		v:        &vault,
 		registry: registry,
+		ice:      ice,
 		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
@@ -122,7 +136,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
 	http := flag.Int("http", 8080, "Порт для http сервера")
 	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
-	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
+	inMem := flag.Bool("mem", true, "Хранение данных память/диск")
 	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
 	flag.Parse()
 
@@ -157,13 +171,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// _, err = mesh.Start(&cfg, ctx, port)
-	// if err != nil {
-	// 	log.Printf("Failed to initialize DHT: %v", err)
-	// 	os.Exit(1)
-	// }
-	// mesh.Connect(app.cmdChan)
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
@@ -172,12 +179,21 @@ func main() {
 	go func() {
 		sig := <-sigs
 		fmt.Println("Received signal: ", sig)
-		// // Закрываем vault (закрывает bitcask базу данных)
+		// Закрываем vault (закрывает bitcask базу данных)
 		if app != nil && app.v != nil {
 			if err := (*app.v).Close(); err != nil {
 				appLog.Errorw("Ошибка при закрытии vault", "err", err)
 			} else {
 				appLog.Infow("Vault успешно закрыт")
+			}
+		}
+		// Закрываем Ice компонент
+		if app != nil && app.ice != nil {
+			appLog.Infow("Shutting down Ice component...")
+			if err := app.ice.Close(); err != nil {
+				appLog.Errorw("Ошибка при закрытии Ice", "err", err)
+			} else {
+				appLog.Infow("Ice component успешно закрыт")
 			}
 		}
 		time.Sleep(2 * time.Second)

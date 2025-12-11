@@ -1,0 +1,279 @@
+version: "3.8"
+
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node1
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    ports:
+      - "1337:1337"
+      - "31100:31100"
+    volumes:
+      - node1_data:/app/data
+      - node1_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node2:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node2
+    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    ports:
+      - "1338:1338"
+      - "31101:31101"
+    volumes:
+      - node2_data:/app/data
+      - node2_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node3:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node3
+    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    ports:
+      - "1339:1339"
+      - "31102:31102"
+    volumes:
+      - node3_data:/app/data
+      - node3_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node4:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node4
+    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
+    ports:
+      - "1340:1340"
+      - "31103:31103"
+    volumes:
+      - node4_data:/app/data
+      - node4_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node5:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node5
+    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
+    ports:
+      - "1341:1341"
+      - "31104:31104"
+    volumes:
+      - node5_data:/app/data
+      - node5_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node6:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node6
+    command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--mem=true", "--miner"]
+    ports:
+      - "1342:1342"
+      - "31105:31105"
+    volumes:
+      - node6_data:/app/data
+      - node6_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node7:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node7
+    command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--mem=true", "--miner"]
+    ports:
+      - "1343:1343"
+      - "31106:31106"
+    volumes:
+      - node7_data:/app/data
+      - node7_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node8:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node8
+    command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--mem=true", "--miner"]
+    ports:
+      - "1344:1344"
+      - "31107:31107"
+    volumes:
+      - node8_data:/app/data
+      - node8_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node9:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node9
+    command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--mem=true", "--miner"]
+    ports:
+      - "1345:1345"
+      - "31108:31108"
+    volumes:
+      - node9_data:/app/data
+      - node9_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node10:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node10
+    command: ["cerera", "--mode=p2p", "--http=1346", "--port=31109", "--mem=true", "--miner"]
+    ports:
+      - "1346:1346"
+      - "31109:31109"
+    volumes:
+      - node10_data:/app/data
+      - node10_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node11:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node11
+    command: ["cerera", "--mode=p2p", "--http=1347", "--port=31110", "--mem=true", "--miner"]
+    ports:
+      - "1347:1347"
+      - "31110:31110"
+    volumes:
+      - node11_data:/app/data
+      - node11_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node12:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node12
+    command: ["cerera", "--mode=p2p", "--http=1348", "--port=31111", "--mem=true", "--miner"]
+    ports:
+      - "1348:1348"
+      - "31111:31111"
+    volumes:
+      - node12_data:/app/data
+      - node12_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node13:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node13
+    command: ["cerera", "--mode=p2p", "--http=1349", "--port=31112", "--mem=true", "--miner"]
+    ports:
+      - "1349:1349"
+      - "31112:31112"
+    volumes:
+      - node13_data:/app/data
+      - node13_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node14:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node14
+    command: ["cerera", "--mode=p2p", "--http=1350", "--port=31113", "--mem=true", "--miner"]
+    ports:
+      - "1350:1350"
+      - "31113:31113"
+    volumes:
+      - node14_data:/app/data
+      - node14_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node15:
+    build:
+      context: ..
+      dockerfile: ci-cd/Dockerfile
+    container_name: cerera-node15
+    command: ["cerera", "--mode=p2p", "--http=1351", "--port=31114", "--mem=true", "--miner"]
+    ports:
+      - "1351:1351"
+      - "31114:31114"
+    volumes:
+      - node15_data:/app/data
+      - node15_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+volumes:
+  node1_data:
+  node1_config:
+  node2_data:
+  node2_config:
+  node3_data:
+  node3_config:
+  node4_data:
+  node4_config:
+  node5_data:
+  node5_config:
+  node6_data:
+  node6_config:
+  node7_data:
+  node7_config:
+  node8_data:
+  node8_config:
+  node9_data:
+  node9_config:
+  node10_data:
+  node10_config:
+  node11_data:
+  node11_config:
+  node12_data:
+  node12_config:
+  node13_data:
+  node13_config:
+  node14_data:
+  node14_config:
+  node15_data:
+  node15_config:
+
+networks:
+  cerera-network:
+    driver: bridge
+

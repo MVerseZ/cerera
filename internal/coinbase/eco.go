@@ -17,4 +17,4 @@ var FaucetValue = types.FloatToBigInt(100.0000)
 // Faucet limits and constraints
 var MaxFaucetAmount = types.FloatToBigInt(1000.0) // Maximum amount per request
 var MinFaucetAmount = types.FloatToBigInt(1.0)    // Minimum amount per request
-var FaucetCooldownHours = 1
+var FaucetCooldownHours = 0.01

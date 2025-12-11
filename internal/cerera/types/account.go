@@ -99,55 +99,20 @@ func (sa *StateAccount) BloomDown() {
 }
 
 func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
-	if cnt == nil {
-		return
+	if sa.Inputs == nil {
+		sa.Inputs = &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		}
 	}
 	sa.Inputs.Lock()
 	defer sa.Inputs.Unlock()
-
-	// Проверяем, не существует ли уже такой txHash
-	if existing, exists := sa.Inputs.M[txHash]; exists {
-		// Если значение отличается, логируем предупреждение, но перезаписываем
-		if existing.Cmp(cnt) != 0 {
-			// В production можно добавить логирование
-			// fmt.Printf("Warning: Input for txHash %x already exists with different value: %s -> %s\n",
-			// 	txHash, existing.String(), cnt.String())
-		}
+	// Store a copy of cnt to avoid external modifications
+	if cnt != nil {
+		sa.Inputs.M[txHash] = new(big.Int).Set(cnt)
+	} else {
+		sa.Inputs.M[txHash] = big.NewInt(0)
 	}
-
-	// Сохраняем копию значения, чтобы избежать проблем с внешними изменениями
-	sa.Inputs.M[txHash] = new(big.Int).Set(cnt)
-}
-
-// GetInput безопасно получает значение инпута по txHash
-func (sa *StateAccount) GetInput(txHash common.Hash) *big.Int {
-	if sa.Inputs == nil {
-		return nil
-	}
-	sa.Inputs.RLock()
-	defer sa.Inputs.RUnlock()
-
-	if val, exists := sa.Inputs.M[txHash]; exists {
-		// Возвращаем копию, чтобы избежать проблем с внешними изменениями
-		return new(big.Int).Set(val)
-	}
-	return nil
-}
-
-// GetAllInputs возвращает копию всех инпутов (без mutex) для безопасного использования
-func (sa *StateAccount) GetAllInputs() map[common.Hash]*big.Int {
-	if sa.Inputs == nil {
-		return make(map[common.Hash]*big.Int)
-	}
-	sa.Inputs.RLock()
-	defer sa.Inputs.RUnlock()
-
-	// Создаем копию map и значений
-	result := make(map[common.Hash]*big.Int, len(sa.Inputs.M))
-	for hash, val := range sa.Inputs.M {
-		result[hash] = new(big.Int).Set(val)
-	}
-	return result
 }
 
 // ToBytes converts StateAccount to custom binary format
@@ -381,12 +346,10 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	}
 	sa.balance = new(big.Int).SetBytes(balanceBytes)
 
-	// Initialize Inputs
-	if sa.Inputs == nil {
-		sa.Inputs = &Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		}
+	// Initialize Inputs (not serialized, but must be initialized to avoid nil pointer)
+	sa.Inputs = &Input{
+		RWMutex: &sync.RWMutex{},
+		M:       make(map[common.Hash]*big.Int),
 	}
 
 	// Read Inputs map

@@ -265,6 +265,14 @@ func (dht *DHT) GetSelfID() string {
 	return str
 }
 
+// Close gracefully shuts down the DHT network connection
+func (dht *DHT) Close() error {
+	if dht.networking != nil {
+		return dht.networking.disconnect()
+	}
+	return nil
+}
+
 // Listen begins listening on the socket for incoming messages
 func (dht *DHT) Listen() error {
 	if !dht.networking.isInitialized() {
