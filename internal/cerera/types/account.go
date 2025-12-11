@@ -115,6 +115,22 @@ func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
 	}
 }
 
+// GetAllInputs возвращает копию всех инпутов (без mutex) для безопасного использования
+func (sa *StateAccount) GetAllInputs() map[common.Hash]*big.Int {
+	if sa.Inputs == nil {
+		return make(map[common.Hash]*big.Int)
+	}
+	sa.Inputs.RLock()
+	defer sa.Inputs.RUnlock()
+
+	// Создаем копию map и значений
+	result := make(map[common.Hash]*big.Int, len(sa.Inputs.M))
+	for hash, val := range sa.Inputs.M {
+		result[hash] = new(big.Int).Set(val)
+	}
+	return result
+}
+
 // ToBytes converts StateAccount to custom binary format
 func (sa *StateAccount) Bytes() []byte {
 	// add by order of length fields constant
