@@ -263,13 +263,24 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 	if isBootstrap {
 		i.mu.Lock()
 		i.connectedNodes[*nodeAddr] = conn
-		// Сбрасываем подтверждения при подключении нового узла
-		i.confirmedNodes = make(map[types.Address]int)
+		// Инициализируем подтверждения для всех подключенных узлов (включая нового)
+		// Если узел уже был в confirmedNodes, сохраняем его счетчик, иначе устанавливаем 0
+		if _, exists := i.confirmedNodes[*nodeAddr]; !exists {
+			i.confirmedNodes[*nodeAddr] = 0
+		}
+		// Убеждаемся, что все узлы из connectedNodes есть в confirmedNodes
+		for addr := range i.connectedNodes {
+			if _, exists := i.confirmedNodes[addr]; !exists {
+				i.confirmedNodes[addr] = 0
+			}
+		}
 		connectedCount := len(i.connectedNodes)
+		confirmedCount := len(i.confirmedNodes)
 		i.mu.Unlock()
 		icelogger().Infow("Saved connection for node",
 			"node_address", nodeAddr.Hex(),
 			"total_connected", connectedCount,
+			"total_confirmed_tracked", confirmedCount,
 		)
 	} else {
 		icelogger().Warnw("NOT saving connection - not a bootstrap node")
@@ -326,6 +337,7 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 		if i.isBootstrapNode() {
 			i.mu.Lock()
 			delete(i.connectedNodes, *nodeAddr)
+			delete(i.confirmedNodes, *nodeAddr) // Также удаляем из confirmedNodes
 			i.mu.Unlock()
 		}
 		return
@@ -460,10 +472,11 @@ func (i *Ice) broadcastConsensusStatus() {
 			// Удаляем неработающее соединение
 			i.mu.Lock()
 			delete(i.connectedNodes, addr)
+			delete(i.confirmedNodes, addr) // Также удаляем из confirmedNodes
 			i.mu.Unlock()
 		} else {
 			sentCount++
-			icelogger().Infow("Successfully sent consensus status to node",
+			icelogger().Debugw("Successfully sent consensus status to node",
 				"node_address", addr.Hex(),
 			)
 		}
@@ -545,6 +558,7 @@ func (i *Ice) broadcastNodeList() {
 			// Удаляем неработающее соединение
 			i.mu.Lock()
 			delete(i.connectedNodes, addr)
+			delete(i.confirmedNodes, addr) // Также удаляем из confirmedNodes
 			i.mu.Unlock()
 		} else {
 			sentCount++
@@ -602,7 +616,7 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 	// Получаем текущий nonce bootstrap узла
 	currentNonce := gigea.GetNonce()
 
-	icelogger().Infow("Received NODE_OK from node",
+	icelogger().Debugw("Received NODE_OK from node",
 		"remote_addr", remoteAddr,
 		"node_count", nodeCount,
 		"node_nonce", nodeNonce,
@@ -644,16 +658,17 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 
 	// Подсчитываем, сколько узлов подтвердили 2 раза
 	// Bootstrap узел не учитывается, так как он не отправляет NODE_OK
+	// Учитываем только узлы, которые есть и в connectedNodes, и в confirmedNodes
 	nodesConfirmedTwice := 0
 	for addr, count := range i.confirmedNodes {
-		// Дополнительная проверка: убеждаемся, что это не bootstrap узел
-		if addr != i.address && count >= 2 {
+		// Проверяем, что узел подключен (есть в connectedNodes) и не является bootstrap
+		if _, isConnected := i.connectedNodes[addr]; isConnected && addr != i.address && count >= 2 {
 			nodesConfirmedTwice++
 		}
 	}
 	i.mu.Unlock()
 
-	icelogger().Infow("Node confirmed successfully with matching nonce",
+	icelogger().Debugw("Node confirmed successfully with matching nonce",
 		"remote_addr", remoteAddr,
 		"node_address", nodeAddr.Hex(),
 		"node_count", nodeCount,
@@ -662,6 +677,36 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 		"nodes_confirmed_twice", nodesConfirmedTwice,
 		"total_connected", connectedCount,
 	)
+
+	// Print full lists for debugging: nodes, connectedNodes, confirmedNodes, twice-confirmed
+	nodes := gigea.GetNodes()
+	icelogger().Debugw("Full nodes list")
+	for addr, node := range nodes {
+		icelogger().Debugw("Node entry", "address", addr, "network_addr", node.NetworkAddr, "is_connected", node.IsConnected)
+	}
+
+	i.mu.Lock()
+	icelogger().Debugw("Full connectedNodes list")
+	for addr, conn := range i.connectedNodes {
+		icelogger().Debugw("ConnectedNode", "address", addr.Hex(), "conn_pointer", fmt.Sprintf("%p", conn))
+	}
+	icelogger().Debugw("Full confirmedNodes list")
+	for addr, count := range i.confirmedNodes {
+		confirmedTwice := count >= 2
+		icelogger().Debugw("ConfirmedNode", "address", addr.Hex(), "confirmations", count, "confirmed_twice", confirmedTwice)
+	}
+	// Collect all addresses confirmed twice
+	twiceList := []string{}
+	for addr, count := range i.confirmedNodes {
+		if addr != i.address && count >= 2 {
+			twiceList = append(twiceList, addr.Hex())
+		}
+	}
+	icelogger().Debugw("Nodes confirmed twice",
+		"count", len(twiceList),
+		"confirmed_twice_addresses", twiceList,
+	)
+	i.mu.Unlock()
 
 	// Проверяем, все ли узлы подтвердили 2 раза
 	if nodesConfirmedTwice >= connectedCount && connectedCount > 0 {
@@ -682,8 +727,18 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 		gigea.SetNonce(newNonce)
 
 		// Сбрасываем подтверждения для нового периода
+		// Но сохраняем все узлы из connectedNodes с начальным значением 0
 		i.mu.Lock()
+		// Сохраняем список всех подключенных узлов
+		allConnectedNodes := make([]types.Address, 0, len(i.connectedNodes))
+		for addr := range i.connectedNodes {
+			allConnectedNodes = append(allConnectedNodes, addr)
+		}
+		// Сбрасываем подтверждения, но инициализируем для всех подключенных узлов
 		i.confirmedNodes = make(map[types.Address]int)
+		for _, addr := range allConnectedNodes {
+			i.confirmedNodes[addr] = 0
+		}
 		i.mu.Unlock()
 
 		icelogger().Infow("Consensus period advanced",

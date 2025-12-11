@@ -65,15 +65,16 @@ func (i *Ice) monitorAndSendBlocks() {
 					"block_hash", latestBlock.Hash.Hex(),
 					"err", err,
 				)
-			} else {
-				i.mu.Lock()
-				i.lastSentBlockHash = latestBlock.Hash
-				i.mu.Unlock()
-				icelogger().Infow("Block sent to bootstrap",
-					"block_hash", latestBlock.Hash.Hex(),
-					"block_index", latestBlock.Head.Index,
-				)
+				continue
 			}
+
+			i.mu.Lock()
+			i.lastSentBlockHash = latestBlock.Hash
+			i.mu.Unlock()
+			icelogger().Infow("Block sent to bootstrap",
+				"block_hash", latestBlock.Hash.Hex(),
+				"block_index", latestBlock.Head.Index,
+			)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-version: "3.8"
+# version: "3.8"
 
 services:
   node1:
@@ -81,70 +81,6 @@ services:
     networks:
       - cerera-network
 
-  node6:
-    build:
-      context: ..
-      dockerfile: ci-cd/Dockerfile
-    container_name: cerera-node6
-    command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--mem=true", "--miner"]
-    ports:
-      - "1342:1342"
-      - "31105:31105"
-    volumes:
-      - node6_data:/app/data
-      - node6_config:/app/config
-    restart: unless-stopped
-    networks:
-      - cerera-network
-
-  node7:
-    build:
-      context: ..
-      dockerfile: ci-cd/Dockerfile
-    container_name: cerera-node7
-    command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--mem=true", "--miner"]
-    ports:
-      - "1343:1343"
-      - "31106:31106"
-    volumes:
-      - node7_data:/app/data
-      - node7_config:/app/config
-    restart: unless-stopped
-    networks:
-      - cerera-network
-
-  node8:
-    build:
-      context: ..
-      dockerfile: ci-cd/Dockerfile
-    container_name: cerera-node8
-    command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--mem=true", "--miner"]
-    ports:
-      - "1344:1344"
-      - "31107:31107"
-    volumes:
-      - node8_data:/app/data
-      - node8_config:/app/config
-    restart: unless-stopped
-    networks:
-      - cerera-network
-
-  node9:
-    build:
-      context: ..
-      dockerfile: ci-cd/Dockerfile
-    container_name: cerera-node9
-    command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--mem=true", "--miner"]
-    ports:
-      - "1345:1345"
-      - "31108:31108"
-    volumes:
-      - node9_data:/app/data
-      - node9_config:/app/config
-    restart: unless-stopped
-    networks:
-      - cerera-network
-
 volumes:
   node1_data:
   node1_config:
@@ -156,14 +92,6 @@ volumes:
   node4_config:
   node5_data:
   node5_config:
-  node6_data:
-  node6_config:
-  node7_data:
-  node7_config:
-  node8_data:
-  node8_config:
-  node9_data:
-  node9_config:
 
 networks:
   cerera-network:

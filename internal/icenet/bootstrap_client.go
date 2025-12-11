@@ -16,6 +16,8 @@ import (
 func (i *Ice) connectToBootstrap() {
 	bootstrapAddr := i.GetBootstrapAddr()
 	retryDelay := 5 * time.Second
+	var maxRetries = 10
+	var retries = 0
 
 	for {
 		i.mu.Lock()
@@ -34,6 +36,11 @@ func (i *Ice) connectToBootstrap() {
 				"bootstrap_addr", bootstrapAddr,
 				"err", err,
 			)
+			retries++
+			if retries >= maxRetries {
+				icelogger().Errorw("Failed to connect to bootstrap", "bootstrap_addr", bootstrapAddr, "retries", retries, "max_retries", maxRetries, "err", err)
+				break
+			}
 			time.Sleep(retryDelay)
 			continue
 		}
@@ -217,7 +224,7 @@ func (i *Ice) sendKeepAlive(conn net.Conn) {
 func (i *Ice) sendPeriodicNodeOk(conn net.Conn) {
 	// Отправляем первое подтверждение сразу после подключения (уже отправляется в processNodesCountMessage)
 	// Затем отправляем периодически с интервалом
-	ticker := time.NewTicker(15 * time.Second) // Отправляем каждые 15 секунд
+	ticker := time.NewTicker(3 * time.Second) // Отправляем каждые 3 секунд
 	defer ticker.Stop()
 
 	// Пропускаем первый тик, так как первое подтверждение уже отправлено
@@ -241,9 +248,15 @@ func (i *Ice) sendPeriodicNodeOk(conn net.Conn) {
 			actualCount := len(nodes)
 			currentNonce := gigea.GetNonce()
 
+			// Логируем текущий nonce перед отправкой
+			icelogger().Debugw("Preparing to send periodic NODE_OK",
+				"node_count", actualCount,
+				"current_nonce", currentNonce,
+			)
+
 			// Отправляем периодическое подтверждение NODE_OK
 			message := fmt.Sprintf("NODE_OK|%d|%d\n", actualCount, currentNonce)
-			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 			if _, err := conn.Write([]byte(message)); err != nil {
 				icelogger().Warnw("Failed to send periodic NODE_OK to bootstrap", "err", err)
 				return
@@ -681,7 +694,9 @@ func (i *Ice) processConsensusStatusMessage(data string) {
 	// Обновляем статус консенсуса
 	gigea.SetStatus(status)
 
-	// Обновляем nonce, если он отличается
+	// Обновляем nonce от bootstrap (bootstrap является источником истины)
+	// Всегда обновляем nonce на значение от bootstrap, даже если оно меньше
+	// (это может произойти при переподключении или сбросе)
 	currentNonce := gigea.GetNonce()
 	if nonce != currentNonce {
 		icelogger().Infow("Updating consensus nonce from CONSENSUS_STATUS",
@@ -689,6 +704,12 @@ func (i *Ice) processConsensusStatusMessage(data string) {
 			"new_nonce", nonce,
 		)
 		gigea.SetNonce(nonce)
+		icelogger().Infow("Nonce updated successfully from CONSENSUS_STATUS",
+			"new_nonce", nonce,
+			"verified_nonce", gigea.GetNonce(),
+		)
+	} else {
+		icelogger().Debugw("Nonce already synchronized from CONSENSUS_STATUS", "nonce", nonce)
 	}
 
 	// Обновляем список voters в консенсусе

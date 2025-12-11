@@ -277,6 +277,7 @@ func (i *Ice) handleConnection(conn net.Conn) {
 			for addr, storedConn := range i.connectedNodes {
 				if storedConn == conn {
 					delete(i.connectedNodes, addr)
+					delete(i.confirmedNodes, addr) // Также удаляем из confirmedNodes
 					icelogger().Infow("Removed connection for node", "node_address", addr.Hex())
 					break
 				}
@@ -302,7 +303,7 @@ func (i *Ice) handleConnection(conn net.Conn) {
 
 		if n > 0 {
 			data := string(buffer[:n])
-			icelogger().Infow("Received data from connection",
+			icelogger().Debugw("Received data from connection",
 				"remote_addr", remoteAddr,
 				"size", n,
 				"data", data,
@@ -332,7 +333,7 @@ func (i *Ice) handleConnection(conn net.Conn) {
 
 				// Обрабатываем NODE_OK (только для bootstrap узла)
 				if i.isNodeOkMessage(line) {
-					icelogger().Infow("Received NODE_OK", "remote_addr", remoteAddr, "data", line)
+					icelogger().Debugw("Received NODE_OK", "remote_addr", remoteAddr, "data", line)
 					i.handleNodeOk(conn, line, remoteAddr)
 					continue
 				}
