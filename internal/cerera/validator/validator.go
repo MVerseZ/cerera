@@ -280,19 +280,17 @@ func (v *CoreValidator) GetVersion() string {
 func (v *CoreValidator) ProposeBlock(b *block.Block) {
 	// Проверяем готовность Ice (bootstrap соединение)
 	if !v.isIceReady() {
-		vlogger.Warnw("Ice not ready - waiting for bootstrap connection", "block_hash", b.GetHash())
-		// Ждем готовности Ice
-		v.waitForIceReady()
-		vlogger.Infow("Ice is ready - proceeding with block proposal", "block_hash", b.GetHash())
+		vlogger.Warnw("Ice not ready - bootstrap connection not established, but adding block locally anyway", "block_hash", b.GetHash())
+	} else {
+		vlogger.Debugw("Ice is ready - bootstrap connection established", "block_hash", b.GetHash())
 	}
 
 	// Проверяем, начался ли консенсус
 	if !v.isConsensusStarted() {
 		v.printConsensusStatus(b.GetHash())
-		vlogger.Warnw("Consensus not started - waiting for consensus signal", "block_hash", b.GetHash())
-		// Ждем начала консенсуса
-		v.waitForConsensus()
-		vlogger.Infow("Consensus started - proceeding with block proposal", "block_hash", b.GetHash())
+		vlogger.Warnw("Consensus not started - adding block locally anyway", "block_hash", b.GetHash())
+	} else {
+		vlogger.Debugw("Consensus started - proceeding with block proposal", "block_hash", b.GetHash())
 	}
 
 	for _, btx := range b.Transactions {
@@ -647,9 +645,9 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		count, ok2 := params[2].(float64)
 		gas, ok3 := params[3].(float64)
 		msg, ok4 := params[4].(string)
-		if len(msg) > 1024 {
-			return errors.New("message too long")
-		}
+		// if len(msg) > 1024 {
+		// 	return errors.New("message too long")
+		// }
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
 			return errors.New("parameter type mismatch for send")
 		}

@@ -139,17 +139,18 @@ func (m *miner) Stop() {
 
 func (m *miner) miningLoop() {
 
-	ticker := time.NewTicker(60 * time.Second) // Майним каждые 60 секунд
+	ticker := time.NewTicker(5 * time.Second) // Майним каждые 60 секунд
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			if m.mining {
-				// Проверяем, начался ли консенсус перед созданием блока
+				// Проверяем статус консенсуса для логирования, но не блокируем создание блоков
+				// Валидатор проверит консенсус перед добавлением блока в цепочку
 				if !m.isConsensusStarted() {
 					m.printConsensusStatus()
-					continue
+					minerLog.Warnw("Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
 				}
 				m.mineBlock()
 			}

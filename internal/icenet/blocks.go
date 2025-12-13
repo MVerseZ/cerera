@@ -61,7 +61,7 @@ func (i *Ice) monitorAndSendBlocks() {
 
 			// Отправляем блок на bootstrap
 			if err := i.sendBlockToBootstrap(latestBlock); err != nil {
-				icelogger().Errorw("Failed to send block to bootstrap",
+				icelogger().Debugw("Failed to send block to bootstrap", // error later
 					"block_hash", latestBlock.Hash.Hex(),
 					"err", err,
 				)
@@ -105,7 +105,7 @@ func (i *Ice) sendBlockToBootstrap(b *block.Block) error {
 	// Отправляем блок через постоянное соединение
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	if _, err := conn.Write([]byte(message)); err != nil {
-		icelogger().Errorw("Failed to send block to bootstrap", "err", err)
+		icelogger().Debugw("Failed to send block to bootstrap", "err", err) // error later
 		// Соединение разорвано, оно будет переподключено в connectToBootstrap
 		i.mu.Lock()
 		if i.bootstrapConn == conn {

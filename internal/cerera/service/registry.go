@@ -83,6 +83,9 @@ func (r *Registry) GetService(name string) (Service, bool) {
 	if name == "ice" {
 		srvName = "ICE_CERERA_001_1_0"
 	}
+	if name == "miner" {
+		srvName = "CERERA_MINER_001_1_0"
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s, ok := r.services[srvName]
@@ -111,11 +114,15 @@ func (r *Registry) StopAllServices() error {
 }
 
 func ParseMethod(method string) (string, string) {
-	// EX: cerera.account.getAll
+	// EX: cerera.account.getAll or miner.status
 	parts := strings.Split(method, ".")
 	if parts[0] == "cerera" && len(parts) == 3 {
-		// EX: return account, getAll
+		// EX: cerera.account.getAll -> return account, getAll
 		return parts[1], parts[2]
+	}
+	if len(parts) == 2 {
+		// EX: miner.status -> return miner, status
+		return parts[0], parts[1]
 	}
 	return method, method
 }
