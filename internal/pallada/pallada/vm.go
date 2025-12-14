@@ -22,6 +22,12 @@ type VM struct {
 	returnData []byte // Данные для возврата
 	stopped    bool   // Флаг остановки выполнения
 	err        error  // Ошибка выполнения
+
+	// Контекст блокчейна
+	ctx *Context // Контекст выполнения (может быть nil для простых операций)
+
+	// Система газа
+	gas *GasMeter // Счетчик газа (может быть nil, если газ не используется)
 }
 
 // NewVM создает новую виртуальную машину
@@ -34,7 +40,19 @@ func NewVM(code []byte) *VM {
 		returnData: nil,
 		stopped:    false,
 		err:        nil,
+		ctx:        nil,
+		gas:        nil,
 	}
+}
+
+// NewVMWithContext создает новую VM с контекстом блокчейна
+func NewVMWithContext(code []byte, ctx *Context) *VM {
+	vm := NewVM(code)
+	vm.ctx = ctx
+	if ctx != nil && ctx.GasLimit > 0 {
+		vm.gas = NewGasMeter(ctx.GasLimit)
+	}
+	return vm
 }
 
 // Run выполняет байткод
@@ -50,7 +68,7 @@ func (vm *VM) Run() ([]byte, error) {
 		op := OpCode(vm.code[vm.pc])
 
 		// Проверяем валидность опкода (оптимизация: проверка перед switch)
-		if op > 0x85 { // Максимальный опкод REVERT = 0x85
+		if op > 0x95 { // Максимальный опкод CALLDATACOPY = 0x95
 			vm.err = fmt.Errorf("%w: 0x%02x at position %d", ErrInvalidOpcode, op, vm.pc)
 			break
 		}
@@ -166,6 +184,20 @@ func (vm *VM) executeOpcode(op OpCode, code []byte) error {
 	case REVERT:
 		return vm.opRevert()
 
+	// Блокчейн-опкоды
+	case ADDRESS:
+		return vm.opAddress()
+	case CALLER:
+		return vm.opCaller()
+	case CALLVALUE:
+		return vm.opCallValue()
+	case CALLDATALOAD:
+		return vm.opCallDataLoad()
+	case CALLDATASIZE:
+		return vm.opCallDataSize()
+	case CALLDATACOPY:
+		return vm.opCallDataCopy()
+
 	default:
 		return fmt.Errorf("%w: 0x%02x", ErrInvalidOpcode, op)
 	}
@@ -179,4 +211,22 @@ func (vm *VM) GetStack() *Stack {
 // GetMemory возвращает память (для отладки)
 func (vm *VM) GetMemory() *Memory {
 	return vm.memory
+}
+
+// GetContext возвращает контекст выполнения
+func (vm *VM) GetContext() *Context {
+	return vm.ctx
+}
+
+// GetGasMeter возвращает счетчик газа
+func (vm *VM) GetGasMeter() *GasMeter {
+	return vm.gas
+}
+
+// GasUsed возвращает использованный газ
+func (vm *VM) GasUsed() uint64 {
+	if vm.gas == nil {
+		return 0
+	}
+	return vm.gas.GasUsed()
 }

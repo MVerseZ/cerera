@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"encoding/gob"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
+	"golang.org/x/crypto/blake2b"
 
 	"github.com/akrylysov/pogreb"
 	"github.com/prometheus/client_golang/prometheus"
@@ -70,6 +72,10 @@ type Vault interface {
 	VerifyAccount(address types.Address, pass string) (types.Address, error)
 	Exec(method string, params []interface{}) interface{}
 	Close() error
+	// Contract code storage methods
+	StoreContractCode(address types.Address, code []byte) error
+	GetContractCode(address types.Address) ([]byte, error)
+	HasContractCode(address types.Address) bool
 }
 
 type D5Vault struct {
@@ -734,6 +740,131 @@ func (v *D5Vault) Close() error {
 	vltlogger().Infow("Close(): pogreb database closed successfully")
 	v.db = nil
 	return nil
+}
+
+// StoreContractCode сохраняет байткод контракта в хранилище
+// Использует префикс "code:" для ключа в pogreb
+func (v *D5Vault) StoreContractCode(address types.Address, code []byte) error {
+	if len(code) == 0 {
+		return fmt.Errorf("contract code cannot be empty")
+	}
+
+	// Вычисляем хеш кода
+	hash, err := blake2b.New256(nil)
+	if err != nil {
+		return fmt.Errorf("failed to create hash: %w", err)
+	}
+	hash.Write(code)
+	codeHash := hash.Sum(nil)
+
+	// Обновляем CodeHash в StateAccount
+	account := v.Get(address)
+	if account == nil {
+		// Создаем новый аккаунт для контракта
+		account = types.NewStateAccount(address, 0, v.rootHash)
+		account.CodeHash = codeHash
+		// Устанавливаем тип как контракт (Type = 5 для контракта, если нужно)
+		// Пока оставляем Type = 0, но CodeHash будет указывать на наличие кода
+		v.accounts.Append(address, account)
+		vaultAccountsTotal.Set(float64(v.accounts.Size()))
+	} else {
+		// Обновляем CodeHash существующего аккаунта
+		account.CodeHash = codeHash
+		v.accounts.Append(address, account)
+	}
+
+	// Сохраняем код в pogreb с префиксом "code:"
+	if !v.inMem && v.db != nil {
+		v.dbMu.Lock()
+		defer v.dbMu.Unlock()
+
+		// Ключ: "code:" + address.Bytes()
+		key := append([]byte("code:"), address.Bytes()...)
+		if err := v.db.Put(key, code); err != nil {
+			vltlogger().Errorw("Failed to store contract code", "address", address.Hex(), "err", err)
+			return fmt.Errorf("failed to store contract code: %w", err)
+		}
+
+		// Также сохраняем обновленный аккаунт
+		accountKey := address.Bytes()
+		if err := v.db.Put(accountKey, account.Bytes()); err != nil {
+			vltlogger().Errorw("Failed to update account with code hash", "address", address.Hex(), "err", err)
+			return fmt.Errorf("failed to update account: %w", err)
+		}
+
+		vltlogger().Infow("Stored contract code", "address", address.Hex(), "codeSize", len(code), "codeHash", fmt.Sprintf("%x", codeHash))
+	}
+
+	return nil
+}
+
+// GetContractCode получает байткод контракта из хранилища
+func (v *D5Vault) GetContractCode(address types.Address) ([]byte, error) {
+	// Проверяем, есть ли CodeHash в аккаунте
+	account := v.Get(address)
+	if account == nil || len(account.CodeHash) == 0 {
+		return nil, fmt.Errorf("contract code not found for address %s", address.Hex())
+	}
+
+	// Если in-memory режим, код должен быть в памяти (но у нас нет такого хранилища)
+	// Для in-memory нужно будет добавить отдельное хранилище
+	if v.inMem {
+		// В in-memory режиме код не хранится, возвращаем ошибку
+		// TODO: добавить in-memory хранилище кода контрактов
+		return nil, fmt.Errorf("contract code storage not available in in-memory mode")
+	}
+
+	if v.db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	v.dbMu.RLock()
+	defer v.dbMu.RUnlock()
+
+	// Ключ: "code:" + address.Bytes()
+	key := append([]byte("code:"), address.Bytes()...)
+
+	// Проверяем, существует ли ключ
+	has, err := v.db.Has(key)
+	if err != nil {
+		vltlogger().Errorw("Failed to check contract code existence", "address", address.Hex(), "err", err)
+		return nil, fmt.Errorf("failed to check contract code: %w", err)
+	}
+	if !has {
+		return nil, fmt.Errorf("contract code not found for address %s", address.Hex())
+	}
+
+	code, err := v.db.Get(key)
+	if err != nil {
+		vltlogger().Errorw("Failed to get contract code", "address", address.Hex(), "err", err)
+		return nil, fmt.Errorf("failed to get contract code: %w", err)
+	}
+
+	// Проверяем хеш кода
+	hash, err := blake2b.New256(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hash: %w", err)
+	}
+	hash.Write(code)
+	computedHash := hash.Sum(nil)
+
+	// Сравниваем с сохраненным хешем
+	if len(account.CodeHash) > 0 {
+		if !bytes.Equal(computedHash, account.CodeHash) {
+			vltlogger().Warnw("Contract code hash mismatch", "address", address.Hex(),
+				"expected", fmt.Sprintf("%x", account.CodeHash),
+				"computed", fmt.Sprintf("%x", computedHash))
+			// Не возвращаем ошибку, но логируем предупреждение
+		}
+	}
+
+	return code, nil
+}
+
+// HasContractCode проверяет, есть ли код контракта для данного адреса
+func (v *D5Vault) HasContractCode(address types.Address) bool {
+	account := v.Get(address)
+	return account != nil && len(account.CodeHash) > 0
 }
 
 func (v *D5Vault) Exec(method string, params []interface{}) interface{} {

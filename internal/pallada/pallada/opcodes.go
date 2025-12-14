@@ -61,6 +61,14 @@ const (
 	PC       OpCode = 0x83 // Получить текущий счетчик команд: -> stack[pc]
 	RETURN   OpCode = 0x84 // Вернуть данные: stack[offset], stack[size] -> return data
 	REVERT   OpCode = 0x85 // Откатить выполнение: stack[offset], stack[size] -> error
+
+	// Блокчейн-опкоды (контекст выполнения)
+	ADDRESS      OpCode = 0x90 // Получить адрес контракта: -> stack[address]
+	CALLER       OpCode = 0x91 // Получить адрес вызывающего: -> stack[caller]
+	CALLVALUE    OpCode = 0x92 // Получить значение транзакции: -> stack[value]
+	CALLDATALOAD OpCode = 0x93 // Загрузить данные вызова: stack[offset] -> stack[data]
+	CALLDATASIZE OpCode = 0x94 // Размер данных вызова: -> stack[size]
+	CALLDATACOPY OpCode = 0x95 // Копировать данные вызова: stack[destOffset], stack[offset], stack[size] -> memory
 )
 
 // GetPushSize возвращает размер данных для PUSH операции
@@ -101,7 +109,8 @@ func IsValidOpcode(op OpCode) bool {
 		SWAP1, SWAP2, SWAP3, SWAP4,
 		MLOAD, MSTORE,
 		PUSH1, PUSH2, PUSH4, PUSH8, PUSH16, PUSH32,
-		JUMP, JUMPI, JUMPDEST, PC, RETURN, REVERT:
+		JUMP, JUMPI, JUMPDEST, PC, RETURN, REVERT,
+		ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, CALLDATASIZE, CALLDATACOPY:
 		return true
 	default:
 		return false
@@ -185,6 +194,18 @@ func OpcodeName(op OpCode) string {
 		return "RETURN"
 	case REVERT:
 		return "REVERT"
+	case ADDRESS:
+		return "ADDRESS"
+	case CALLER:
+		return "CALLER"
+	case CALLVALUE:
+		return "CALLVALUE"
+	case CALLDATALOAD:
+		return "CALLDATALOAD"
+	case CALLDATASIZE:
+		return "CALLDATASIZE"
+	case CALLDATACOPY:
+		return "CALLDATACOPY"
 	default:
 		return "UNKNOWN"
 	}

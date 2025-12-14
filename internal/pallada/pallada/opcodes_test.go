@@ -15,6 +15,7 @@ func TestIsValidOpcode(t *testing.T) {
 		MLOAD, MSTORE,
 		PUSH1, PUSH2, PUSH4, PUSH8, PUSH16, PUSH32,
 		JUMP, JUMPI, JUMPDEST, PC, RETURN, REVERT,
+		ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, CALLDATASIZE, CALLDATACOPY,
 	}
 
 	for _, op := range validOps {
@@ -25,7 +26,7 @@ func TestIsValidOpcode(t *testing.T) {
 
 	// Тестируем невалидные опкоды
 	invalidOps := []OpCode{
-		0xFF, 0xFE, 0xFD, 0x90, 0x99, 0xAA,
+		0xFF, 0xFE, 0xFD, 0x99, 0xAA, 0x96, // 0x90-0x95 теперь валидны
 	}
 
 	for _, op := range invalidOps {
@@ -125,6 +126,12 @@ func TestOpcodeName(t *testing.T) {
 		{PC, "PC"},
 		{RETURN, "RETURN"},
 		{REVERT, "REVERT"},
+		{ADDRESS, "ADDRESS"},
+		{CALLER, "CALLER"},
+		{CALLVALUE, "CALLVALUE"},
+		{CALLDATALOAD, "CALLDATALOAD"},
+		{CALLDATASIZE, "CALLDATASIZE"},
+		{CALLDATACOPY, "CALLDATACOPY"},
 		{0xFF, "UNKNOWN"},
 		{0xAA, "UNKNOWN"},
 	}
