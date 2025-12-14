@@ -405,13 +405,6 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	bc.data = append(bc.data, newBlock)
 	bc.currentBlock = newBlock
 
-	// execute block transactions
-	// var v = validator.Get()
-	// for _, btx := range newBlock.Transactions {
-	// 	// v.ExecuteTransaction(btx)
-	// 	// v.UpdateTxTree(&btx, int(newBlock.Header().Index))
-	// }
-
 	// fill bc info with new latest block
 	bc.info.Latest = newBlock.GetHash()
 	bc.info.Total = bc.info.Total + 1

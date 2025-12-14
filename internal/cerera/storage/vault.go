@@ -816,6 +816,8 @@ func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
 			return ErrErrorParsingParameters.Error()
 		}
 		return v.Get(types.HexToAddress(addr)).GetBalance()
+	case "getInfo":
+		return "Not implemented"
 	case "faucet":
 		addrStr, ok1 := params[0].(string)
 		if !ok1 {
