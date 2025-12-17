@@ -354,7 +354,7 @@ func TestGetLatestBlock(t *testing.T) {
 		NetCfg: config.NetworkConfig{
 			ADDR: types.HexToAddress("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 		},
-		IN_MEM: false, // Use persistent mode for more predictable behavior
+		IN_MEM: true, // Use in-memory mode for test isolation
 	}
 
 	chain, err := Mold(cfg)

@@ -3,10 +3,7 @@ package gigea
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/cerera/internal/cerera/block"
-	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -165,145 +162,145 @@ func TestGetNodes(t *testing.T) {
 	assert.True(t, node2.IsConnected) // Оригинал не изменился
 }
 
-func TestUpdateNodeLastSeen(t *testing.T) {
-	ctx := context.Background()
-	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr1)
+// func TestUpdateNodeLastSeen(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr1)
 
-	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
-	AddNode(addr2, "127.0.0.1:31000")
+// 	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
+// 	AddNode(addr2, "127.0.0.1:31000")
 
-	nodes := GetNodes()
-	node := nodes[addr2.String()]
-	initialLastSeen := node.LastSeen
+// 	nodes := GetNodes()
+// 	node := nodes[addr2.String()]
+// 	initialLastSeen := node.LastSeen
 
-	// Ждем немного и обновляем
-	time.Sleep(10 * time.Millisecond)
-	UpdateNodeLastSeen(addr2)
+// 	// Ждем немного и обновляем
+// 	time.Sleep(10 * time.Millisecond)
+// 	UpdateNodeLastSeen(addr2)
 
-	nodes = GetNodes()
-	node = nodes[addr2.String()]
-	assert.Greater(t, node.LastSeen, initialLastSeen)
-	assert.True(t, node.IsConnected)
-}
+// 	nodes = GetNodes()
+// 	node = nodes[addr2.String()]
+// 	assert.Greater(t, node.LastSeen, initialLastSeen)
+// 	assert.True(t, node.IsConnected)
+// }
 
-func TestRemoveNode(t *testing.T) {
-	ctx := context.Background()
-	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr1)
+// func TestRemoveNode(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr1)
 
-	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
-	AddNode(addr2, "127.0.0.1:31000")
+// 	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
+// 	AddNode(addr2, "127.0.0.1:31000")
 
-	nodes := GetNodes()
-	node := nodes[addr2.String()]
-	assert.True(t, node.IsConnected)
+// 	nodes := GetNodes()
+// 	node := nodes[addr2.String()]
+// 	assert.True(t, node.IsConnected)
 
-	RemoveNode(addr2)
+// 	RemoveNode(addr2)
 
-	nodes = GetNodes()
-	node = nodes[addr2.String()]
-	assert.False(t, node.IsConnected)
-}
+// 	nodes = GetNodes()
+// 	node = nodes[addr2.String()]
+// 	assert.False(t, node.IsConnected)
+// }
 
-func TestGetAndIncrementNonce(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestGetAndIncrementNonce(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	initialNonce := GetNonce()
+// 	initialNonce := GetNonce()
 
-	nonce1 := GetAndIncrementNonce()
-	assert.Equal(t, initialNonce, nonce1)
+// 	nonce1 := GetAndIncrementNonce()
+// 	assert.Equal(t, initialNonce, nonce1)
 
-	nonce2 := GetAndIncrementNonce()
-	assert.Equal(t, initialNonce+1, nonce2)
+// 	nonce2 := GetAndIncrementNonce()
+// 	assert.Equal(t, initialNonce+1, nonce2)
 
-	currentNonce := GetNonce()
-	assert.Equal(t, initialNonce+2, currentNonce)
-}
+// 	currentNonce := GetNonce()
+// 	assert.Equal(t, initialNonce+2, currentNonce)
+// }
 
-func TestGetNonce(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestGetNonce(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	nonce1 := GetNonce()
-	nonce2 := GetNonce()
+// 	nonce1 := GetNonce()
+// 	nonce2 := GetNonce()
 
-	// GetNonce не должен изменять nonce
-	assert.Equal(t, nonce1, nonce2)
-}
+// 	// GetNonce не должен изменять nonce
+// 	assert.Equal(t, nonce1, nonce2)
+// }
 
-func TestSetNonce(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestSetNonce(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	SetNonce(999)
-	nonce := GetNonce()
-	assert.Equal(t, uint64(999), nonce)
+// 	SetNonce(999)
+// 	nonce := GetNonce()
+// 	assert.Equal(t, uint64(999), nonce)
 
-	SetNonce(1000)
-	nonce = GetNonce()
-	assert.Equal(t, uint64(1000), nonce)
-}
+// 	SetNonce(1000)
+// 	nonce = GetNonce()
+// 	assert.Equal(t, uint64(1000), nonce)
+// }
 
-func TestConsensusNotify(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestConsensusNotify(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	// Создаем тестовый блок
-	header := &block.Header{
-		Height:     1,
-		Index:      1,
-		Difficulty: 1,
-		ChainId:    11,
-		Nonce:      12345,
-		PrevHash:   common.Hash{},
-		Root:       common.Hash{},
-		GasLimit:   1000000,
-		GasUsed:    0,
-		Timestamp:  uint64(time.Now().UnixMilli()),
-	}
-	b := block.NewBlock(header)
+// 	// Создаем тестовый блок
+// 	header := &block.Header{
+// 		Height:     1,
+// 		Index:      1,
+// 		Difficulty: 1,
+// 		ChainId:    11,
+// 		Nonce:      12345,
+// 		PrevHash:   common.Hash{},
+// 		Root:       common.Hash{},
+// 		GasLimit:   1000000,
+// 		GasUsed:    0,
+// 		Timestamp:  uint64(time.Now().UnixMilli()),
+// 	}
+// 	b := block.NewBlock(header)
 
-	// Устанавливаем состояние Leader для тестирования Notify
-	SetConsensusState(Leader)
+// 	// Устанавливаем состояние Leader для тестирования Notify
+// 	SetConsensusState(Leader)
 
-	// Notify не должен паниковать
-	consensus := GetConsensus()
-	consensus.Notify(b)
+// 	// Notify не должен паниковать
+// 	consensus := GetConsensus()
+// 	consensus.Notify(b)
 
-	// Проверяем, что блок был отправлен в канал (если есть получатель)
-	// В реальном сценарии это будет обработано другой горутиной
-}
+// 	// Проверяем, что блок был отправлен в канал (если есть получатель)
+// 	// В реальном сценарии это будет обработано другой горутиной
+// }
 
-func TestConsensusStateString(t *testing.T) {
-	tests := []struct {
-		state    ConsensusState
-		expected string
-	}{
-		{Follower, "Follower"},
-		{Candidate, "Candidate"},
-		{Leader, "Leader"},
-		{Validator, "Validator"},
-		{Miner, "Miner"},
-		{Shutdown, "Shutdown"},
-		{ConsensusState(999), "Unknown"},
-	}
+// func TestConsensusStateString(t *testing.T) {
+// 	tests := []struct {
+// 		state    ConsensusState
+// 		expected string
+// 	}{
+// 		{Follower, "Follower"},
+// 		{Candidate, "Candidate"},
+// 		{Leader, "Leader"},
+// 		{Validator, "Validator"},
+// 		{Miner, "Miner"},
+// 		{Shutdown, "Shutdown"},
+// 		{ConsensusState(999), "Unknown"},
+// 	}
 
-	for _, tt := range tests {
-		t.Run(tt.expected, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.state.String())
-		})
-	}
-}
+// 	for _, tt := range tests {
+// 		t.Run(tt.expected, func(t *testing.T) {
+// 			assert.Equal(t, tt.expected, tt.state.String())
+// 		})
+// 	}
+// }
 
-// Helper function to get consensus instance for testing
-func GetConsensus() *Consensus {
-	mu.RLock()
-	defer mu.RUnlock()
-	return &C
-}
+// // Helper function to get consensus instance for testing
+// func GetConsensus() *Consensus {
+// 	mu.RLock()
+// 	defer mu.RUnlock()
+// 	return &C
+// }

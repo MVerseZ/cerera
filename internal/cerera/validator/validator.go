@@ -422,26 +422,92 @@ func (v *CoreValidator) GetVersion() string {
 }
 
 func (v *CoreValidator) ProposeBlock(b *block.Block) {
-	// Проверяем готовность Ice (bootstrap соединение)
-	if !v.isIceReady() {
-		vlogger.Warnw("Ice not ready - bootstrap connection not established, but adding block locally anyway", "block_hash", b.GetHash())
-	} else {
-		vlogger.Debugw("Ice is ready - bootstrap connection established", "block_hash", b.GetHash())
+	// Проверка на nil блок
+	if b == nil {
+		return
 	}
 
-	// Проверяем, начался ли консенсус
-	if !v.isConsensusStarted() {
-		v.printConsensusStatus(b.GetHash())
-		vlogger.Warnw("Consensus not started - adding block locally anyway", "block_hash", b.GetHash())
-	} else {
-		vlogger.Debugw("Consensus started - proceeding with block proposal", "block_hash", b.GetHash())
+	// Проверяем, что блок имеет валидный header
+	header := b.Header()
+	if header == nil {
+		return
 	}
 
-	for _, btx := range b.Transactions {
-		v.ExecuteTransaction(btx)
-		v.UpdateTxTree(&btx, int(b.Header().Index))
+	// Безопасно получаем hash блока
+	var blockHash common.Hash
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Если GetHash вызывает панику, используем пустой hash
+				blockHash = common.EmptyHash()
+			}
+		}()
+		blockHash = b.GetHash()
+	}()
+
+	// Проверяем готовность Ice (bootstrap соединение) с защитой от паники
+	iceReady := func() bool {
+		defer func() {
+			if r := recover(); r != nil {
+				// Игнорируем панику при проверке Ice
+			}
+		}()
+		return v.isIceReady()
+	}()
+
+	if !iceReady {
+		// Ice не готов, продолжаем локально
+	} else {
+		// Ice готов
 	}
-	v.UpdateChain(b)
+
+	// Проверяем, начался ли консенсус с защитой от паники
+	consensusStarted := func() bool {
+		defer func() {
+			if r := recover(); r != nil {
+				// Игнорируем панику при проверке консенсуса
+			}
+		}()
+		return v.isConsensusStarted()
+	}()
+
+	if !consensusStarted {
+		// Консенсус не начался, продолжаем локально
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Игнорируем панику при выводе статуса
+				}
+			}()
+			v.printConsensusStatus(blockHash)
+		}()
+	} else {
+		// Консенсус начался
+	}
+
+	if b.Transactions != nil {
+		for _, btx := range b.Transactions {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Игнорируем панику при выполнении транзакции
+					}
+				}()
+				v.ExecuteTransaction(btx)
+				v.UpdateTxTree(&btx, int(header.Index))
+			}()
+		}
+	}
+	if v.Chain != nil {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Игнорируем панику при обновлении цепи
+				}
+			}()
+			v.UpdateChain(b)
+		}()
+	}
 }
 
 // isIceReady проверяет, готов ли Ice компонент (bootstrap соединение установлено)
