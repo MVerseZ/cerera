@@ -13,15 +13,22 @@ type BlockInfo struct {
 	Hash      []byte // Хеш блока (32 байта)
 }
 
+// StorageInterface определяет интерфейс для работы с storage контрактов
+type StorageInterface interface {
+	GetStorage(address types.Address, key *big.Int) (*big.Int, error)
+	SetStorage(address types.Address, key *big.Int, value *big.Int) error
+}
+
 // Context содержит контекст выполнения контракта в блокчейне
 type Context struct {
-	Caller    types.Address // Адрес вызывающего (отправителя транзакции)
-	Address   types.Address // Адрес контракта (получателя)
-	Value     *big.Int      // Значение транзакции (wei)
-	Input     []byte        // Входные данные транзакции (tx.Data())
-	GasLimit  uint64        // Лимит газа для выполнения
-	GasPrice  *big.Int      // Цена газа
-	BlockInfo *BlockInfo    // Информация о блоке
+	Caller    types.Address    // Адрес вызывающего (отправителя транзакции)
+	Address   types.Address    // Адрес контракта (получателя)
+	Value     *big.Int         // Значение транзакции (wei)
+	Input     []byte           // Входные данные транзакции (tx.Data())
+	GasLimit  uint64           // Лимит газа для выполнения
+	GasPrice  *big.Int         // Цена газа
+	BlockInfo *BlockInfo       // Информация о блоке
+	Storage   StorageInterface // Интерфейс для работы с storage (может быть nil)
 }
 
 // NewContext создает новый контекст выполнения
@@ -43,7 +50,15 @@ func NewContext(caller, address types.Address, value *big.Int, input []byte, gas
 		GasLimit:  gasLimit,
 		GasPrice:  new(big.Int).Set(gasPrice),
 		BlockInfo: blockInfo,
+		Storage:   nil, // Storage устанавливается отдельно
 	}
+}
+
+// NewContextWithStorage создает новый контекст с storage
+func NewContextWithStorage(caller, address types.Address, value *big.Int, input []byte, gasLimit uint64, gasPrice *big.Int, blockInfo *BlockInfo, storage StorageInterface) *Context {
+	ctx := NewContext(caller, address, value, input, gasLimit, gasPrice, blockInfo)
+	ctx.Storage = storage
+	return ctx
 }
 
 // AddressToBigInt конвертирует Address в big.Int (для стека VM)

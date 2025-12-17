@@ -250,6 +250,150 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		// Transfer value to recipient (UpdateBalance will deduct value from sender and add to recipient)
 		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 
+	case types.AppTxType:
+		// Contract transactions: создание или вызов контракта
+		// Пока только распознаем тип, выполнение VM будет в ЭТАП 4
+		if IsContractCreation(tx) {
+			// Создание контракта: To == nil && Data != nil
+			vlogger.Debugw("Contract creation transaction detected",
+				"from", tx.From(),
+				"dataSize", len(tx.Data()),
+			)
+
+			// Проверяем баланс отправителя
+			senderAcc := localVault.Get(tx.From())
+			if senderAcc == nil {
+				return NotEnoughtInputs
+			}
+			gasCost := tx.Cost()
+			totalDebit := new(big.Int).Add(new(big.Int).Set(val), gasCost)
+			senderBal := senderAcc.GetBalanceBI()
+			if senderBal.Cmp(totalDebit) < 0 {
+				return NotEnoughtInputs
+			}
+
+			// Выполняем создание контракта через VM
+			contractAddress, gasUsed, err := ExecuteContractCreation(tx, localVault, v.Chain)
+			if err != nil {
+				vlogger.Errorw("Contract creation failed",
+					"from", tx.From().Hex(),
+					"error", err,
+				)
+				// При ошибке создания все равно списываем газ (как в EVM)
+				senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
+				return fmt.Errorf("contract creation failed: %w", err)
+			}
+
+			// Списываем газ (используем реальный gasUsed, если доступен)
+			actualGasCost := gasCost
+			if gasUsed > 0 && gasUsed < uint64(tx.Gas()) {
+				// Пересчитываем стоимость газа на основе реального использования
+				gasPrice := tx.GasPrice()
+				actualGasCost = new(big.Int).Mul(big.NewInt(int64(gasUsed)), gasPrice)
+			}
+			senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, actualGasCost))
+
+			// Если есть value, переводим его контракту
+			if val.Sign() > 0 {
+				contractAcc := localVault.Get(contractAddress)
+				if contractAcc == nil {
+					// Создаем аккаунт для контракта, если его нет
+					contractAcc = &types.StateAccount{
+						Address: contractAddress,
+						Nonce:   0,
+						Root:    common.Hash{},
+						Status:  0,
+						Type:    0, // Contract account
+					}
+					contractAcc.SetBalance(0.0)
+					localVault.Put(contractAddress, contractAcc)
+				}
+				localVault.UpdateBalance(tx.From(), contractAddress, val, tx.Hash())
+			}
+
+			// Увеличиваем nonce отправителя после успешного создания контракта
+			senderAcc.Nonce++
+
+			vlogger.Debugw("Contract created successfully",
+				"contract", contractAddress.Hex(),
+				"gasUsed", gasUsed,
+				"from", tx.From().Hex(),
+			)
+		} else if IsContractCall(tx) {
+			// Вызов контракта: To != nil && (HasContractCode || Data != nil)
+			vlogger.Debugw("Contract call transaction detected",
+				"from", tx.From(),
+				"to", tx.To(),
+				"dataSize", len(tx.Data()),
+			)
+
+			// Проверяем баланс отправителя
+			senderAcc := localVault.Get(tx.From())
+			if senderAcc == nil {
+				return NotEnoughtInputs
+			}
+			gasCost := tx.Cost()
+			totalDebit := new(big.Int).Add(new(big.Int).Set(val), gasCost)
+			senderBal := senderAcc.GetBalanceBI()
+			if senderBal.Cmp(totalDebit) < 0 {
+				return NotEnoughtInputs
+			}
+
+			// Выполняем контракт через VM
+			result, gasUsed, err := ExecuteContractCall(tx, localVault, v.Chain)
+			if err != nil {
+				vlogger.Errorw("Contract execution failed",
+					"contract", tx.To().Hex(),
+					"error", err,
+				)
+				// При ошибке выполнения все равно списываем газ (как в EVM)
+				senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
+				return fmt.Errorf("contract execution failed: %w", err)
+			}
+
+			// Списываем газ (используем реальный gasUsed, если доступен)
+			actualGasCost := gasCost
+			if gasUsed > 0 && gasUsed < uint64(tx.Gas()) {
+				// Пересчитываем стоимость газа на основе реального использования
+				gasPrice := tx.GasPrice()
+				actualGasCost = new(big.Int).Mul(big.NewInt(int64(gasUsed)), gasPrice)
+			}
+			// Списываем газ (или полную стоимость, или реальную)
+			senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, actualGasCost))
+
+			// Если есть value, переводим его контракту
+			if val.Sign() > 0 && tx.To() != nil {
+				localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
+			}
+
+			vlogger.Debugw("Contract executed successfully",
+				"contract", tx.To().Hex(),
+				"gasUsed", gasUsed,
+				"resultSize", len(result),
+			)
+		} else {
+			// AppTxType без контрактных признаков - обрабатываем как обычную транзакцию
+			vlogger.Debugw("AppTxType transaction without contract data",
+				"from", tx.From(),
+				"to", tx.To(),
+			)
+			if tx.To() == nil {
+				return errors.New("app transaction missing recipient address")
+			}
+			senderAcc := localVault.Get(tx.From())
+			if senderAcc == nil {
+				return NotEnoughtInputs
+			}
+			gasCost := tx.Cost()
+			totalDebit := new(big.Int).Add(new(big.Int).Set(val), gasCost)
+			senderBal := senderAcc.GetBalanceBI()
+			if senderBal.Cmp(totalDebit) < 0 {
+				return NotEnoughtInputs
+			}
+			senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
+			localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
+		}
+
 	default:
 		vlogger.Warnw("unknown transaction type",
 			"type", tx.Type(),

@@ -68,7 +68,7 @@ func (vm *VM) Run() ([]byte, error) {
 		op := OpCode(vm.code[vm.pc])
 
 		// Проверяем валидность опкода (оптимизация: проверка перед switch)
-		if op > 0x95 { // Максимальный опкод CALLDATACOPY = 0x95
+		if op > 0x97 { // Максимальный опкод SSTORE = 0x97
 			vm.err = fmt.Errorf("%w: 0x%02x at position %d", ErrInvalidOpcode, op, vm.pc)
 			break
 		}
@@ -197,6 +197,10 @@ func (vm *VM) executeOpcode(op OpCode, code []byte) error {
 		return vm.opCallDataSize()
 	case CALLDATACOPY:
 		return vm.opCallDataCopy()
+	case SLOAD:
+		return vm.opSload()
+	case SSTORE:
+		return vm.opSstore()
 
 	default:
 		return fmt.Errorf("%w: 0x%02x", ErrInvalidOpcode, op)

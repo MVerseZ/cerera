@@ -511,3 +511,90 @@ func (vm *VM) opCallDataCopy() error {
 		return vm.memory.Set(destOffsetUint, sizeUint, zeroData)
 	}
 }
+
+// opSload загружает значение из storage контракта
+func (vm *VM) opSload() error {
+	if vm.ctx == nil {
+		return fmt.Errorf("SLOAD: context not available")
+	}
+	if vm.ctx.Storage == nil {
+		return fmt.Errorf("SLOAD: storage not available")
+	}
+
+	// Получаем ключ из стека
+	key, err := vm.stack.Pop()
+	if err != nil {
+		return err
+	}
+
+	// Расходуем газ: SLOAD стоит 100 газа (как в EVM)
+	if vm.gas != nil {
+		// Используем Low стоимость для SLOAD (100 газа)
+		if err := vm.gas.UseGas(100); err != nil {
+			return err
+		}
+	}
+
+	// Получаем значение из storage
+	value, err := vm.ctx.Storage.GetStorage(vm.ctx.Address, key)
+	if err != nil {
+		// При ошибке возвращаем 0 (как в EVM)
+		return vm.stack.Push(big.NewInt(0))
+	}
+
+	// Кладем значение на стек
+	return vm.stack.Push(value)
+}
+
+// opSstore сохраняет значение в storage контракта
+func (vm *VM) opSstore() error {
+	if vm.ctx == nil {
+		return fmt.Errorf("SSTORE: context not available")
+	}
+	if vm.ctx.Storage == nil {
+		return fmt.Errorf("SSTORE: storage not available")
+	}
+
+	// Получаем ключ и значение из стека
+	key, err := vm.stack.Pop()
+	if err != nil {
+		return err
+	}
+	value, err := vm.stack.Pop()
+	if err != nil {
+		return err
+	}
+
+	// Получаем старое значение для расчета газа
+	oldValue, _ := vm.ctx.Storage.GetStorage(vm.ctx.Address, key)
+	if oldValue == nil {
+		oldValue = big.NewInt(0)
+	}
+
+	// Расходуем газ: SSTORE имеет сложную логику расчета газа
+	// Упрощенная версия: базовая стоимость + стоимость изменения
+	if vm.gas != nil {
+		baseCost := uint64(20000) // Базовая стоимость SSTORE
+
+		// Если старое значение было 0, а новое не 0 - это создание (дополнительные 20000)
+		if oldValue.Sign() == 0 && value.Sign() != 0 {
+			baseCost += 20000 // Дополнительная стоимость создания
+		}
+		// Если новое значение равно старому - возвращаем газ (refund)
+		if oldValue.Cmp(value) == 0 {
+			// Ничего не делаем, но можно вернуть часть газа
+		}
+		// Если старое значение не 0, а новое 0 - это удаление (возврат 15000)
+		if oldValue.Sign() != 0 && value.Sign() == 0 {
+			// Возвращаем часть газа (refund)
+			vm.gas.RefundGas(15000) // Упрощенная версия
+		}
+
+		if err := vm.gas.UseGas(baseCost); err != nil {
+			return err
+		}
+	}
+
+	// Сохраняем значение в storage
+	return vm.ctx.Storage.SetStorage(vm.ctx.Address, key, value)
+}

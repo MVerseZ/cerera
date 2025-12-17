@@ -69,6 +69,10 @@ const (
 	CALLDATALOAD OpCode = 0x93 // Загрузить данные вызова: stack[offset] -> stack[data]
 	CALLDATASIZE OpCode = 0x94 // Размер данных вызова: -> stack[size]
 	CALLDATACOPY OpCode = 0x95 // Копировать данные вызова: stack[destOffset], stack[offset], stack[size] -> memory
+
+	// Storage опкоды
+	SLOAD  OpCode = 0x96 // Загрузить из storage: stack[key] -> stack[value]
+	SSTORE OpCode = 0x97 // Сохранить в storage: stack[key], stack[value] -> storage
 )
 
 // GetPushSize возвращает размер данных для PUSH операции
@@ -110,7 +114,8 @@ func IsValidOpcode(op OpCode) bool {
 		MLOAD, MSTORE,
 		PUSH1, PUSH2, PUSH4, PUSH8, PUSH16, PUSH32,
 		JUMP, JUMPI, JUMPDEST, PC, RETURN, REVERT,
-		ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, CALLDATASIZE, CALLDATACOPY:
+		ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, CALLDATASIZE, CALLDATACOPY,
+		SLOAD, SSTORE:
 		return true
 	default:
 		return false
@@ -206,6 +211,10 @@ func OpcodeName(op OpCode) string {
 		return "CALLDATASIZE"
 	case CALLDATACOPY:
 		return "CALLDATACOPY"
+	case SLOAD:
+		return "SLOAD"
+	case SSTORE:
+		return "SSTORE"
 	default:
 		return "UNKNOWN"
 	}

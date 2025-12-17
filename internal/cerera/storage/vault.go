@@ -76,6 +76,10 @@ type Vault interface {
 	StoreContractCode(address types.Address, code []byte) error
 	GetContractCode(address types.Address) ([]byte, error)
 	HasContractCode(address types.Address) bool
+	
+	// Contract storage methods (key-value storage)
+	SetStorage(address types.Address, key *big.Int, value *big.Int) error
+	GetStorage(address types.Address, key *big.Int) (*big.Int, error)
 }
 
 type D5Vault struct {
@@ -865,6 +869,116 @@ func (v *D5Vault) GetContractCode(address types.Address) ([]byte, error) {
 func (v *D5Vault) HasContractCode(address types.Address) bool {
 	account := v.Get(address)
 	return account != nil && len(account.CodeHash) > 0
+}
+
+// SetStorage сохраняет значение в storage контракта
+// key и value - это 32-байтные значения (big.Int)
+func (v *D5Vault) SetStorage(address types.Address, key *big.Int, value *big.Int) error {
+	if key == nil {
+		return fmt.Errorf("storage key cannot be nil")
+	}
+	if value == nil {
+		value = big.NewInt(0)
+	}
+
+	// Получаем или создаем аккаунт контракта
+	account := v.Get(address)
+	if account == nil {
+		// Создаем новый аккаунт для контракта
+		account = types.NewStateAccount(address, 0, v.rootHash)
+		v.accounts.Append(address, account)
+		vaultAccountsTotal.Set(float64(v.accounts.Size()))
+	}
+
+	// Сохраняем в pogreb с ключом "storage:" + address + ":" + key
+	if !v.inMem && v.db != nil {
+		v.dbMu.Lock()
+		defer v.dbMu.Unlock()
+
+		// Ключ: "storage:" + address.Bytes() + ":" + key.Bytes()
+		keyBytes := make([]byte, 32)
+		key.FillBytes(keyBytes) // Заполняет big-endian, дополняя нулями слева
+		
+		storageKey := append([]byte("storage:"), address.Bytes()...)
+		storageKey = append(storageKey, ':')
+		storageKey = append(storageKey, keyBytes...)
+
+		// Значение: value.Bytes() (32 байта)
+		valueBytes := make([]byte, 32)
+		value.FillBytes(valueBytes)
+
+		if err := v.db.Put(storageKey, valueBytes); err != nil {
+			vltlogger().Errorw("Failed to set storage", 
+				"address", address.Hex(),
+				"key", key.Text(16),
+				"err", err,
+			)
+			return fmt.Errorf("failed to set storage: %w", err)
+		}
+
+		vltlogger().Debugw("Storage set",
+			"address", address.Hex(),
+			"key", key.Text(16),
+			"value", value.Text(16),
+		)
+	}
+
+	return nil
+}
+
+// GetStorage получает значение из storage контракта
+func (v *D5Vault) GetStorage(address types.Address, key *big.Int) (*big.Int, error) {
+	if key == nil {
+		return nil, fmt.Errorf("storage key cannot be nil")
+	}
+
+	// Если in-memory режим, возвращаем 0 (storage не поддерживается в памяти)
+	if v.inMem {
+		return big.NewInt(0), nil
+	}
+
+	if v.db == nil {
+		return big.NewInt(0), nil
+	}
+
+	v.dbMu.RLock()
+	defer v.dbMu.RUnlock()
+
+	// Ключ: "storage:" + address.Bytes() + ":" + key.Bytes()
+	keyBytes := make([]byte, 32)
+	key.FillBytes(keyBytes)
+	
+	storageKey := append([]byte("storage:"), address.Bytes()...)
+	storageKey = append(storageKey, ':')
+	storageKey = append(storageKey, keyBytes...)
+
+	// Проверяем, существует ли ключ
+	has, err := v.db.Has(storageKey)
+	if err != nil {
+		vltlogger().Errorw("Failed to check storage existence",
+			"address", address.Hex(),
+			"key", key.Text(16),
+			"err", err,
+		)
+		return big.NewInt(0), nil // Возвращаем 0 при ошибке
+	}
+	if !has {
+		return big.NewInt(0), nil // Возвращаем 0 если ключ не найден
+	}
+
+	valueBytes, err := v.db.Get(storageKey)
+	if err != nil {
+		vltlogger().Errorw("Failed to get storage",
+			"address", address.Hex(),
+			"key", key.Text(16),
+			"err", err,
+		)
+		return big.NewInt(0), nil // Возвращаем 0 при ошибке
+	}
+
+	// Конвертируем байты в big.Int
+	value := new(big.Int).SetBytes(valueBytes)
+	return value, nil
 }
 
 func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
