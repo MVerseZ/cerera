@@ -43,6 +43,24 @@ var (
 		Name: "chain_difficulty",
 		Help: "Current chain difficulty",
 	})
+	chainBlockchainSizeBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "chain_blockchain_size_bytes",
+		Help: "Total blockchain size in bytes (sum of block header sizes)",
+	})
+	chainHeight = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "chain_height",
+		Help: "Current chain height (latest block number)",
+	})
+	chainBlockSizeBytes = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "chain_block_size_bytes",
+		Help:    "Size of blocks in bytes",
+		Buckets: []float64{1024, 4096, 16384, 65536, 262144, 1048576},
+	})
+	chainBlockGasUsed = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "chain_block_gas_used",
+		Help:    "Gas used per block",
+		Buckets: []float64{1000, 5000, 10000, 50000, 100000, 500000, 1000000},
+	})
 )
 
 func init() {
@@ -52,6 +70,10 @@ func init() {
 		chainGasTotal,
 		chainAvgBlockTimeSeconds,
 		chainDifficultyGauge,
+		chainBlockchainSizeBytes,
+		chainHeight,
+		chainBlockSizeBytes,
+		chainBlockGasUsed,
 	)
 }
 
@@ -237,6 +259,16 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		totalTime:      0,
 		status:         0x0,
 	}
+	// Initialize blockchain size (sum of block header sizes)
+	var initialTotalSize int
+	for _, blk := range dataBlocks {
+		if blk != nil {
+			if header := blk.Header(); header != nil {
+				initialTotalSize += header.Size
+			}
+		}
+	}
+	bch.info.Size = int64(initialTotalSize)
 	// genesisBlock.Head.Node = bch.currentAddress
 	// go bch.BlockGenerator()
 	go bch.Start()
@@ -244,6 +276,10 @@ func Mold(cfg *config.Config) (*Chain, error) {
 	// Set initial gauges
 	chainDifficultyGauge.Set(float64(chainDifficulty))
 	chainAvgBlockTimeSeconds.Set(bch.avgTime)
+	if currentBlock != nil && currentBlock.Head != nil {
+		chainHeight.Set(float64(currentBlock.Header().Height))
+	}
+	chainBlockchainSizeBytes.Set(float64(initialTotalSize))
 
 	return &bch, nil
 }
@@ -339,6 +375,8 @@ func (bc *Chain) GetInfo() BlockChainStatus {
 
 	// Update info struct with current values
 	bc.info.Size = int64(totalSize)
+	// Update Prometheus gauge for total blockchain size
+	chainBlockchainSizeBytes.Set(float64(totalSize))
 	if len(bc.data) > 0 {
 		bc.info.Latest = bc.data[len(bc.data)-1].GetHash()
 	}
@@ -428,6 +466,23 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) {
 	chainGasTotal.Add(blockGas)
 	chainAvgBlockTimeSeconds.Set(bc.avgTime)
 	chainDifficultyGauge.Set(float64(bc.Difficulty))
+
+	// Update new metrics
+	if newBlock.Head != nil {
+		header := newBlock.Header()
+		chainHeight.Set(float64(header.Height))
+
+		// Block size metrics
+		blockSizeBytes := len(newBlock.ToBytes())
+		chainBlockSizeBytes.Observe(float64(blockSizeBytes))
+
+		// Update total blockchain size gauge using header size
+		bc.info.Size += int64(header.Size)
+		chainBlockchainSizeBytes.Set(float64(bc.info.Size))
+
+		chainBlockGasUsed.Observe(float64(newBlock.Head.GasUsed))
+	}
+
 	SaveToVault(*newBlock)
 }
 

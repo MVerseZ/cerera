@@ -68,12 +68,12 @@ func FuzzValidateTransaction(f *testing.F) {
 			return
 		}
 
-		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(nonceVal, addr, value, gasLimit, string(data))
+		// addr := types.EmptyAddress()
+		// tx, _ := types.CreateUnbroadcastTransaction(nonceVal, addr, value, gasLimit, string(data))
 
-		result := validator.ValidateTransaction(tx, addr)
+		// result := validator.ValidateTransaction(tx, addr)
 		// Just check that it doesn't panic
-		_ = result
+		// _ = result
 	})
 }
 

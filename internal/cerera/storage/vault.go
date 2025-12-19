@@ -76,7 +76,8 @@ type Vault interface {
 	StoreContractCode(address types.Address, code []byte) error
 	GetContractCode(address types.Address) ([]byte, error)
 	HasContractCode(address types.Address) bool
-	
+	DeleteContractCode(address types.Address) error
+
 	// Contract storage methods (key-value storage)
 	SetStorage(address types.Address, key *big.Int, value *big.Int) error
 	GetStorage(address types.Address, key *big.Int) (*big.Int, error)
@@ -871,6 +872,51 @@ func (v *D5Vault) HasContractCode(address types.Address) bool {
 	return account != nil && len(account.CodeHash) > 0
 }
 
+// DeleteContractCode удаляет байткод контракта из хранилища
+// Используется для отката изменений при ошибке создания контракта
+func (v *D5Vault) DeleteContractCode(address types.Address) error {
+	if v.inMem {
+		// В in-memory режиме просто очищаем CodeHash в аккаунте
+		account := v.Get(address)
+		if account != nil {
+			account.CodeHash = nil
+			v.accounts.Append(address, account)
+		}
+		return nil
+	}
+
+	if v.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	v.dbMu.Lock()
+	defer v.dbMu.Unlock()
+
+	// Удаляем код из pogreb
+	key := append([]byte("code:"), address.Bytes()...)
+	if err := v.db.Delete(key); err != nil {
+		vltlogger().Errorw("Failed to delete contract code", "address", address.Hex(), "err", err)
+		return fmt.Errorf("failed to delete contract code: %w", err)
+	}
+
+	// Очищаем CodeHash в аккаунте
+	account := v.Get(address)
+	if account != nil {
+		account.CodeHash = nil
+		v.accounts.Append(address, account)
+
+		// Обновляем аккаунт в базе данных
+		accountKey := address.Bytes()
+		if err := v.db.Put(accountKey, account.Bytes()); err != nil {
+			vltlogger().Errorw("Failed to update account after code deletion", "address", address.Hex(), "err", err)
+			return fmt.Errorf("failed to update account: %w", err)
+		}
+	}
+
+	vltlogger().Infow("Deleted contract code", "address", address.Hex())
+	return nil
+}
+
 // SetStorage сохраняет значение в storage контракта
 // key и value - это 32-байтные значения (big.Int)
 func (v *D5Vault) SetStorage(address types.Address, key *big.Int, value *big.Int) error {
@@ -898,7 +944,7 @@ func (v *D5Vault) SetStorage(address types.Address, key *big.Int, value *big.Int
 		// Ключ: "storage:" + address.Bytes() + ":" + key.Bytes()
 		keyBytes := make([]byte, 32)
 		key.FillBytes(keyBytes) // Заполняет big-endian, дополняя нулями слева
-		
+
 		storageKey := append([]byte("storage:"), address.Bytes()...)
 		storageKey = append(storageKey, ':')
 		storageKey = append(storageKey, keyBytes...)
@@ -908,7 +954,7 @@ func (v *D5Vault) SetStorage(address types.Address, key *big.Int, value *big.Int
 		value.FillBytes(valueBytes)
 
 		if err := v.db.Put(storageKey, valueBytes); err != nil {
-			vltlogger().Errorw("Failed to set storage", 
+			vltlogger().Errorw("Failed to set storage",
 				"address", address.Hex(),
 				"key", key.Text(16),
 				"err", err,
@@ -947,7 +993,7 @@ func (v *D5Vault) GetStorage(address types.Address, key *big.Int) (*big.Int, err
 	// Ключ: "storage:" + address.Bytes() + ":" + key.Bytes()
 	keyBytes := make([]byte, 32)
 	key.FillBytes(keyBytes)
-	
+
 	storageKey := append([]byte("storage:"), address.Bytes()...)
 	storageKey = append(storageKey, ':')
 	storageKey = append(storageKey, keyBytes...)

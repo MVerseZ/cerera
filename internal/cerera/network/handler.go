@@ -6,16 +6,54 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/btcsuite/websocket"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var handlerLogger = logger.Named("handler")
 
+var (
+	rpcRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rpc_requests_total",
+			Help: "Total number of RPC requests by method",
+		},
+		[]string{"method"},
+	)
+	rpcRequestsDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "rpc_requests_duration_seconds",
+			Help:    "RPC request duration in seconds",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5},
+		},
+		[]string{"method"},
+	)
+	rpcRequestsErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rpc_requests_errors_total",
+			Help: "Total number of RPC request errors by method",
+		},
+		[]string{"method"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(
+		rpcRequestsTotal,
+		rpcRequestsDurationSeconds,
+		rpcRequestsErrorsTotal,
+	)
+}
+
 func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDDDDPoa, m prometheus.Counter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+		method := "unknown"
+
 		if r.Method == http.MethodOptions {
 			// Обработка префлайт запроса
 
@@ -34,6 +72,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			rpcRequestsErrorsTotal.WithLabelValues("read_body").Inc()
 			return
 		}
 
@@ -42,8 +81,11 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		if err != nil {
 			fmt.Println(err)
 			http.Error(w, "Failed to parse request body", http.StatusBadRequest)
+			rpcRequestsErrorsTotal.WithLabelValues("parse_body").Inc()
 			return
 		}
+
+		method = request.Method
 
 		// reg, err := service.GetRegistry()
 		// if err != nil {
@@ -61,6 +103,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		responseData, err := json.Marshal(response)
 		if err != nil {
 			http.Error(w, "Failed to serialize response", http.StatusInternalServerError)
+			rpcRequestsErrorsTotal.WithLabelValues(method).Inc()
 			return
 		}
 
@@ -74,6 +117,12 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		// m.Inc()
 		if err != nil {
 			handlerLogger.Errorw("Failed to write response", "err", err)
+			rpcRequestsErrorsTotal.WithLabelValues(method).Inc()
+		} else {
+			// Record successful request
+			duration := time.Since(startTime).Seconds()
+			rpcRequestsTotal.WithLabelValues(method).Inc()
+			rpcRequestsDurationSeconds.WithLabelValues(method).Observe(duration)
 		}
 
 		// select {

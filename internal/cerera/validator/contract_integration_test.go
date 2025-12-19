@@ -258,3 +258,253 @@ func TestContractStorageOperations(t *testing.T) {
 
 	t.Logf("Contract storage operations successful, final value: %s", storageValue.Text(10))
 }
+
+// TestContractCallBetweenContracts тестирует CALL между контрактами
+func TestContractCallBetweenContracts(t *testing.T) {
+	// Очищаем тестовую директорию
+	cfg := createTestConfigForValidator()
+	os.RemoveAll(cfg.Vault.PATH)
+
+	vault, err := storage.NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+	defer func() {
+		vault.Close()
+		os.RemoveAll(cfg.Vault.PATH)
+	}()
+
+	d5Vault := vault.(*storage.D5Vault)
+
+	// Создаем отправителя
+	senderKey, _ := types.GenerateAccount()
+	senderAddr := types.PubkeyToAddress(senderKey.PublicKey)
+	senderAcc := types.NewStateAccount(senderAddr, 1000.0, common.Hash{})
+	vault.Put(senderAddr, senderAcc)
+
+	// Создаем контракт B (вызываемый контракт)
+	// Байткод: PUSH1 100, PUSH1 0, SSTORE, PUSH1 0, SLOAD, RETURN
+	// Сохраняет 100 в storage[0] и возвращает его
+	contractBCode := []byte{
+		0x70, 0x64, // PUSH1 100
+		0x70, 0x00, // PUSH1 0
+		0x97,       // SSTORE
+		0x70, 0x00, // PUSH1 0
+		0x96,       // SLOAD
+		0x60, 0x00, // PUSH1 0 (offset)
+		0x60, 0x20, // PUSH1 32 (size)
+		0x84, // RETURN
+	}
+
+	contractBKey, _ := types.GenerateAccount()
+	contractBAddr := types.PubkeyToAddress(contractBKey.PublicKey)
+	err = d5Vault.StoreContractCode(contractBAddr, contractBCode)
+	if err != nil {
+		t.Fatalf("StoreContractCode failed for contract B: %v", err)
+	}
+
+	// Создаем контракт A (вызывающий контракт)
+	// Байткод: вызывает контракт B через CALL
+	// CALL(gas, address, value, inputOffset, inputSize, outputOffset, outputSize)
+	contractACode := []byte{
+		// Подготовка параметров для CALL (в обратном порядке)
+		0x60, 0x20, // PUSH1 32 (outputSize)
+		0x60, 0x00, // PUSH1 0 (outputOffset)
+		0x60, 0x00, // PUSH1 0 (inputSize)
+		0x60, 0x00, // PUSH1 0 (inputOffset)
+		0x60, 0x00, // PUSH1 0 (value)
+	}
+	// Добавляем адрес контракта B (32 байта, используем PUSH32)
+	contractBAddrBytes := contractBAddr.Bytes()
+	addrBytes := make([]byte, 32)
+	// Address это [32]byte, Bytes() возвращает слайс, копируем в правильное место
+	if len(contractBAddrBytes) <= 32 {
+		copy(addrBytes[32-len(contractBAddrBytes):], contractBAddrBytes)
+	} else {
+		copy(addrBytes, contractBAddrBytes[len(contractBAddrBytes)-32:])
+	}
+	contractACode = append(contractACode, 0x75) // PUSH32
+	contractACode = append(contractACode, addrBytes...)
+	contractACode = append(contractACode,
+		0x70, 0x64, // PUSH1 100 (gas limit)
+		0x98, // CALL
+		0x00, // STOP
+	)
+
+	// Создаем контракт A
+	pgTx := &types.PGTransaction{
+		Nonce:    1,
+		To:       nil,
+		Value:    big.NewInt(0),
+		Gas:      100000,
+		GasPrice: big.NewInt(1),
+		Data:     contractACode,
+		Time:     time.Now(),
+	}
+	createTx := types.NewTx(pgTx)
+	createTx.SetFrom(senderAddr)
+
+	contractAAddr, _, err := ExecuteContractCreation(*createTx, vault, nil)
+	if err != nil {
+		t.Fatalf("Contract A creation failed: %v", err)
+	}
+
+	// Вызываем контракт A
+	callTx := types.NewTransaction(
+		2,
+		contractAAddr,
+		big.NewInt(0),
+		100000,
+		big.NewInt(1),
+		nil,
+	)
+	callTx.SetFrom(senderAddr)
+
+	result, gasUsed, err := ExecuteContractCall(*callTx, vault, nil)
+	if err != nil {
+		t.Fatalf("Contract A call failed: %v", err)
+	}
+
+	// Проверяем, что контракт B выполнился (значение в storage)
+	storageKey := big.NewInt(0)
+	storageValue, err := vault.GetStorage(contractBAddr, storageKey)
+	if err != nil {
+		t.Fatalf("Failed to get storage from contract B: %v", err)
+	}
+
+	expectedValue := big.NewInt(100)
+	if storageValue.Cmp(expectedValue) != 0 {
+		t.Errorf("Expected storage value %s in contract B, got %s", expectedValue.Text(10), storageValue.Text(10))
+	}
+
+	if gasUsed == 0 {
+		t.Error("Gas should be used for contract call with CALL")
+	}
+
+	t.Logf("CALL between contracts successful, gas used: %d, result: %x", gasUsed, result)
+}
+
+// TestContractCreationRevertRollback тестирует откат при REVERT при создании контракта
+func TestContractCreationRevertRollback(t *testing.T) {
+	// Очищаем тестовую директорию
+	cfg := createTestConfigForValidator()
+	os.RemoveAll(cfg.Vault.PATH)
+
+	vault, err := storage.NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+	defer func() {
+		vault.Close()
+		os.RemoveAll(cfg.Vault.PATH)
+	}()
+
+	// Создаем отправителя
+	senderKey, _ := types.GenerateAccount()
+	senderAddr := types.PubkeyToAddress(senderKey.PublicKey)
+	senderAcc := types.NewStateAccount(senderAddr, 1000.0, common.Hash{})
+	vault.Put(senderAddr, senderAcc)
+
+	// Байткод контракта, который делает REVERT
+	// PUSH1 1, PUSH1 0, REVERT (возвращает данные, но с ошибкой)
+	contractCode := []byte{
+		0x60, 0x01, // PUSH1 1
+		0x60, 0x00, // PUSH1 0
+		0x85, // REVERT
+	}
+
+	// Создаем транзакцию создания контракта
+	pgTx := &types.PGTransaction{
+		Nonce:    1,
+		To:       nil,
+		Value:    big.NewInt(0),
+		Gas:      100000,
+		GasPrice: big.NewInt(1),
+		Data:     contractCode,
+		Time:     time.Now(),
+	}
+	createTx := types.NewTx(pgTx)
+	createTx.SetFrom(senderAddr)
+
+	// Выполняем создание контракта (должно вернуть ошибку)
+	contractAddr, gasUsed, err := ExecuteContractCreation(*createTx, vault, nil)
+	if err == nil {
+		t.Error("Expected error when contract creation reverts")
+	}
+
+	// Проверяем, что контракт не создан (код удален)
+	if vault.HasContractCode(contractAddr) {
+		t.Error("Contract code should be deleted after REVERT")
+	}
+
+	// Проверяем, что gas был использован
+	if gasUsed == 0 {
+		t.Error("Gas should be used even when contract creation fails")
+	}
+
+	t.Logf("Contract creation revert rollback successful, gas used: %d", gasUsed)
+}
+
+// TestContractCreationOutOfGasRollback тестирует откат при нехватке газа
+func TestContractCreationOutOfGasRollback(t *testing.T) {
+	// Очищаем тестовую директорию
+	cfg := createTestConfigForValidator()
+	os.RemoveAll(cfg.Vault.PATH)
+
+	vault, err := storage.NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+	defer func() {
+		vault.Close()
+		os.RemoveAll(cfg.Vault.PATH)
+	}()
+
+	// Создаем отправителя
+	senderKey, _ := types.GenerateAccount()
+	senderAddr := types.PubkeyToAddress(senderKey.PublicKey)
+	senderAcc := types.NewStateAccount(senderAddr, 1000.0, common.Hash{})
+	vault.Put(senderAddr, senderAcc)
+
+	// Байткод контракта, который потребует много газа (много SSTORE)
+	contractCode := []byte{}
+	for i := 0; i < 100; i++ {
+		contractCode = append(contractCode,
+			0x70, byte(i), // PUSH1 i
+			0x70, byte(i), // PUSH1 i (ключ)
+			0x97, // SSTORE (стоит 20000 газа)
+		)
+	}
+	contractCode = append(contractCode, 0x00) // STOP
+
+	// Создаем транзакцию с очень маленьким лимитом газа
+	pgTx := &types.PGTransaction{
+		Nonce:    1,
+		To:       nil,
+		Value:    big.NewInt(0),
+		Gas:      1000, // Очень маленький лимит
+		GasPrice: big.NewInt(1),
+		Data:     contractCode,
+		Time:     time.Now(),
+	}
+	createTx := types.NewTx(pgTx)
+	createTx.SetFrom(senderAddr)
+
+	// Выполняем создание контракта (должно вернуть ошибку OutOfGas)
+	contractAddr, gasUsed, err := ExecuteContractCreation(*createTx, vault, nil)
+	if err == nil {
+		t.Error("Expected error when contract creation runs out of gas")
+	}
+
+	// Проверяем, что контракт не создан (код удален)
+	if vault.HasContractCode(contractAddr) {
+		t.Error("Contract code should be deleted after OutOfGas")
+	}
+
+	// Проверяем, что gas был использован
+	if gasUsed == 0 {
+		t.Error("Gas should be used even when contract creation fails")
+	}
+
+	t.Logf("Contract creation OutOfGas rollback successful, gas used: %d", gasUsed)
+}

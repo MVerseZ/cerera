@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/storage"
@@ -37,8 +38,17 @@ func ExecuteContract(tx types.GTransaction, contractAddress types.Address, local
 	// Создаем Storage адаптер для Vault
 	storageAdapter := &VaultStorageAdapter{vault: localVault}
 
-	// Создаем Context для VM с storage
-	ctx := pallada.NewContextWithStorage(
+	// Создаем Call адаптер для межконтрактных вызовов
+	callAdapter := &VaultCallAdapter{
+		vault:     localVault,
+		chain:     chainInstance,
+		blockInfo: blockInfo,
+		gasPrice:  tx.GasPrice(),
+		storage:   storageAdapter,
+	}
+
+	// Создаем Context для VM с storage и call support
+	ctx := pallada.NewContextWithCall(
 		tx.From(),        // Caller
 		contractAddress,  // Address (адрес контракта)
 		tx.Value(),       // Value
@@ -47,6 +57,7 @@ func ExecuteContract(tx types.GTransaction, contractAddress types.Address, local
 		tx.GasPrice(),    // GasPrice
 		blockInfo,        // BlockInfo
 		storageAdapter,   // Storage
+		callAdapter,      // CallInterface
 	)
 
 	// Создаем VM с контекстом
@@ -166,8 +177,17 @@ func ExecuteContractCreation(tx types.GTransaction, localVault storage.Vault, ch
 	// Создаем Storage адаптер для Vault
 	storageAdapter := &VaultStorageAdapter{vault: localVault}
 
-	// Создаем Context для VM (для выполнения конструктора) с storage
-	ctx := pallada.NewContextWithStorage(
+	// Создаем Call адаптер для межконтрактных вызовов (может быть nil для создания)
+	callAdapter := &VaultCallAdapter{
+		vault:     localVault,
+		chain:     chainInstance,
+		blockInfo: blockInfo,
+		gasPrice:  tx.GasPrice(),
+		storage:   storageAdapter,
+	}
+
+	// Создаем Context для VM (для выполнения конструктора) с storage и call support
+	ctx := pallada.NewContextWithCall(
 		tx.From(),        // Caller
 		contractAddress,  // Address (адрес нового контракта)
 		tx.Value(),       // Value
@@ -176,6 +196,7 @@ func ExecuteContractCreation(tx types.GTransaction, localVault storage.Vault, ch
 		tx.GasPrice(),    // GasPrice
 		blockInfo,        // BlockInfo
 		storageAdapter,   // Storage
+		callAdapter,      // CallInterface
 	)
 
 	// Создаем VM с контекстом и кодом контракта
@@ -197,12 +218,23 @@ func ExecuteContractCreation(tx types.GTransaction, localVault storage.Vault, ch
 		// Проверяем, это REVERT или другая ошибка
 		if vm.GetGasMeter() != nil && vm.GetGasMeter().GasRemaining() == 0 {
 			// Откатываем сохранение кода при нехватке газа
-			// TODO: Удалить код контракта при ошибке
+			if delErr := localVault.DeleteContractCode(contractAddress); delErr != nil {
+				vlogger.Errorw("Failed to delete contract code after OutOfGas",
+					"contract", contractAddress.Hex(),
+					"error", delErr,
+				)
+			}
 			return types.Address{}, gasUsed, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 		}
 		// REVERT при создании контракта означает, что создание не удалось
 		if result != nil {
-			// TODO: Удалить код контракта при REVERT
+			// Откатываем сохранение кода при REVERT
+			if delErr := localVault.DeleteContractCode(contractAddress); delErr != nil {
+				vlogger.Errorw("Failed to delete contract code after REVERT",
+					"contract", contractAddress.Hex(),
+					"error", delErr,
+				)
+			}
 			return types.Address{}, gasUsed, fmt.Errorf("contract creation reverted: %x", result)
 		}
 		// Другие ошибки - контракт создан, но конструктор упал
@@ -251,6 +283,85 @@ func (v *VaultStorageAdapter) GetStorage(address types.Address, key *big.Int) (*
 // SetStorage сохраняет значение в storage контракта
 func (v *VaultStorageAdapter) SetStorage(address types.Address, key *big.Int, value *big.Int) error {
 	return v.vault.SetStorage(address, key, value)
+}
+
+// VaultCallAdapter адаптирует Vault и Chain к CallInterface для VM
+type VaultCallAdapter struct {
+	vault     storage.Vault
+	chain     *chain.Chain
+	blockInfo *pallada.BlockInfo
+	gasPrice  *big.Int
+	storage   pallada.StorageInterface
+}
+
+// Call вызывает контракт по адресу
+// Реализует CallInterface для поддержки CALL опкода
+func (v *VaultCallAdapter) Call(caller types.Address, address types.Address, value *big.Int, input []byte, gasLimit uint64) ([]byte, bool, uint64) {
+	// Проверяем, что контракт существует
+	if !v.vault.HasContractCode(address) {
+		vlogger.Debugw("CALL: contract not found", "address", address.Hex())
+		return nil, false, 0
+	}
+
+	// Создаем виртуальную транзакцию для вызова
+	pgTx := &types.PGTransaction{
+		Nonce:    0, // Nonce не важен для внутренних вызовов
+		To:       &address,
+		Value:    value,
+		Gas:      float64(gasLimit),
+		GasPrice: v.gasPrice,
+		Data:     input,
+		Time:     time.Now(),
+	}
+	virtualTx := types.NewTx(pgTx)
+	virtualTx.SetFrom(caller)
+
+	// Создаем Context для вызываемого контракта
+	ctx := pallada.NewContextWithStorage(
+		caller,      // Caller (текущий контракт)
+		address,     // Address (вызываемый контракт)
+		value,       // Value
+		input,       // Input
+		gasLimit,    // GasLimit
+		v.gasPrice,  // GasPrice
+		v.blockInfo, // BlockInfo
+		v.storage,   // Storage
+	)
+
+	// Загружаем код контракта
+	contractCode, err := v.vault.GetContractCode(address)
+	if err != nil {
+		vlogger.Debugw("CALL: failed to get contract code", "address", address.Hex(), "error", err)
+		return nil, false, 0
+	}
+
+	// Создаем VM для вызываемого контракта
+	vm := pallada.NewVMWithContext(contractCode, ctx)
+
+	// Выполняем контракт
+	result, err := vm.Run()
+
+	// Получаем использованный газ
+	gasUsed := uint64(0)
+	if vm.GetGasMeter() != nil {
+		gasUsed = vm.GasUsed()
+	}
+
+	// Проверяем результат
+	if err != nil {
+		// REVERT или другая ошибка
+		if result != nil {
+			// REVERT - возвращаем данные, но success = false
+			vlogger.Debugw("CALL: contract reverted", "address", address.Hex(), "data", fmt.Sprintf("%x", result))
+			return result, false, gasUsed
+		}
+		// Другая ошибка
+		vlogger.Debugw("CALL: contract execution failed", "address", address.Hex(), "error", err)
+		return nil, false, gasUsed
+	}
+
+	// Успешное выполнение
+	return result, true, gasUsed
 }
 
 // ExecuteContractCall обрабатывает вызов контракта из транзакции

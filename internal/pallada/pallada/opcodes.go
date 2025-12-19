@@ -73,6 +73,9 @@ const (
 	// Storage опкоды
 	SLOAD  OpCode = 0x96 // Загрузить из storage: stack[key] -> stack[value]
 	SSTORE OpCode = 0x97 // Сохранить в storage: stack[key], stack[value] -> storage
+
+	// Межконтрактные вызовы
+	CALL OpCode = 0x98 // Вызвать контракт: stack[gas], stack[address], stack[value], stack[inputOffset], stack[inputSize], stack[outputOffset], stack[outputSize] -> stack[success]
 )
 
 // GetPushSize возвращает размер данных для PUSH операции
@@ -115,7 +118,7 @@ func IsValidOpcode(op OpCode) bool {
 		PUSH1, PUSH2, PUSH4, PUSH8, PUSH16, PUSH32,
 		JUMP, JUMPI, JUMPDEST, PC, RETURN, REVERT,
 		ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, CALLDATASIZE, CALLDATACOPY,
-		SLOAD, SSTORE:
+		SLOAD, SSTORE, CALL:
 		return true
 	default:
 		return false
@@ -215,6 +218,8 @@ func OpcodeName(op OpCode) string {
 		return "SLOAD"
 	case SSTORE:
 		return "SSTORE"
+	case CALL:
+		return "CALL"
 	default:
 		return "UNKNOWN"
 	}

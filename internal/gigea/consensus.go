@@ -8,6 +8,7 @@ import (
 
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Voter struct {
@@ -73,6 +74,44 @@ var (
 	mu     sync.RWMutex // Mutex for protecting global variables
 )
 
+var (
+	consensusVotersTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consensus_voters_total",
+		Help: "Total number of consensus voters",
+	})
+	consensusNodesTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consensus_nodes_total",
+		Help: "Total number of known consensus nodes",
+	})
+	consensusState = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consensus_state",
+		Help: "Current consensus state (0=Follower, 1=Candidate, 2=Leader, 3=Validator, 4=Miner, 5=Shutdown)",
+	})
+	consensusNonce = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consensus_nonce",
+		Help: "Current consensus nonce",
+	})
+	consensusPeriodAdvancesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "consensus_period_advances_total",
+		Help: "Total number of consensus period advances",
+	})
+	consensusStatus = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consensus_status",
+		Help: "Current consensus status",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		consensusVotersTotal,
+		consensusNodesTotal,
+		consensusState,
+		consensusNonce,
+		consensusPeriodAdvancesTotal,
+		consensusStatus,
+	)
+}
+
 func Init(ctx context.Context, lAddr types.Address) error {
 	C = Consensus{
 		Nonce:  1337,
@@ -86,6 +125,10 @@ func Init(ctx context.Context, lAddr types.Address) error {
 	E = Engine{Port: 32000}
 	E.Start(lAddr)
 	Status = []byte{0x0, 0x0, 0x0, 0x0, 0x0}
+
+	// Update initial metrics
+	updateConsensusMetrics()
+
 	return nil
 }
 
@@ -122,6 +165,7 @@ func SetConsensusState(state ConsensusState) {
 	mu.Lock()
 	defer mu.Unlock()
 	G.state = state
+	consensusState.Set(float64(state))
 }
 
 // GetConsensusStatus safely returns the current consensus status
@@ -136,6 +180,7 @@ func SetConsensusStatus(status int) {
 	mu.Lock()
 	defer mu.Unlock()
 	C.Status = status
+	consensusStatus.Set(float64(status))
 }
 
 // AddVoter safely adds a voter to the consensus
@@ -150,6 +195,7 @@ func AddVoter(addr types.Address) {
 		}
 	}
 	C.Voters = append(C.Voters, addr)
+	consensusVotersTotal.Set(float64(len(C.Voters)))
 	for _, voter := range C.Voters {
 		fmt.Printf("\t\tVoter: %s\r\n", voter.String())
 	}
@@ -191,6 +237,7 @@ func AddNode(address types.Address, networkAddr string) {
 		LastSeen:    time.Now().Unix(),
 		IsConnected: true,
 	}
+	consensusNodesTotal.Set(float64(len(C.Nodes)))
 }
 
 // GetNodes safely returns a copy of all known nodes
@@ -250,5 +297,21 @@ func GetNonce() uint64 {
 func SetNonce(nonce uint64) {
 	mu.Lock()
 	defer mu.Unlock()
+	oldNonce := C.Nonce
 	C.Nonce = nonce
+	consensusNonce.Set(float64(nonce))
+	if nonce > oldNonce {
+		consensusPeriodAdvancesTotal.Inc()
+	}
+}
+
+// updateConsensusMetrics updates all consensus-related metrics
+func updateConsensusMetrics() {
+	mu.RLock()
+	defer mu.RUnlock()
+	consensusVotersTotal.Set(float64(len(C.Voters)))
+	consensusNodesTotal.Set(float64(len(C.Nodes)))
+	consensusState.Set(float64(G.state))
+	consensusNonce.Set(float64(C.Nonce))
+	consensusStatus.Set(float64(C.Status))
 }

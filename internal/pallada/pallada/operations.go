@@ -598,3 +598,172 @@ func (vm *VM) opSstore() error {
 	// Сохраняем значение в storage
 	return vm.ctx.Storage.SetStorage(vm.ctx.Address, key, value)
 }
+
+// opCall вызывает другой контракт
+// Стек: [gas, address, value, inputOffset, inputSize, outputOffset, outputSize]
+// Результат: [success] (1 = успех, 0 = ошибка)
+// CALL опкод в EVM: CALL(gas, address, value, inputOffset, inputSize, outputOffset, outputSize)
+func (vm *VM) opCall() error {
+	if vm.ctx == nil {
+		return fmt.Errorf("CALL: context not available")
+	}
+
+	if vm.ctx.CallerInt == nil {
+		return fmt.Errorf("CALL: call interface not available")
+	}
+
+	// Проверяем, что на стеке достаточно элементов
+	if vm.stack.Len() < 7 {
+		return fmt.Errorf("CALL: stack underflow (need 7 elements)")
+	}
+
+	// Извлекаем параметры со стека (в обратном порядке)
+	outputSize, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+	outputOffset, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+	inputSize, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+	inputOffset, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+	value, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+	addressBig, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+	gasLimit, err := vm.stack.Pop()
+	if err != nil {
+		return fmt.Errorf("CALL: %w", err)
+	}
+
+	// Конвертируем gasLimit в uint64
+	if !gasLimit.IsUint64() {
+		return fmt.Errorf("CALL: gas limit too large")
+	}
+	gasLimitUint := gasLimit.Uint64()
+
+	// Конвертируем address из big.Int в Address
+	address := BigIntToAddress(addressBig)
+
+	// Читаем input данные из памяти
+	inputData := make([]byte, 0)
+	if inputSize.Sign() > 0 {
+		if !inputSize.IsUint64() {
+			return fmt.Errorf("CALL: input size too large")
+		}
+		inputSizeUint := inputSize.Uint64()
+		if !inputOffset.IsUint64() {
+			return fmt.Errorf("CALL: input offset too large")
+		}
+		inputOffsetUint := inputOffset.Uint64()
+
+		// Читаем данные из памяти (Get автоматически расширяет память нулями)
+		inputData, err = vm.memory.Get(inputOffsetUint, inputSizeUint)
+		if err != nil {
+			return fmt.Errorf("CALL: failed to read input from memory: %w", err)
+		}
+	}
+
+	// Расходуем газ на вызов (базовая стоимость CALL)
+	baseGasCost := uint64(700) // Базовая стоимость CALL (как в EVM)
+	if err := vm.gas.UseGas(baseGasCost); err != nil {
+		return err
+	}
+
+	// Расходуем газ на value (если value > 0)
+	if value.Sign() > 0 {
+		valueGasCost := uint64(9000) // Дополнительная стоимость при переводе value
+		if err := vm.gas.UseGas(valueGasCost); err != nil {
+			return err
+		}
+	}
+
+	// Расходуем газ на память для output
+	if outputSize.Sign() > 0 {
+		if !outputSize.IsUint64() {
+			return fmt.Errorf("CALL: output size too large")
+		}
+		outputSizeUint := outputSize.Uint64()
+		if !outputOffset.IsUint64() {
+			return fmt.Errorf("CALL: output offset too large")
+		}
+		outputOffsetUint := outputOffset.Uint64()
+
+		// Расходуем газ на память
+		currentMemSize := uint64(vm.memory.Len())
+		requiredMemSize := outputOffsetUint + outputSizeUint
+		if requiredMemSize > currentMemSize {
+			memGas := vm.gas.CalculateMemoryGas(currentMemSize, requiredMemSize)
+			if err := vm.gas.UseGas(memGas); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Ограничиваем gasLimit доступным газом
+	availableGas := vm.gas.GasRemaining()
+	if gasLimitUint > availableGas {
+		gasLimitUint = availableGas
+	}
+
+	// Вызываем контракт через CallInterface
+	result, success, gasUsed := vm.ctx.CallerInt.Call(
+		vm.ctx.Address, // caller (текущий контракт)
+		address,        // address (вызываемый контракт)
+		value,          // value
+		inputData,      // input
+		gasLimitUint,   // gasLimit
+	)
+
+	// Расходуем газ, использованный при вызове
+	if err := vm.gas.UseGas(gasUsed); err != nil {
+		return err
+	}
+
+	// Записываем результат в память (если есть место)
+	if outputSize.Sign() > 0 && success {
+		outputSizeUint := outputSize.Uint64()
+		outputOffsetUint := outputOffset.Uint64()
+
+		// Копируем результат в память (обрезаем или дополняем нулями)
+		resultSize := uint64(len(result))
+		if resultSize > outputSizeUint {
+			resultSize = outputSizeUint
+		}
+
+		// Подготавливаем данные для записи (дополняем нулями до outputSizeUint)
+		outputData := make([]byte, outputSizeUint)
+		if resultSize > 0 {
+			copy(outputData, result[:resultSize])
+		}
+
+		// Записываем в память (Set автоматически расширяет память)
+		if err := vm.memory.Set(outputOffsetUint, outputSizeUint, outputData); err != nil {
+			return fmt.Errorf("CALL: failed to write output to memory: %w", err)
+		}
+	}
+
+	// Помещаем результат на стек (1 = успех, 0 = ошибка)
+	if success {
+		if err := vm.stack.Push(big.NewInt(1)); err != nil {
+			return fmt.Errorf("CALL: failed to push result: %w", err)
+		}
+	} else {
+		if err := vm.stack.Push(big.NewInt(0)); err != nil {
+			return fmt.Errorf("CALL: failed to push result: %w", err)
+		}
+	}
+
+	return nil
+}

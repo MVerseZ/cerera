@@ -36,6 +36,14 @@ var (
 		Name: "p2p_peer_connects_total",
 		Help: "Total number of successful peer connections",
 	})
+	p2pPeerDisconnectsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_peer_disconnects_total",
+		Help: "Total number of peer disconnections",
+	})
+	p2pPeersConnected = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "p2p_peers_connected",
+		Help: "Current number of connected peers",
+	})
 	p2pPeerDiscoveryAttemptsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "p2p_peer_discovery_attempts_total",
 		Help: "Total number of peer discovery attempts",
@@ -56,16 +64,23 @@ var (
 		Name: "p2p_publish_errors_total",
 		Help: "Total number of publish errors",
 	})
+	p2pStreamErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "p2p_stream_errors_total",
+		Help: "Total number of stream errors",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(
 		p2pPeerConnectsTotal,
+		p2pPeerDisconnectsTotal,
+		p2pPeersConnected,
 		p2pPeerDiscoveryAttemptsTotal,
 		p2pDirectMessagesSentTotal,
 		p2pDirectMessagesReceivedTotal,
 		p2pPubsubMessagesReceivedTotal,
 		p2pPublishErrorsTotal,
+		p2pStreamErrorsTotal,
 	)
 }
 
@@ -156,6 +171,7 @@ func (n *Node) handleDirectMessage(stream network.Stream) {
 	nBytes, err := stream.Read(buf)
 	if err != nil {
 		p2plog.Errorw("error reading direct message", "err", err)
+		p2pStreamErrorsTotal.Inc()
 		return
 	}
 
@@ -333,6 +349,9 @@ func StartNode(addr string, laddr types.Address) (*Node, error) {
 	fullAddr := getHostAddress(h)
 	p2plog.Infow("node info", "multiaddr", fullAddr, "hostID", h.ID())
 
+	// Initialize P2P metrics
+	p2pPeersConnected.Set(0)
+
 	// Print initial status
 	p2plog.Info("starting Cerera node...")
 	printNetworkStatus()
@@ -478,6 +497,9 @@ func discoverPeers(ctx context.Context, h host.Host, n *Node) {
 			} else {
 				p2plog.Infow("connected to peer", "peerID", peer.ID)
 				p2pPeerConnectsTotal.Inc()
+				// Update connected peers count
+				peers := n.h.Network().Peers()
+				p2pPeersConnected.Set(float64(len(peers)))
 				networkAddr := getHostAddress(n.h)
 
 				// Send direct message to the connected peer

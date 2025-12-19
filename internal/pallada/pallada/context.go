@@ -19,6 +19,14 @@ type StorageInterface interface {
 	SetStorage(address types.Address, key *big.Int, value *big.Int) error
 }
 
+// CallInterface определяет интерфейс для вызова контрактов из контрактов
+// Используется для реализации CALL опкода
+type CallInterface interface {
+	// Call вызывает контракт по адресу
+	// Возвращает: результат выполнения, успех (true = успех, false = ошибка), использованный газ
+	Call(caller types.Address, address types.Address, value *big.Int, input []byte, gasLimit uint64) ([]byte, bool, uint64)
+}
+
 // Context содержит контекст выполнения контракта в блокчейне
 type Context struct {
 	Caller    types.Address    // Адрес вызывающего (отправителя транзакции)
@@ -29,6 +37,7 @@ type Context struct {
 	GasPrice  *big.Int         // Цена газа
 	BlockInfo *BlockInfo       // Информация о блоке
 	Storage   StorageInterface // Интерфейс для работы с storage (может быть nil)
+	CallerInt CallInterface    // Интерфейс для вызова контрактов (может быть nil)
 }
 
 // NewContext создает новый контекст выполнения
@@ -58,6 +67,13 @@ func NewContext(caller, address types.Address, value *big.Int, input []byte, gas
 func NewContextWithStorage(caller, address types.Address, value *big.Int, input []byte, gasLimit uint64, gasPrice *big.Int, blockInfo *BlockInfo, storage StorageInterface) *Context {
 	ctx := NewContext(caller, address, value, input, gasLimit, gasPrice, blockInfo)
 	ctx.Storage = storage
+	return ctx
+}
+
+// NewContextWithCall создает новый контекст с поддержкой вызова контрактов
+func NewContextWithCall(caller, address types.Address, value *big.Int, input []byte, gasLimit uint64, gasPrice *big.Int, blockInfo *BlockInfo, storage StorageInterface, callerInt CallInterface) *Context {
+	ctx := NewContextWithStorage(caller, address, value, input, gasLimit, gasPrice, blockInfo, storage)
+	ctx.CallerInt = callerInt
 	return ctx
 }
 

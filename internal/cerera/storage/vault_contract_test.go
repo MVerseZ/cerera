@@ -273,3 +273,90 @@ func TestD5Vault_StoreContractCode_UpdateExisting(t *testing.T) {
 		t.Errorf("Retrieved code length mismatch: expected %d, got %d", len(secondCode), len(retrievedCode))
 	}
 }
+
+// TestD5Vault_DeleteContractCode тестирует удаление кода контракта
+func TestD5Vault_DeleteContractCode(t *testing.T) {
+	// Очищаем тестовую директорию перед тестом
+	cfg := createTestConfigForContract()
+	os.RemoveAll(cfg.Vault.PATH)
+
+	vault, err := NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+	defer func() {
+		vault.Close()
+		os.RemoveAll(cfg.Vault.PATH)
+	}()
+
+	// Приводим к *D5Vault
+	d5Vault := vault.(*D5Vault)
+
+	// Создаем тестовый адрес и код контракта
+	privateKey, _ := types.GenerateAccount()
+	address := types.PubkeyToAddress(privateKey.PublicKey)
+	contractCode := []byte{0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}
+
+	// Сохраняем код
+	err = d5Vault.StoreContractCode(address, contractCode)
+	if err != nil {
+		t.Fatalf("StoreContractCode failed: %v", err)
+	}
+
+	// Проверяем, что код есть
+	if !d5Vault.HasContractCode(address) {
+		t.Error("HasContractCode should return true before deletion")
+	}
+
+	// Удаляем код
+	err = d5Vault.DeleteContractCode(address)
+	if err != nil {
+		t.Fatalf("DeleteContractCode failed: %v", err)
+	}
+
+	// Проверяем, что код удален
+	if d5Vault.HasContractCode(address) {
+		t.Error("HasContractCode should return false after deletion")
+	}
+
+	// Проверяем, что CodeHash очищен
+	account := d5Vault.Get(address)
+	if account != nil && len(account.CodeHash) > 0 {
+		t.Error("CodeHash should be empty after deletion")
+	}
+
+	// Проверяем, что получение кода возвращает ошибку
+	_, err = d5Vault.GetContractCode(address)
+	if err == nil {
+		t.Error("Expected error when getting deleted contract code")
+	}
+}
+
+// TestD5Vault_DeleteContractCode_NonExistent тестирует удаление несуществующего кода
+func TestD5Vault_DeleteContractCode_NonExistent(t *testing.T) {
+	// Очищаем тестовую директорию перед тестом
+	cfg := createTestConfigForContract()
+	os.RemoveAll(cfg.Vault.PATH)
+
+	vault, err := NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+	defer func() {
+		vault.Close()
+		os.RemoveAll(cfg.Vault.PATH)
+	}()
+
+	// Приводим к *D5Vault
+	d5Vault := vault.(*D5Vault)
+
+	// Создаем несуществующий адрес
+	privateKey, _ := types.GenerateAccount()
+	address := types.PubkeyToAddress(privateKey.PublicKey)
+
+	// Удаление несуществующего кода не должно вызывать ошибку
+	err = d5Vault.DeleteContractCode(address)
+	if err != nil {
+		t.Errorf("DeleteContractCode should not fail for non-existent code: %v", err)
+	}
+}

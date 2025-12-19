@@ -97,7 +97,7 @@ type Validator interface {
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
 	ValidateRawTransaction(tx *types.GTransaction) bool
-	ValidateTransaction(t *types.GTransaction, from types.Address) bool
+	// ValidateTransaction(t *types.GTransaction, from types.Address) bool
 	ValidateBlock(b block.Block) bool
 	// observer methods
 	GetID() string
@@ -177,7 +177,9 @@ func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address,
 		return nil, err
 	}
 	// calculate fee and add to value
-	valTxCreated.Inc()
+	// creating tx not here
+	// TODO
+	// valTxCreated.Inc()
 	return tx, nil
 }
 
@@ -724,7 +726,10 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 
 	// Signing does not perform balance/gas affordability checks.
 	// Validation is handled separately in ValidateTransaction.
-	valSignSuccess.Inc()
+
+	// 19.12.2025 by gnupunk
+	// ValidateTransaction deprecated
+
 	return nil
 }
 
@@ -752,7 +757,7 @@ func (validator *CoreValidator) ValidateRawTransaction(tx *types.GTransaction) b
 
 // Validate and execute transaction
 // TODO GAS
-func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
+func (validator *CoreValidator) ValidateTransaction1(tx *types.GTransaction, from types.Address) bool {
 	// no edit tx here !!!
 	// check user can send signed tx
 	// this function should be rewriting and simplified by refactoring onto n functions
@@ -773,7 +778,6 @@ func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from
 		return false
 	}
 	localVault.CheckRunnable(r, s, tx)
-	valTxValidated.Inc()
 	return true
 }
 
@@ -866,9 +870,12 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		if err != nil {
 			return err.Error()
 		}
+		valTxCreated.Inc() // temporary move metrics here
 		if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
 			return err.Error()
 		}
+		valSignSuccess.Inc() // temporary move metrics here
+		valTxValidated.Inc() // temporary move metrics here
 		pool.Get().QueueTransaction(tx)
 		return tx.Hash()
 	case "get":
