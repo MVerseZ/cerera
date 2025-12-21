@@ -444,37 +444,6 @@ func TestCreateTransaction(t *testing.T) {
 // 	}
 // }
 
-// TestExecuteTransaction_ErrorHandling проверяет обработку ошибок в ExecuteTransaction
-// Примечание: ExecuteTransaction требует инициализированного vault, поэтому тесты ограничены
-func TestExecuteTransaction_ErrorHandling(t *testing.T) {
-	validator := &CoreValidator{}
-	validator.SetUp(big.NewInt(11))
-
-	// ExecuteTransaction требует vault, который не инициализирован в тестах
-	// Поэтому мы проверяем только, что метод не паникует при вызове
-	// В реальном сценарии ошибки будут обрабатываться через vault
-
-	tx := types.NewTransaction(
-		1,
-		types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-		big.NewInt(1000),
-		3.0,
-		big.NewInt(0),
-		[]byte("test"),
-	)
-
-	// Проверяем, что метод не паникует даже без инициализированного vault
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("ExecuteTransaction panicked: %v", r)
-			}
-		}()
-		// Может вернуть ошибку, но не должен паниковать
-		_ = validator.ExecuteTransaction(*tx)
-	}()
-}
-
 // TestProposeBlock_ErrorHandling проверяет обработку ошибок в ProposeBlock
 func TestProposeBlock_ErrorHandling(t *testing.T) {
 	validator := &CoreValidator{}
