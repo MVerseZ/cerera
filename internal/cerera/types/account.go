@@ -22,13 +22,17 @@ type Input struct {
 
 const DEBUG = false
 
+type StateAccountData struct {
+	Address Address
+	Nonce   uint64
+	Root    common.Hash // merkle root of the storage trie
+}
+
 type StateAccount struct {
-	Address    Address
+	StateAccountData
 	balance    *big.Int `json:"-"` // не сериализуем balance в JSON
 	Bloom      []byte
 	CodeHash   []byte
-	Nonce      uint64
-	Root       common.Hash // merkle root of the storage trie
 	Inputs     *Input      `json:"-"` // не сериализуем Inputs в JSON из-за mutex
 	Status     byte        // 0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID
 	Type       byte        // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
@@ -41,10 +45,12 @@ type StateAccount struct {
 // TODO
 func NewStateAccount(address Address, balance float64, root common.Hash) *StateAccount {
 	return &StateAccount{
-		Address: address,
-		Nonce:   1,
+		StateAccountData: StateAccountData{
+			Address: address,
+			Nonce:   1,
+			Root:    root,
+		},
 		balance: FloatToBigInt(balance),
-		Root:    root,
 		Bloom:   []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Status:  0,
 		Type:    0,

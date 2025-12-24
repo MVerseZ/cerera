@@ -15,7 +15,7 @@ import (
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) connectToBootstrap() {
 	bootstrapAddr := i.GetBootstrapAddr()
-	retryDelay := 5 * time.Second
+	retryDelay := 3 * time.Second
 	var maxRetries = 10
 	var retries = 0
 
@@ -28,14 +28,11 @@ func (i *Ice) connectToBootstrap() {
 			return
 		}
 
-		icelogger().Infow("Connecting to bootstrap node", "bootstrap_addr", bootstrapAddr)
+		icelogger().Debugw("Connecting to bootstrap node", "bootstrap_addr", bootstrapAddr)
 
 		conn, err := net.DialTimeout("tcp", bootstrapAddr, 10*time.Second)
 		if err != nil {
-			icelogger().Warnw("Failed to connect to bootstrap",
-				"bootstrap_addr", bootstrapAddr,
-				"err", err,
-			)
+
 			retries++
 			if retries >= maxRetries {
 				icelogger().Errorw("Failed to connect to bootstrap", "bootstrap_addr", bootstrapAddr, "retries", retries, "max_retries", maxRetries, "err", err)

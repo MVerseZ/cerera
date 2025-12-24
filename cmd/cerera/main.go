@@ -83,12 +83,12 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	}
 
 	// Инициализация майнера
-	miner, err := miner.Init()
+	minerInstance, err := miner.Init()
 	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
 	if mine {
-		if err := miner.Start(); err != nil {
+		if err := minerInstance.Start(); err != nil {
 			appLog.Errorw("Failed to start miner", "err", err)
 			return nil, fmt.Errorf("failed to start miner: %w", err)
 		}
@@ -96,7 +96,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 
 	// gigea.E.Register(chain)
 	// gigea.E.Register(miner.GetMiner())
-	mempool.Register(miner)
+	mempool.Register(minerInstance)
 
 	// Инициализация Ice компонента
 	ice, err := icenet.Start(cfg, ctx, address)
@@ -204,22 +204,5 @@ func main() {
 	}()
 
 	<-done
-
-	// // Ожидание сигнала завершения
-	// <-ctx.Done()
-
-	// log.Println("Получен сигнал завершения, начинаем graceful shutdown...")
-
-	// // Останавливаем другие компоненты через registry, если они поддерживают остановку
-	// if app.registry != nil {
-	// 	if err := app.registry.StopAllServices(); err != nil {
-	// 		log.Printf("Ошибка при остановке сервисов: %v", err)
-	// 	}
-	// }
-
-	// // Даем время на завершение операций записи в базу данных
-	// time.Sleep(100 * time.Millisecond)
-
-	// log.Println("Приложение корректно завершено")
 
 }

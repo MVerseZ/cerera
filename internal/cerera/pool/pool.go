@@ -9,11 +9,50 @@ import (
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/observer"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const POOL_SERVICE_NAME = "POOL_CERERA_001_1_3"
 
 var pLogger = logger.Named("pool")
+
+var (
+	poolSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "pool_size",
+		Help: "Current number of transactions in the pool",
+	})
+	poolBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "pool_bytes",
+		Help: "Current size of the pool in bytes",
+	})
+	poolTxAddedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "pool_tx_added_total",
+		Help: "Total number of transactions added to the pool",
+	})
+	poolTxRemovedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "pool_tx_removed_total",
+		Help: "Total number of transactions removed from the pool",
+	})
+	poolTxRejectedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "pool_tx_rejected_total",
+		Help: "Total number of transactions rejected (low gas or pool full)",
+	})
+	poolMaxSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "pool_max_size",
+		Help: "Maximum size of the pool",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		poolSize,
+		poolBytes,
+		poolTxAddedTotal,
+		poolTxRemovedTotal,
+		poolTxRejectedTotal,
+		poolMaxSize,
+	)
+}
 
 type MemPoolInfo struct {
 	Size             int     // current tx count
@@ -98,6 +137,10 @@ func InitPool(minGas float64, maxSize int) (TxPool, error) {
 		Txs:              make([]types.GTransaction, 0),
 	}
 
+	poolMaxSize.Set(float64(p.maxSize))
+	poolSize.Set(0)
+	poolBytes.Set(0)
+
 	go p.PoolServiceLoop()
 	GPool = p
 	return GPool, nil
@@ -136,6 +179,11 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 			p.Info.Hashes = append(p.Info.Hashes, tx.Hash())
 			p.Info.Txs = append(p.Info.Txs, *tx)
 			p.Info.UnbroadCastCount++
+			poolTxAddedTotal.Inc()
+			poolSize.Set(float64(p.Info.Size))
+			poolBytes.Set(float64(p.Info.Bytes))
+		} else {
+			poolTxRejectedTotal.Inc()
 		}
 	}
 	// }
@@ -178,6 +226,8 @@ func (p *Pool) calcInfo() {
 	}
 
 	p.Info = result
+	poolSize.Set(float64(result.Size))
+	poolBytes.Set(float64(result.Bytes))
 }
 
 func (p *Pool) GetInfo() MemPoolInfo {
@@ -299,6 +349,9 @@ func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 	}
 	// fmt.Printf("Deleted: %s\r\n", tx.Hash())
 	delete(p.memPool, txHash)
+	poolTxRemovedTotal.Inc()
+	// Update metrics
+	p.calcInfo()
 	return nil
 }
 
@@ -310,6 +363,7 @@ func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 		// p.memPool = append(p.memPool, tx)
 		// network.BroadcastTx(tx)
 	} else {
+		poolTxRejectedTotal.Inc()
 		pLogger.Warnw("Transaction rejected",
 			"hash", tx.Hash(),
 			"poolSize", len(p.memPool),

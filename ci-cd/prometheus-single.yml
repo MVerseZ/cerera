@@ -3,15 +3,12 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: cerera-nodes
+  - job_name: cerera-node
     metrics_path: /metrics
     static_configs:
-      # Сбор метрик со всех нод через Docker network
+      # Сбор метрик с одной ноды через Docker network
       - targets:
           - "node1:1337"
-          - "node2:1338"
-          - "node3:1339"
-          - "node4:1340"
-          - "node5:1341"
         labels:
           cluster: "cerera"
+          node: "node1"

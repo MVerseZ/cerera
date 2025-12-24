@@ -151,3 +151,14 @@ Content-Type: application/json
     "jsonrpc": "2.0",
     "id": 11231
 }   
+
+### GET INPUTS
+POST http://localhost:1337/app HTTP/1.1
+Content-Type: application/json
+
+{
+    "method": "cerera.account.inputs",
+    "jsonrpc": "2.0",
+    "id": 11231,
+    "params": ["0x08331087d34b42b9c6a0fcde2135c2a6d56cebab6c65227256072e93250a897c"]
+}

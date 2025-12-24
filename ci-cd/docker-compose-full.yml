@@ -1,0 +1,146 @@
+version: "3.8"
+
+services:
+  # Cerera Nodes
+  node1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node1
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    ports:
+      - "1337:1337"
+      - "31100:31100"
+    volumes:
+      - node1_data:/app/data
+      - node1_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node2:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node2
+    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    ports:
+      - "1338:1338"
+      - "31101:31101"
+    volumes:
+      - node2_data:/app/data
+      - node2_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node3:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node3
+    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    ports:
+      - "1339:1339"
+      - "31102:31102"
+    volumes:
+      - node3_data:/app/data
+      - node3_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node4:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node4
+    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
+    ports:
+      - "1340:1340"
+      - "31103:31103"
+    volumes:
+      - node4_data:/app/data
+      - node4_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  node5:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node5
+    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
+    ports:
+      - "1341:1341"
+      - "31104:31104"
+    volumes:
+      - node5_data:/app/data
+      - node5_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  # Prometheus для мониторинга
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cerera-prometheus
+    depends_on:
+      - node1
+      - node2
+      - node3
+      - node4
+      - node5
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  # Grafana для визуализации
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cerera-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Принудительный сброс пароля при первом запуске (работает только если база данных пуста)
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+volumes:
+  node1_data:
+  node1_config:
+  node2_data:
+  node2_config:
+  node3_data:
+  node3_config:
+  node4_data:
+  node4_config:
+  node5_data:
+  node5_config:
+  prom_data:
+  grafana_data:
+
+networks:
+  cerera-network:
+    driver: bridge

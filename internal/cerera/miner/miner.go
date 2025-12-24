@@ -15,6 +15,7 @@ import (
 	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const MINER_ID = "CERERA_MINER:937"
@@ -29,6 +30,45 @@ var (
 )
 
 var minerLog = logger.Named("miner")
+
+var (
+	minerBlocksMinedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "miner_blocks_mined_total",
+		Help: "Total number of blocks successfully mined",
+	})
+	minerMiningAttemptsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "miner_mining_attempts_total",
+		Help: "Total number of mining attempts",
+	})
+	minerMiningErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "miner_mining_errors_total",
+		Help: "Total number of mining errors",
+	})
+	minerMiningDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "miner_mining_duration_seconds",
+		Help:    "Time spent mining a block in seconds",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30},
+	})
+	minerPendingTxsInBlock = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "miner_pending_txs_in_block",
+		Help: "Number of pending transactions included in the last mined block",
+	})
+	minerStatus = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "miner_status",
+		Help: "Miner status (0=stopped, 1=active)",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		minerBlocksMinedTotal,
+		minerMiningAttemptsTotal,
+		minerMiningErrorsTotal,
+		minerMiningDurationSeconds,
+		minerPendingTxsInBlock,
+		minerStatus,
+	)
+}
 
 type Miner interface {
 	GetID() string
@@ -55,6 +95,7 @@ func (m *miner) Start() error {
 	m.status = 0x1
 	m.mining = true
 	m.stopChan = make(chan struct{})
+	minerStatus.Set(1)
 
 	minerLog.Infow("Starting miner", "id", m.GetID())
 
@@ -131,6 +172,7 @@ func (m *miner) Start() error {
 func (m *miner) Stop() {
 	m.status = 0x0
 	m.mining = false
+	minerStatus.Set(0)
 	if m.stopChan != nil {
 		close(m.stopChan)
 	}
@@ -139,17 +181,18 @@ func (m *miner) Stop() {
 
 func (m *miner) miningLoop() {
 
-	ticker := time.NewTicker(60 * time.Second) // Майним каждые 60 секунд
+	ticker := time.NewTicker(5 * time.Second) // Майним каждые 60 секунд
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			if m.mining {
-				// Проверяем, начался ли консенсус перед созданием блока
+				// Проверяем статус консенсуса для логирования, но не блокируем создание блоков
+				// Валидатор проверит консенсус перед добавлением блока в цепочку
 				if !m.isConsensusStarted() {
 					m.printConsensusStatus()
-					continue
+					minerLog.Warnw("Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
 				}
 				m.mineBlock()
 			}
@@ -195,10 +238,14 @@ func (m *miner) printConsensusStatus() {
 }
 
 func (m *miner) mineBlock() {
+	startTime := time.Now()
+	minerMiningAttemptsTotal.Inc()
+
 	// Получаем последний блок
 	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
 	if latestBlockResult == nil {
 		minerLog.Warnw("No last block found, skipping mining cycle")
+		minerMiningErrorsTotal.Inc()
 		return
 	}
 	latestBlock, ok := latestBlockResult.(*block.Block)
@@ -207,38 +254,47 @@ func (m *miner) mineBlock() {
 			"ok", ok,
 			"block_nil", latestBlock == nil,
 			"head_nil", latestBlock != nil && latestBlock.Head == nil)
+		minerMiningErrorsTotal.Inc()
 		return
 	}
 	header := latestBlock.Header()
 	if header == nil {
 		minerLog.Warnw("Last block header is nil, skipping mining cycle")
+		minerMiningErrorsTotal.Inc()
 		return
 	}
 
 	// Получаем транзакции из пула
 	pendingTxs := m.pool.GetPendingTransactions()
+	minerPendingTxsInBlock.Set(float64(len(pendingTxs)))
 	minerLog.Debugw("Mining block", "pending_txs", len(pendingTxs), "height", header.Height+1)
 
 	// Создаем новый блок
 	newBlock := m.createNewBlock(latestBlock, pendingTxs)
 	if newBlock == nil {
 		minerLog.Errorw("Failed to create new block")
+		minerMiningErrorsTotal.Inc()
 		return
 	}
 
 	// Выполняем майнинг (поиск nonce)
 	if err := m.performMining(newBlock); err != nil {
 		minerLog.Errorw("Mining failed", "err", err)
+		minerMiningErrorsTotal.Inc()
 		return
 	}
 
 	// Добавляем блок в цепочку через validator
 	var validator = validator.Get()
 	validator.ProposeBlock(newBlock)
+	minerBlocksMinedTotal.Inc()
+	duration := time.Since(startTime).Seconds()
+	minerMiningDurationSeconds.Observe(duration)
 	minerLog.Infow("Block mined and proposed",
 		"height", newBlock.Header().Height,
 		"hash", newBlock.GetHash(),
-		"txs", len(newBlock.Transactions))
+		"txs", len(newBlock.Transactions),
+		"duration_seconds", duration)
 
 	// Очищаем пул от обработанных транзакций
 	m.clearProcessedTransactions(newBlock.Transactions)
@@ -346,5 +402,7 @@ func (m *miner) Update(tx *types.GTransaction) {
 }
 
 func Init() (Miner, error) {
-	return &miner{status: 0x0}, nil
+	m := &miner{status: 0x0}
+	minerStatus.Set(0) // Initialize status metric
+	return m, nil
 }

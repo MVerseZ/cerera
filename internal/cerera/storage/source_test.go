@@ -40,9 +40,11 @@ func createTestStateAccountForSource(balance float64) *types.StateAccount {
 	var mpub [78]byte
 	copy(mpub[:], []byte("test_mpub"))
 	testStateAccount := &types.StateAccount{
-		Address:  address,
-		Nonce:    1,
-		Root:     common.Hash{},
+		StateAccountData: types.StateAccountData{
+			Address: address,
+			Nonce:   1,
+			Root:    common.Hash{},
+		},
 		CodeHash: derBytes,
 		Status:   0, // 0: OP_ACC_NEW
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},

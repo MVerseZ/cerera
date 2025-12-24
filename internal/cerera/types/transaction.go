@@ -384,7 +384,17 @@ func crvTxHash(t TxData) (h common.Hash) {
 	hw.Write(t.dna())
 	hw.Write(t.value().Bytes())
 	hw.Write(tNonce)
-	hw.Write(t.to()[:])
+
+	// Обрабатываем nil To для создания контрактов
+	toAddr := t.to()
+	if toAddr == nil {
+		// Используем пустой адрес для nil To (создание контракта)
+		emptyAddr := Address{}
+		hw.Write(emptyAddr[:])
+	} else {
+		hw.Write(toAddr[:])
+	}
+
 	hw.Write(t.gasPrice().Bytes())
 	hw.Write(tGas)
 

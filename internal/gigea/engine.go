@@ -46,12 +46,21 @@ func (e *Engine) Start(lAddr types.Address) {
 }
 
 func (e *Engine) Listen() {
+	var maintainChan <-chan time.Time
+	if e.MaintainTicker != nil {
+		maintainChan = e.MaintainTicker.C
+	}
+	// Если MaintainTicker nil, maintainChan будет nil, и select просто пропустит этот case
+
 	for {
 		select {
 		case b := <-e.BlockFunnel:
 			fmt.Printf("New block arrived to GIGEA: %s\r\n", b.GetHash())
-			C.Notify(b)
-		case <-e.MaintainTicker.C:
+			// Проверяем, что C инициализирован перед вызовом
+			if C.Chain != nil {
+				C.Notify(b)
+			}
+		case <-maintainChan:
 			// Maintain timer, utility methods
 			// fmt.Printf("Maintain GIGEA\r\n\tCSP:[address: %s, state: %s]\r\n", G.address, G.state)
 

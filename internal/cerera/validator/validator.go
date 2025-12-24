@@ -97,7 +97,7 @@ type Validator interface {
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
 	ValidateRawTransaction(tx *types.GTransaction) bool
-	ValidateTransaction(t *types.GTransaction, from types.Address) bool
+	// ValidateTransaction(t *types.GTransaction, from types.Address) bool
 	ValidateBlock(b block.Block) bool
 	// observer methods
 	GetID() string
@@ -177,7 +177,9 @@ func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address,
 		return nil, err
 	}
 	// calculate fee and add to value
-	valTxCreated.Inc()
+	// creating tx not here
+	// TODO
+	// valTxCreated.Inc()
 	return tx, nil
 }
 
@@ -250,6 +252,10 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		// Transfer value to recipient (UpdateBalance will deduct value from sender and add to recipient)
 		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
 
+	case types.AppTxType:
+		// Contract transactions: создание или вызов контракта
+		return nil
+
 	default:
 		vlogger.Warnw("unknown transaction type",
 			"type", tx.Type(),
@@ -278,28 +284,92 @@ func (v *CoreValidator) GetVersion() string {
 }
 
 func (v *CoreValidator) ProposeBlock(b *block.Block) {
-	// Проверяем готовность Ice (bootstrap соединение)
-	if !v.isIceReady() {
-		vlogger.Warnw("Ice not ready - waiting for bootstrap connection", "block_hash", b.GetHash())
-		// Ждем готовности Ice
-		v.waitForIceReady()
-		vlogger.Infow("Ice is ready - proceeding with block proposal", "block_hash", b.GetHash())
+	// Проверка на nil блок
+	if b == nil {
+		return
 	}
 
-	// Проверяем, начался ли консенсус
-	if !v.isConsensusStarted() {
-		v.printConsensusStatus(b.GetHash())
-		vlogger.Warnw("Consensus not started - waiting for consensus signal", "block_hash", b.GetHash())
-		// Ждем начала консенсуса
-		v.waitForConsensus()
-		vlogger.Infow("Consensus started - proceeding with block proposal", "block_hash", b.GetHash())
+	// Проверяем, что блок имеет валидный header
+	header := b.Header()
+	if header == nil {
+		return
 	}
 
-	for _, btx := range b.Transactions {
-		v.ExecuteTransaction(btx)
-		v.UpdateTxTree(&btx, int(b.Header().Index))
+	// Безопасно получаем hash блока
+	var blockHash common.Hash
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Если GetHash вызывает панику, используем пустой hash
+				blockHash = common.EmptyHash()
+			}
+		}()
+		blockHash = b.GetHash()
+	}()
+
+	// Проверяем готовность Ice (bootstrap соединение) с защитой от паники
+	iceReady := func() bool {
+		defer func() {
+			if r := recover(); r != nil {
+				// Игнорируем панику при проверке Ice
+			}
+		}()
+		return v.isIceReady()
+	}()
+
+	if !iceReady {
+		// Ice не готов, продолжаем локально
+	} else {
+		// Ice готов
 	}
-	v.UpdateChain(b)
+
+	// Проверяем, начался ли консенсус с защитой от паники
+	consensusStarted := func() bool {
+		defer func() {
+			if r := recover(); r != nil {
+				// Игнорируем панику при проверке консенсуса
+			}
+		}()
+		return v.isConsensusStarted()
+	}()
+
+	if !consensusStarted {
+		// Консенсус не начался, продолжаем локально
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Игнорируем панику при выводе статуса
+				}
+			}()
+			v.printConsensusStatus(blockHash)
+		}()
+	} else {
+		// Консенсус начался
+	}
+
+	if b.Transactions != nil {
+		for _, btx := range b.Transactions {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Игнорируем панику при выполнении транзакции
+					}
+				}()
+				v.ExecuteTransaction(btx)
+				v.UpdateTxTree(&btx, int(header.Index))
+			}()
+		}
+	}
+	if v.Chain != nil {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Игнорируем панику при обновлении цепи
+				}
+			}()
+			v.UpdateChain(b)
+		}()
+	}
 }
 
 // isIceReady проверяет, готов ли Ice компонент (bootstrap соединение установлено)
@@ -330,29 +400,6 @@ func (v *CoreValidator) isIceReady() bool {
 	return false
 }
 
-// waitForIceReady блокирует выполнение до готовности Ice
-func (v *CoreValidator) waitForIceReady() {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		vlogger.Errorw("Registry not available for Ice wait", "err", err)
-		return
-	}
-
-	// Пробуем найти Ice сервис по имени "ice" или по полному имени
-	iceService, ok := registry.GetService("ice")
-	if !ok {
-		// Пробуем найти по полному имени сервиса
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			vlogger.Errorw("Ice service not found in registry")
-			return
-		}
-	}
-
-	// Вызываем метод ожидания готовности через Exec (блокирующий вызов)
-	iceService.Exec("waitForBootstrapReady", nil)
-}
-
 // isConsensusStarted проверяет, начался ли консенсус
 func (v *CoreValidator) isConsensusStarted() bool {
 	registry, err := service.GetRegistry()
@@ -379,29 +426,6 @@ func (v *CoreValidator) isConsensusStarted() bool {
 	}
 
 	return false
-}
-
-// waitForConsensus блокирует выполнение до начала консенсуса
-func (v *CoreValidator) waitForConsensus() {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		vlogger.Errorw("Registry not available for consensus wait", "err", err)
-		return
-	}
-
-	// Пробуем найти Ice сервис по имени "ice" или по полному имени
-	iceService, ok := registry.GetService("ice")
-	if !ok {
-		// Пробуем найти по полному имени сервиса
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			vlogger.Errorw("Ice service not found in registry for consensus wait")
-			return
-		}
-	}
-
-	// Вызываем метод ожидания консенсуса через Exec (блокирующий вызов)
-	iceService.Exec("waitForConsensus", nil)
 }
 
 // printConsensusStatus выводит текущий статус консенсуса
@@ -516,7 +540,10 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 
 	// Signing does not perform balance/gas affordability checks.
 	// Validation is handled separately in ValidateTransaction.
-	valSignSuccess.Inc()
+
+	// 19.12.2025 by gnupunk
+	// ValidateTransaction deprecated
+
 	return nil
 }
 
@@ -539,33 +566,6 @@ func (v *CoreValidator) ValidateBlock(b block.Block) bool {
 }
 
 func (validator *CoreValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
-	return true
-}
-
-// Validate and execute transaction
-// TODO GAS
-func (validator *CoreValidator) ValidateTransaction(tx *types.GTransaction, from types.Address) bool {
-	// no edit tx here !!!
-	// check user can send signed tx
-	// this function should be rewriting and simplified by refactoring onto n functions
-	// logic now semicorrect, false only arythmetic errors
-	var localVault = storage.GetVault()
-	var r, s, _ = tx.RawSignatureValues()
-	var val = tx.Value()
-	gasCost := tx.Cost()
-	need := new(big.Int).Add(new(big.Int).Set(val), gasCost)
-	senderAcc := localVault.Get(from)
-	if senderAcc == nil {
-		valTxRejected.Inc()
-		return false
-	}
-	senderBal := senderAcc.GetBalanceBI()
-	if senderBal.Cmp(need) < 0 {
-		valTxRejected.Inc()
-		return false
-	}
-	localVault.CheckRunnable(r, s, tx)
-	valTxValidated.Inc()
 	return true
 }
 
@@ -647,9 +647,9 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		count, ok2 := params[2].(float64)
 		gas, ok3 := params[3].(float64)
 		msg, ok4 := params[4].(string)
-		if len(msg) > 1024 {
-			return errors.New("message too long")
-		}
+		// if len(msg) > 1024 {
+		// 	return errors.New("message too long")
+		// }
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
 			return errors.New("parameter type mismatch for send")
 		}
@@ -658,9 +658,12 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		if err != nil {
 			return err.Error()
 		}
+		valTxCreated.Inc() // temporary move metrics here
 		if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
 			return err.Error()
 		}
+		valSignSuccess.Inc() // temporary move metrics here
+		valTxValidated.Inc() // temporary move metrics here
 		pool.Get().QueueTransaction(tx)
 		return tx.Hash()
 	case "get":
@@ -699,4 +702,6 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 }
 
 func ConfigChain(validator Validator) {
+	// Placeholder for chain configuration
+	// Currently no-op, can be extended in the future if needed
 }

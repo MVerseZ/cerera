@@ -168,8 +168,8 @@ class CereraStressTester:
         print("🔧 Настройка двух аккаунтов для стресс-теста...")
         
         # Создаем два аккаунта
-        account1 = self.create_account("stress_tester_1", "password1")
-        account2 = self.create_account("stress_tester_2", "password2")
+        account1 = self.create_account("stress_tester_1", "123")
+        account2 = self.create_account("stress_tester_2", "123")
         
         if not account1 or not account2:
             print("❌ Не удалось создать аккаунты")
@@ -244,8 +244,8 @@ class CereraStressTester:
                 print(
                     f"🖼️ Взято случайное изображение: {img_file} ({len(img_bytes)} байт)")
                 # Выводим байты в консоль
-                message = "TEST MESSAGE"
-                #base64.b64encode(img_bytes).decode('utf-8')
+                message = "TEST MESSAGE " + str(transaction_count)
+                # message = base64.b64encode(img_bytes).decode('utf-8')
                 if direction:
                     # Отправляем от аккаунта 1 к аккаунту 2
                     success = self.send_transaction(
