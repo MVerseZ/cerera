@@ -5,12 +5,20 @@
 ## 📁 Содержимое
 
 - **Dockerfile** - Docker образ для приложения Cerera
-- **docker-compose.yml** - Compose файл для запуска Cerera + Prometheus + Grafana
+- **docker-compose.yml** - Compose файл для запуска Prometheus + Grafana (только мониторинг)
+- **docker-compose-single.yml** - Compose файл для запуска 1 ноды + Prometheus + Grafana (для тестирования)
+- **docker-compose-full.yml** - Compose файл для запуска 5 нод + Prometheus + Grafana (полный стек)
+- **docker-compose-5nodes.yml** - Compose файл для запуска 5 нод (без мониторинга)
+- **docker-compose-9nodes.yml** - Compose файл для запуска 9 нод
+- **docker-compose-15nodes.yml** - Compose файл для запуска 15 нод
 - **deploy.sh** - Скрипт для деплоя на удаленный сервер
 - **deploy-local.sh** - Скрипт для локального деплоя
 - **DEPLOYMENT.md** - Подробное руководство по деплою
+- **PROMETHEUS_SETUP.md** - Руководство по запуску с Prometheus
+- **reset-grafana-password.ps1** / **reset-grafana-password.sh** - Скрипты для сброса пароля Grafana
 - **SYSTEMD-GUIDE.md** - Руководство по настройке systemd сервиса
-- **prometheus.yml** - Конфигурация Prometheus для мониторинга
+- **prometheus.yml** - Конфигурация Prometheus для мониторинга (5 нод)
+- **prometheus-single.yml** - Конфигурация Prometheus для мониторинга (1 нода)
 
 ## 🐳 Docker
 
@@ -23,6 +31,34 @@ docker build -f ci-cd/Dockerfile -t cerera:latest .
 
 ### Запуск через docker-compose
 
+#### Вариант 1: Одна нода + Prometheus + Grafana (для тестирования)
+
+```bash
+# Из папки ci-cd
+cd ci-cd
+docker-compose -f docker-compose-single.yml up -d
+
+# Или из корня проекта
+docker-compose -f ci-cd/docker-compose-single.yml up -d
+```
+
+Этот вариант запускает 1 ноду Cerera вместе с Prometheus и Grafana. Идеально для локальной разработки и тестирования.
+
+#### Вариант 2: Полный стек (5 нод + Prometheus + Grafana)
+
+```bash
+# Из папки ci-cd
+cd ci-cd
+docker-compose -f docker-compose-full.yml up -d
+
+# Или из корня проекта
+docker-compose -f ci-cd/docker-compose-full.yml up -d
+```
+
+Этот вариант запускает 5 нод Cerera вместе с Prometheus и Grafana для мониторинга.
+
+#### Вариант 3: Только мониторинг (Prometheus + Grafana)
+
 ```bash
 # Из папки ci-cd
 cd ci-cd
@@ -31,6 +67,18 @@ docker-compose up -d
 # Или из корня проекта
 docker-compose -f ci-cd/docker-compose.yml up -d
 ```
+
+Этот вариант запускает только Prometheus и Grafana (для мониторинга нод, запущенных отдельно).
+
+#### Вариант 4: Только ноды (без мониторинга)
+
+```bash
+# Из папки ci-cd
+cd ci-cd
+docker-compose -f docker-compose-5nodes.yml up -d
+```
+
+Подробнее о запуске с Prometheus см. [PROMETHEUS_SETUP.md](./PROMETHEUS_SETUP.md)
 
 ### Запуск контейнера вручную
 

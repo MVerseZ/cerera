@@ -216,10 +216,12 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &types.StateAccount{
-		Address: rootHashAddress,
-		Nonce:   1,
+		StateAccountData: types.StateAccountData{
+			Address: rootHashAddress,
+			Nonce:   1,
+			Root:    vlt.rootHash,
+		},
 		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
-		Root: vlt.rootHash,
 		CodeHash: types.EncodePrivateKeyToByte(
 			types.DecodePrivKey(cfg.NetCfg.PRIV),
 		),
@@ -356,10 +358,11 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	pubKeyStr := publicKey.B58Serialize()
 	copy(mpub[:], []byte(pubKeyStr))
 	newAccount := &types.StateAccount{
-		Address: address,
-		Nonce:   1,
-		//Balance:  types.FloatToBigInt(100.0),
-		Root:     v.rootHash,
+		StateAccountData: types.StateAccountData{
+			Address: address,
+			Nonce:   1,
+			Root:    v.rootHash,
+		},
 		CodeHash: codeHash,
 		Status:   0, // 0: OP_ACC_NEW
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},

@@ -1,11 +1,31 @@
 version: "3.8"
 
 services:
+  # Cerera Node (одна нода)
+  node1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node1
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    ports:
+      - "1337:1337"
+      - "31100:31100"
+    volumes:
+      - node1_data:/app/data
+      - node1_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  # Prometheus для мониторинга
   prometheus:
     image: prom/prometheus:latest
     container_name: cerera-prometheus
+    depends_on:
+      - node1
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-single.yml:/etc/prometheus/prometheus.yml:ro
       - prom_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -14,7 +34,10 @@ services:
     ports:
       - "9090:9090"
     restart: unless-stopped
+    networks:
+      - cerera-network
 
+  # Grafana для визуализации
   grafana:
     image: grafana/grafana:latest
     container_name: cerera-grafana
@@ -33,9 +56,15 @@ services:
       - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
+    networks:
+      - cerera-network
 
 volumes:
+  node1_data:
+  node1_config:
   prom_data:
   grafana_data:
 
-
+networks:
+  cerera-network:
+    driver: bridge

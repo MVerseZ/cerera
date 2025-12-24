@@ -205,21 +205,4 @@ func main() {
 
 	<-done
 
-	// // Ожидание сигнала завершения
-	// <-ctx.Done()
-
-	// log.Println("Получен сигнал завершения, начинаем graceful shutdown...")
-
-	// // Останавливаем другие компоненты через registry, если они поддерживают остановку
-	// if app.registry != nil {
-	// 	if err := app.registry.StopAllServices(); err != nil {
-	// 		log.Printf("Ошибка при остановке сервисов: %v", err)
-	// 	}
-	// }
-
-	// // Даем время на завершение операций записи в базу данных
-	// time.Sleep(100 * time.Millisecond)
-
-	// log.Println("Приложение корректно завершено")
-
 }

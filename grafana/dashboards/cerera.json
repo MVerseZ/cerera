@@ -1,83 +1,597 @@
 {
+  "uid": "cerera-overview",
   "title": "Cerera Overview",
+  "tags": ["cerera"],
   "timezone": "browser",
   "schemaVersion": 38,
   "version": 1,
   "refresh": "5s",
+  "editable": true,
   "panels": [
     {
+      "id": 1,
       "type": "timeseries",
       "title": "P2P Direct Messages (rate)",
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "rate(p2p_direct_messages_sent_total[5m])", "legendFormat": "sent" },
-        { "expr": "rate(p2p_direct_messages_received_total[5m])", "legendFormat": "received" }
-      ]
+        { 
+          "expr": "rate(p2p_direct_messages_sent_total[5m])", 
+          "legendFormat": "sent",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(p2p_direct_messages_received_total[5m])", 
+          "legendFormat": "received",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 2,
       "type": "timeseries",
       "title": "P2P PubSub Received (rate)",
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "rate(p2p_pubsub_messages_received_total[5m])", "legendFormat": "pubsub recv" }
-      ]
+        { 
+          "expr": "rate(p2p_pubsub_messages_received_total[5m])", 
+          "legendFormat": "pubsub recv",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 3,
       "type": "timeseries",
       "title": "Chain Blocks / TXs",
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "increase(chain_blocks_total[1h])", "legendFormat": "blocks (1h)" },
-        { "expr": "increase(chain_txs_total[1h])", "legendFormat": "txs (1h)" }
-      ]
+        { 
+          "expr": "increase(chain_blocks_total[1h])", 
+          "legendFormat": "blocks (1h)",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(chain_txs_total[1h])", 
+          "legendFormat": "txs (1h)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 4,
       "type": "timeseries",
       "title": "Chain Avg Block Time / Difficulty",
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "chain_avg_block_time_seconds", "legendFormat": "avg block time" },
-        { "expr": "chain_difficulty", "legendFormat": "difficulty" }
-      ]
+        { 
+          "expr": "chain_avg_block_time_seconds", 
+          "legendFormat": "avg block time",
+          "refId": "A"
+        },
+        { 
+          "expr": "chain_difficulty", 
+          "legendFormat": "difficulty",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 5,
       "type": "timeseries",
       "title": "Validator TXs (created/validated/rejected)",
       "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "increase(validator_tx_created_total[15m])", "legendFormat": "created" },
-        { "expr": "increase(validator_tx_validated_total[15m])", "legendFormat": "validated" },
-        { "expr": "increase(validator_tx_rejected_total[15m])", "legendFormat": "rejected" }
-      ]
+        { 
+          "expr": "increase(validator_tx_created_total[15m])", 
+          "legendFormat": "created",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(validator_tx_validated_total[15m])", 
+          "legendFormat": "validated",
+          "refId": "B"
+        },
+        { 
+          "expr": "increase(validator_tx_rejected_total[15m])", 
+          "legendFormat": "rejected",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 6,
       "type": "timeseries",
       "title": "Validator Signing (success/error)",
       "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "increase(validator_sign_success_total[15m])", "legendFormat": "sign success" },
-        { "expr": "increase(validator_sign_error_total[15m])", "legendFormat": "sign error" }
-      ]
+        { 
+          "expr": "increase(validator_sign_success_total[15m])", 
+          "legendFormat": "sign success",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(validator_sign_error_total[15m])", 
+          "legendFormat": "sign error",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 7,
       "type": "timeseries",
       "title": "Vault Accounts & Circulating Supply",
       "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "vault_accounts_total", "legendFormat": "accounts" },
-        { "expr": "vault_circulating_supply", "legendFormat": "circulating" }
-      ]
+        { 
+          "expr": "vault_accounts_total", 
+          "legendFormat": "accounts",
+          "refId": "A"
+        },
+        { 
+          "expr": "vault_circulating_supply", 
+          "legendFormat": "circulating",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     },
     {
+      "id": 8,
       "type": "timeseries",
       "title": "Vault Faucet / Transfers",
       "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "increase(vault_faucet_amount_total[1h])", "legendFormat": "faucet (1h)" },
-        { "expr": "rate(vault_transfers_total[5m])", "legendFormat": "transfers rate" }
-      ]
+        { 
+          "expr": "increase(vault_faucet_amount_total[1h])", 
+          "legendFormat": "faucet (1h)",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(vault_transfers_total[5m])", 
+          "legendFormat": "transfers rate",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Miner Status & Blocks Mined",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "miner_status", 
+          "legendFormat": "status (0=stopped, 1=active)",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(miner_blocks_mined_total[15m])", 
+          "legendFormat": "blocks mined (15m)",
+          "refId": "B"
+        },
+        { 
+          "expr": "increase(miner_mining_errors_total[15m])", 
+          "legendFormat": "errors (15m)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Miner Mining Duration & Pending TXs",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(miner_mining_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(miner_mining_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p50 duration",
+          "refId": "B"
+        },
+        { 
+          "expr": "miner_pending_txs_in_block", 
+          "legendFormat": "pending txs",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Pool Size & Bytes",
+      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "pool_size", 
+          "legendFormat": "size",
+          "refId": "A"
+        },
+        { 
+          "expr": "pool_bytes", 
+          "legendFormat": "bytes",
+          "refId": "B"
+        },
+        { 
+          "expr": "pool_max_size", 
+          "legendFormat": "max size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Pool Transactions (added/removed/rejected)",
+      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "rate(pool_tx_added_total[5m])", 
+          "legendFormat": "added rate",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(pool_tx_removed_total[5m])", 
+          "legendFormat": "removed rate",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(pool_tx_rejected_total[5m])", 
+          "legendFormat": "rejected rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Consensus State & Nonce",
+      "gridPos": { "x": 0, "y": 48, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "consensus_state", 
+          "legendFormat": "state (0=Follower, 1=Candidate, 2=Leader, 3=Validator, 4=Miner)",
+          "refId": "A"
+        },
+        { 
+          "expr": "consensus_nonce", 
+          "legendFormat": "nonce",
+          "refId": "B"
+        },
+        { 
+          "expr": "consensus_status", 
+          "legendFormat": "status",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Consensus Voters & Nodes",
+      "gridPos": { "x": 12, "y": 48, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "consensus_voters_total", 
+          "legendFormat": "voters",
+          "refId": "A"
+        },
+        { 
+          "expr": "consensus_nodes_total", 
+          "legendFormat": "nodes",
+          "refId": "B"
+        },
+        { 
+          "expr": "increase(consensus_period_advances_total[1h])", 
+          "legendFormat": "period advances (1h)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "P2P Peers Connected & Discovery",
+      "gridPos": { "x": 0, "y": 56, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "p2p_peers_connected", 
+          "legendFormat": "connected",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(p2p_peer_connects_total[5m])", 
+          "legendFormat": "connects rate",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(p2p_peer_disconnects_total[5m])", 
+          "legendFormat": "disconnects rate",
+          "refId": "C"
+        },
+        { 
+          "expr": "rate(p2p_peer_discovery_attempts_total[5m])", 
+          "legendFormat": "discovery attempts rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "P2P Errors (publish/stream)",
+      "gridPos": { "x": 12, "y": 56, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "rate(p2p_publish_errors_total[5m])", 
+          "legendFormat": "publish errors rate",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(p2p_stream_errors_total[5m])", 
+          "legendFormat": "stream errors rate",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Chain Height & Block Size",
+      "gridPos": { "x": 0, "y": 64, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "chain_height", 
+          "legendFormat": "height",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.95, rate(chain_block_size_bytes_bucket[5m]))", 
+          "legendFormat": "p95 block size",
+          "refId": "B"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(chain_block_size_bytes_bucket[5m]))", 
+          "legendFormat": "p50 block size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Chain Block Gas Used",
+      "gridPos": { "x": 12, "y": 64, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(chain_block_gas_used_bucket[5m]))", 
+          "legendFormat": "p95 gas used",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(chain_block_gas_used_bucket[5m]))", 
+          "legendFormat": "p50 gas used",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(chain_gas_total[5m])", 
+          "legendFormat": "total gas rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "RPC Requests Rate by Method",
+      "gridPos": { "x": 0, "y": 72, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "sum(rate(rpc_requests_total[5m])) by (method)", 
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "RPC Request Duration & Errors",
+      "gridPos": { "x": 12, "y": 72, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, sum(rate(rpc_requests_duration_seconds_bucket[5m])) by (le, method))", 
+          "legendFormat": "p95 duration - {{method}}",
+          "refId": "A"
+        },
+        { 
+          "expr": "sum(rate(rpc_requests_errors_total[5m])) by (method)", 
+          "legendFormat": "errors - {{method}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
     }
   ]
 }
-
-

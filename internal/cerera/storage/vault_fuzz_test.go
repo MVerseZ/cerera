@@ -16,9 +16,11 @@ func FuzzStateAccountBytes(f *testing.F) {
 	var mpub [78]byte
 	copy(mpub[:], []byte("test_mpub"))
 	testAccount := &types.StateAccount{
-		Address:  types.BytesToAddress([]byte("test_address_123456789012345678901234567890")),
-		Nonce:    1,
-		Root:     common.Hash{},
+		StateAccountData: types.StateAccountData{
+			Address: types.BytesToAddress([]byte("test_address_123456789012345678901234567890")),
+			Nonce:   1,
+			Root:    common.Hash{},
+		},
 		CodeHash: []byte("test_code_hash"),
 		Status:   0, // 0: OP_ACC_NEW
 		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -83,9 +85,11 @@ func FuzzAccountsTrieAppend(f *testing.F) {
 		var mpub [78]byte
 		copy(mpub[:], data)
 		account := &types.StateAccount{
-			Address:  addr,
-			Nonce:    1,
-			Root:     common.Hash{},
+			StateAccountData: types.StateAccountData{
+				Address: addr,
+				Nonce:   1,
+				Root:    common.Hash{},
+			},
 			CodeHash: data,
 			Status:   0, // 0: OP_ACC_NEW
 			Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -119,15 +123,20 @@ func FuzzAccountsTrieGet(f *testing.F) {
 
 		var mpub [78]byte
 		account := &types.StateAccount{
-			Address: addr,
-			Nonce:   1,
-			Status:  0, // 0: OP_ACC_NEW
-			Bloom:   []byte{0xf, 0xf, 0xf, 0x1},
+			StateAccountData: types.StateAccountData{
+				Address: addr,
+				Nonce:   1,
+				Root:    common.Hash{},
+			},
+			Status:   0, // 0: OP_ACC_NEW
+			Bloom:    []byte{0xf, 0xf, 0xf, 0x1},
+			CodeHash: []byte("test_code_hash"),
 			Inputs: &types.Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
 			},
-			MPub: mpub,
+			Passphrase: common.BytesToHash([]byte("test_pass")),
+			MPub:       mpub,
 		}
 		account.SetBalance(0)
 
@@ -156,10 +165,13 @@ func FuzzAccountsTrieSize(f *testing.F) {
 			addr := types.BytesToAddress([]byte(strings.Repeat("a", 40)))
 			var mpub [78]byte
 			account := &types.StateAccount{
-				Address: addr,
-				Nonce:   1,
-				Status:  0, // 0: OP_ACC_NEW
-				Bloom:   []byte{0xf, 0xf, 0xf, 0x1},
+				StateAccountData: types.StateAccountData{
+					Address: addr,
+					Nonce:   1,
+					Root:    common.Hash{},
+				},
+				Status: 0, // 0: OP_ACC_NEW
+				Bloom:  []byte{0xf, 0xf, 0xf, 0x1},
 				Inputs: &types.Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
@@ -192,10 +204,14 @@ func FuzzAccountsTrieGetAll(f *testing.F) {
 			addr := types.BytesToAddress([]byte(strings.Repeat(string(rune(i%26+97)), 40)))
 			var mpub [78]byte
 			account := &types.StateAccount{
-				Address: addr,
-				Nonce:   1,
-				Status:  0, // 0: OP_ACC_NEW
-				Bloom:   []byte{0xf, 0xf, 0xf, 0x1},
+				StateAccountData: types.StateAccountData{
+					Address: addr,
+					Nonce:   1,
+					Root:    common.Hash{},
+				},
+				CodeHash: []byte("test_code_hash"),
+				Status:   0, // 0: OP_ACC_NEW
+				Bloom:    []byte{0xf, 0xf, 0xf, 0x1},
 				Inputs: &types.Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
@@ -238,15 +254,20 @@ func FuzzAccountsTrieClear(f *testing.F) {
 			addr := types.BytesToAddress([]byte(strings.Repeat("b", 40)))
 			var mpub [78]byte
 			account := &types.StateAccount{
-				Address: addr,
-				Nonce:   1,
-				Status:  0, // 0: OP_ACC_NEW
-				Bloom:   []byte{0xf, 0xf, 0xf, 0x1},
+				StateAccountData: types.StateAccountData{
+					Address: addr,
+					Nonce:   1,
+					Root:    common.Hash{},
+				},
+				Status:   0, // 0: OP_ACC_NEW
+				Bloom:    []byte{0xf, 0xf, 0xf, 0x1},
+				CodeHash: []byte("test_code_hash"),
 				Inputs: &types.Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
 				},
-				MPub: mpub,
+				Passphrase: common.BytesToHash([]byte("test_pass")),
+				MPub:       mpub,
 			}
 			account.SetBalance(float64(i))
 			at.Append(addr, account)
