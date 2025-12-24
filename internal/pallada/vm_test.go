@@ -38,8 +38,8 @@ func TestVM_SimpleExecution(t *testing.T) {
 	code := []byte{
 		0x60, 0x2a, // PUSH1 42
 		0x60, 0x00, // PUSH1 0
-		0x52,       // MSTORE
-		0x00,       // STOP
+		0x52, // MSTORE
+		0x00, // STOP
 	}
 
 	ctx := NewContextWithStorage(
@@ -81,8 +81,8 @@ func TestVM_Arithmetic(t *testing.T) {
 	code := []byte{
 		0x60, 0x0a, // PUSH1 10
 		0x60, 0x05, // PUSH1 5
-		0x01,       // ADD
-		0x00,       // STOP
+		0x01, // ADD
+		0x00, // STOP
 	}
 
 	ctx := NewContextWithStorage(
@@ -127,7 +127,7 @@ func TestVM_Return(t *testing.T) {
 		0x52,       // MSTORE
 		0x60, 0x20, // PUSH1 32
 		0x60, 0x00, // PUSH1 0
-		0xF3,       // RETURN
+		0xF3, // RETURN
 	}
 
 	ctx := NewContextWithStorage(
@@ -167,7 +167,7 @@ func TestVM_OutOfGas(t *testing.T) {
 		0x60, 0x02, // PUSH1 2
 		0x01,       // ADD
 		0x60, 0x03, // PUSH1 3
-		0x01,       // ADD
+		0x01, // ADD
 		// ... много операций
 	}
 
@@ -199,8 +199,8 @@ func TestVM_StorageOperations(t *testing.T) {
 		0x60, 0x00, // PUSH1 0
 		0x55,       // SSTORE
 		0x60, 0x00, // PUSH1 0
-		0x54,       // SLOAD
-		0x00,       // STOP
+		0x54, // SLOAD
+		0x00, // STOP
 	}
 
 	storage := newMockStorage()
@@ -243,8 +243,8 @@ func TestVM_Comparison(t *testing.T) {
 	code := []byte{
 		0x60, 0x0a, // PUSH1 10
 		0x60, 0x05, // PUSH1 5
-		0x11,       // GT
-		0x00,       // STOP
+		0x11, // GT
+		0x00, // STOP
 	}
 
 	ctx := NewContextWithStorage(
@@ -304,8 +304,8 @@ func TestVM_GasUsed(t *testing.T) {
 	code := []byte{
 		0x60, 0x01, // PUSH1 1
 		0x60, 0x02, // PUSH1 2
-		0x01,       // ADD
-		0x00,       // STOP
+		0x01, // ADD
+		0x00, // STOP
 	}
 
 	ctx := NewContextWithStorage(

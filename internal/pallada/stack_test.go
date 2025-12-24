@@ -186,4 +186,3 @@ func TestStack_Clear(t *testing.T) {
 		t.Errorf("Expected depth 0, got %d", stack.Depth())
 	}
 }
-
