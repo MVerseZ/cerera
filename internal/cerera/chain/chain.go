@@ -373,19 +373,25 @@ func (bc *Chain) GetInfo() BlockChainStatus {
 		}
 	}
 
-	// Update info struct with current values
-	bc.info.Size = int64(totalSize)
 	// Update Prometheus gauge for total blockchain size
 	chainBlockchainSizeBytes.Set(float64(totalSize))
-	if len(bc.data) > 0 {
-		bc.info.Latest = bc.data[len(bc.data)-1].GetHash()
-	}
-	bc.info.Total = len(bc.data)
-	bc.info.ChainWork = int(bc.chainWork.Int64())
-	bc.info.AvgTime = bc.avgTime
-	bc.info.Txs = totalTxs
 
-	return bc.info
+	// Create and return a fresh BlockChainStatus struct with calculated values
+	var latestHash common.Hash
+	if len(bc.data) > 0 {
+		latestHash = bc.data[len(bc.data)-1].GetHash()
+	}
+
+	return BlockChainStatus{
+		Size:      int64(totalSize),
+		Latest:    latestHash,
+		Total:     len(bc.data),
+		ChainWork: int(bc.chainWork.Int64()),
+		AvgTime:   bc.avgTime,
+		Txs:       totalTxs,
+		Gas:       bc.info.Gas,
+		GasPrice:  bc.info.GasPrice,
+	}
 }
 
 func (bc *Chain) GetLatestBlock() *block.Block {
