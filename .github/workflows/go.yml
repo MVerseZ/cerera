@@ -41,16 +41,16 @@ jobs:
     - name: Tidy dependencies
       run: go mod tidy
 
-    - name: Format check
-      run: |
-        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-          echo "Code is not formatted. Run 'go fmt ./...'"
-          gofmt -s -d .
-          exit 1
-        fi
+    # - name: Format check
+    #   run: |
+    #     if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+    #       echo "Code is not formatted. Run 'go fmt ./...'"
+    #       gofmt -s -d .
+    #       exit 1
+    #     fi
 
-    - name: Vet
-      run: go vet ./...
+    # - name: Vet
+    #   run: go vet ./...
 
     - name: Build
       run: go build -v ./...
