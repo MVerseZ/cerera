@@ -38,6 +38,9 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
+    - name: Tidy dependencies
+      run: go mod tidy
+
     - name: Format check
       run: |
         if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then

@@ -49,38 +49,6 @@ services:
     networks:
       - cerera-network
 
-  node4:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    container_name: cerera-node4
-    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
-    ports:
-      - "1340:1340"
-      - "31103:31103"
-    volumes:
-      - node4_data:/app/data
-      - node4_config:/app/config
-    restart: unless-stopped
-    networks:
-      - cerera-network
-
-  node5:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    container_name: cerera-node5
-    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
-    ports:
-      - "1341:1341"
-      - "31104:31104"
-    volumes:
-      - node5_data:/app/data
-      - node5_config:/app/config
-    restart: unless-stopped
-    networks:
-      - cerera-network
-
 volumes:
   node1_data:
   node1_config:
@@ -88,10 +56,6 @@ volumes:
   node2_config:
   node3_data:
   node3_config:
-  node4_data:
-  node4_config:
-  node5_data:
-  node5_config:
 
 networks:
   cerera-network:

@@ -166,3 +166,7 @@ func CopyBytes(b []byte) (copiedBytes []byte) {
 	copy(copiedBytes, b)
 	return copiedBytes
 }
+
+func (tx *PGTransaction) setNonce(nonce uint64) {
+	tx.Nonce = nonce
+}

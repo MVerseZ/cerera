@@ -402,3 +402,19 @@ func TestGasCostEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestGasCostEdgeCases проверяет граничные случаи расчета газа
+func TestUpdateNonce(t *testing.T) {
+	tx := NewTransaction(
+		1,
+		HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		big.NewInt(1000000000000000000),
+		3.0,
+		FloatToBigInt(0.000001),
+		[]byte("test data"),
+	)
+	tx.UpdateNonce(1337)
+	if tx.Nonce() != 1337 {
+		t.Errorf("Nonce mismatch: got %d, want %d", tx.Nonce(), 1337)
+	}
+}

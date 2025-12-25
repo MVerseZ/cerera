@@ -1,13 +1,14 @@
 package icenet
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/gigea"
 )
 
 // REQ представляет структурированное сообщение с данными для нового узла
@@ -130,19 +131,53 @@ func parseREQ(data string) (*REQ, error) {
 
 // isREQMessage проверяет, является ли сообщение REQ
 func (i *Ice) isREQMessage(data string) bool {
-	return strings.HasPrefix(data, "REQ")
+	return strings.HasPrefix(data, MsgTypeREQ)
+}
+
+// isBlockMessage проверяет, является ли сообщение блоком
+func (i *Ice) isBlockMessage(data string) bool {
+	// Формат: BLOCK|<json_data>
+	return len(data) > len(MsgTypeBlock) && strings.HasPrefix(data, MsgTypeBlock)
+}
+
+// parseBlockMessage парсит JSON блок из сообщения
+// Формат сообщения: BLOCK|<json_data>
+func (i *Ice) parseBlockMessage(data string) (*block.Block, error) {
+	// Извлекаем JSON часть после "BLOCK|"
+	parts := i.splitMessage(data, "|")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid block message format: missing JSON data")
+	}
+
+	// JSON данные находятся во второй части
+	jsonData := parts[1]
+	// Убираем возможные пробелы и переносы строк
+	jsonData = strings.TrimSpace(jsonData)
+
+	// Парсим JSON в структуру Block
+	var b block.Block
+	if err := json.Unmarshal([]byte(jsonData), &b); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal block JSON: %w", err)
+	}
+
+	// Проверяем базовую валидность блока
+	if b.Head == nil {
+		return nil, fmt.Errorf("block header is nil")
+	}
+
+	return &b, nil
 }
 
 // isReadyRequest проверяет, является ли сообщение запросом на включение
 func (i *Ice) isReadyRequest(data string) bool {
 	// Формат: READY_REQUEST|{address}|{network_addr}
-	return len(data) > 12 && strings.HasPrefix(data, "READY_REQUEST")
+	return len(data) > len(MsgTypeReadyRequest) && strings.HasPrefix(data, MsgTypeReadyRequest)
 }
 
 // isWhoIsRequest проверяет, является ли сообщение WHO_IS запросом
 func (i *Ice) isWhoIsRequest(data string) bool {
 	// Формат: WHO_IS|{node_address}
-	return len(data) > 6 && strings.HasPrefix(data, "WHO_IS")
+	return len(data) > len(MsgTypeWhoIs) && strings.HasPrefix(data, MsgTypeWhoIs)
 }
 
 // handleWhoIsRequest обрабатывает WHO_IS запрос (для bootstrap узла)
@@ -165,7 +200,10 @@ func (i *Ice) handleWhoIsRequest(conn net.Conn, data string, remoteAddr string) 
 	icelogger().Infow("Looking up node address in consensus", "requested_address", nodeAddressStr)
 
 	// Ищем узел в консенсусе
-	nodes := gigea.GetNodes()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	nodes := consensusManager.GetNodes()
 	nodeInfo, exists := nodes[nodeAddressStr]
 
 	if !exists {
@@ -180,7 +218,7 @@ func (i *Ice) handleWhoIsRequest(conn net.Conn, data string, remoteAddr string) 
 
 	// Отправляем ответ с IP адресом узла
 	// Формат: WHO_IS_RESPONSE|{node_address}|{network_addr}
-	response := fmt.Sprintf("WHO_IS_RESPONSE|%s|%s\n", nodeAddressStr, nodeInfo.NetworkAddr)
+	response := fmt.Sprintf("%s|%s|%s\n", MsgTypeWhoIsResponse, nodeAddressStr, nodeInfo.NetworkAddr)
 
 	if _, err := conn.Write([]byte(response)); err != nil {
 		icelogger().Errorw("Failed to send WHO_IS response", "node_address", nodeAddressStr, "err", err)
@@ -196,7 +234,7 @@ func (i *Ice) handleWhoIsRequest(conn net.Conn, data string, remoteAddr string) 
 // isWhoIsResponse проверяет, является ли сообщение WHO_IS ответом
 func (i *Ice) isWhoIsResponse(data string) bool {
 	// Формат: WHO_IS_RESPONSE|{node_address}|{network_addr}
-	return len(data) > 15 && strings.HasPrefix(data, "WHO_IS_RESPONSE")
+	return len(data) > len(MsgTypeWhoIsResponse) && strings.HasPrefix(data, MsgTypeWhoIsResponse)
 }
 
 // handleWhoIsResponse обрабатывает WHO_IS ответ и обновляет IP адрес узла
@@ -219,7 +257,10 @@ func (i *Ice) handleWhoIsResponse(data string) {
 	}
 
 	// Обновляем IP адрес узла в консенсусе
-	gigea.AddNode(*nodeAddr, networkAddr)
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	consensusManager.AddNode(*nodeAddr, networkAddr)
 
 	icelogger().Infow("Updated node network address from WHO_IS response",
 		"node_address", nodeAddr.Hex(),
@@ -238,6 +279,12 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 
 	nodeAddressStr := i.trimResponse(parts[1])
 	networkAddr := i.trimResponse(parts[2])
+
+	// Валидируем сетевой адрес
+	if err := ValidateNetworkAddress(networkAddr); err != nil {
+		icelogger().Warnw("Invalid network address in READY_REQUEST", "network_addr", networkAddr, "err", err)
+		return
+	}
 
 	// Парсим адрес узла
 	nodeAddr := i.parseAddress(nodeAddressStr)
@@ -286,14 +333,23 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 		icelogger().Warnw("NOT saving connection - not a bootstrap node")
 	}
 
-	// Добавляем узел в консенсус
-	gigea.AddVoter(*nodeAddr)
-	gigea.AddNode(*nodeAddr, networkAddr)
+	// Добавляем узел в консенсус (используем общую функцию)
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	if err := addNodeToConsensus(*nodeAddr, networkAddr, consensusManager); err != nil {
+		icelogger().Warnw("Failed to add node to consensus in READY_REQUEST",
+			"node_address", nodeAddr.Hex(),
+			"network_addr", networkAddr,
+			"err", err)
+		return
+	}
 
 	// Обновляем nonce при добавлении нового узла
-	oldNonce := gigea.GetNonce()
+	// consensusManager уже получен выше, используем его
+	oldNonce := consensusManager.GetNonce()
 	newNonce := oldNonce + 1
-	gigea.SetNonce(newNonce)
+	consensusManager.SetNonce(newNonce)
 	icelogger().Infow("Updated nonce after adding node to consensus",
 		"old_nonce", oldNonce,
 		"new_nonce", newNonce,
@@ -301,11 +357,12 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 	)
 
 	// Формируем структурированное сообщение REQ
-	currentNonce := gigea.GetNonce()
+	// consensusManager уже получен выше, используем его
+	currentNonce := consensusManager.GetNonce()
 
 	// Получаем список узлов
-	nodes := gigea.GetNodes()
-	nodeList := make([]NodeInfo, 0)
+	nodes := consensusManager.GetNodes()
+	nodeList := make([]NodeInfo, 0, len(nodes)+1)
 	for addr, node := range nodes {
 		if node.IsConnected {
 			nodeList = append(nodeList, NodeInfo{
@@ -364,48 +421,28 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 	}
 }
 
-// splitMessage разбивает сообщение по разделителю
+// splitMessage разбивает сообщение по разделителю (обертка для совместимости)
 func (i *Ice) splitMessage(msg, delimiter string) []string {
-	var parts []string
-	current := ""
-	for _, char := range msg {
-		if string(char) == delimiter {
-			if current != "" {
-				parts = append(parts, current)
-				current = ""
-			}
-		} else if char != '\n' && char != '\r' {
-			current += string(char)
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
+	return splitMessage(msg, delimiter)
 }
 
-// trimResponse убирает пробелы и переносы строк из ответа
+// trimResponse убирает пробелы и переносы строк из ответа (обертка для совместимости)
 func (i *Ice) trimResponse(s string) string {
-	result := ""
-	for _, char := range s {
-		if char != ' ' && char != '\n' && char != '\r' && char != '\t' {
-			result += string(char)
-		}
-	}
-	return result
+	return trimResponse(s)
 }
 
-// parseAddress парсит адрес из строки
+// parseAddress парсит адрес из строки с валидацией
 func (i *Ice) parseAddress(addrStr string) *types.Address {
 	// Убираем пробелы
 	addrStr = i.trimResponse(addrStr)
 
-	// Пробуем распарсить как hex адрес
-	addr := types.HexToAddress(addrStr)
-	if addr == (types.Address{}) {
+	// Валидируем и парсим адрес
+	addr, err := ValidateHexAddress(addrStr)
+	if err != nil {
+		icelogger().Warnw("Failed to validate address", "addr", addrStr, "err", err)
 		return nil
 	}
-	return &addr
+	return addr
 }
 
 // broadcastConsensusStatus рассылает статус консенсуса всем подключенным узлам
@@ -415,10 +452,13 @@ func (i *Ice) broadcastConsensusStatus() {
 	}
 
 	// Получаем информацию о консенсусе
-	consensusInfo := gigea.GetConsensusInfo()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	consensusInfo := consensusManager.GetConsensusInfo()
 
 	// Получаем адреса voters
-	voters := gigea.GetVoters()
+	voters := consensusManager.GetVoters()
 	voterAddresses := make([]string, 0, len(voters))
 	for _, voter := range voters {
 		voterAddresses = append(voterAddresses, voter.Hex())
@@ -426,7 +466,7 @@ func (i *Ice) broadcastConsensusStatus() {
 	votersStr := strings.Join(voterAddresses, ",")
 
 	// Получаем адреса nodes
-	nodes := gigea.GetNodes()
+	nodes := consensusManager.GetNodes()
 	nodeAddresses := make([]string, 0, len(nodes))
 	for addr := range nodes {
 		nodeAddresses = append(nodeAddresses, addr)
@@ -435,7 +475,8 @@ func (i *Ice) broadcastConsensusStatus() {
 
 	// Формируем сообщение со статусом консенсуса
 	// Формат: CONSENSUS_STATUS|{status}|{voters_addresses}|{nodes_addresses}|{nonce}
-	statusMessage := fmt.Sprintf("CONSENSUS_STATUS|%v|%s|%s|%v\n",
+	statusMessage := fmt.Sprintf("%s|%v|%s|%s|%v\n",
+		MsgTypeConsensusStatus,
 		consensusInfo["status"],
 		votersStr,
 		nodesStr,
@@ -499,7 +540,10 @@ func (i *Ice) broadcastNodeList() {
 		return
 	}
 
-	nodes := gigea.GetNodes()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	nodes := consensusManager.GetNodes()
 	if len(nodes) == 0 {
 		return
 	}
@@ -526,8 +570,8 @@ func (i *Ice) broadcastNodeList() {
 		nodeListStr += nodeInfo
 	}
 
-	message := fmt.Sprintf("NODES|%s\n", nodeListStr)
-	countMessage := fmt.Sprintf("NODES_COUNT|%d\n", len(nodeList))
+	message := fmt.Sprintf("%s|%s\n", MsgTypeNodes, nodeListStr)
+	countMessage := fmt.Sprintf("%s|%d\n", MsgTypeNodesCount, len(nodeList))
 	fullMessage := message + countMessage
 
 	i.mu.Lock()
@@ -579,7 +623,7 @@ func (i *Ice) broadcastNodeList() {
 // isNodeOkMessage проверяет, является ли сообщение подтверждением NODE_OK
 func (i *Ice) isNodeOkMessage(data string) bool {
 	// Формат: NODE_OK|{count}|{nonce}
-	return len(data) > 7 && strings.HasPrefix(data, "NODE_OK")
+	return len(data) > len(MsgTypeNodeOk) && strings.HasPrefix(data, MsgTypeNodeOk)
 }
 
 // handleNodeOk обрабатывает сообщение NODE_OK от узла
@@ -614,7 +658,10 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 	}
 
 	// Получаем текущий nonce bootstrap узла
-	currentNonce := gigea.GetNonce()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	currentNonce := consensusManager.GetNonce()
 
 	icelogger().Debugw("Received NODE_OK from node",
 		"remote_addr", remoteAddr,
@@ -679,7 +726,8 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 	)
 
 	// Print full lists for debugging: nodes, connectedNodes, confirmedNodes, twice-confirmed
-	nodes := gigea.GetNodes()
+	// consensusManager уже получен выше, используем его
+	nodes := consensusManager.GetNodes()
 	icelogger().Debugw("Full nodes list")
 	for addr, node := range nodes {
 		icelogger().Debugw("Node entry", "address", addr, "network_addr", node.NetworkAddr, "is_connected", node.IsConnected)
@@ -723,8 +771,11 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 		)
 
 		// Переходим на следующий период (увеличиваем nonce)
+		i.mu.RLock()
+		consensusManager := i.consensusManager
+		i.mu.RUnlock()
 		newNonce := currentNonce + 1
-		gigea.SetNonce(newNonce)
+		consensusManager.SetNonce(newNonce)
 
 		// Сбрасываем подтверждения для нового периода
 		// Но сохраняем все узлы из connectedNodes с начальным значением 0

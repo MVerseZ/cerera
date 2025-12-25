@@ -207,8 +207,11 @@ func (b *Block) GetNonceBytes() []byte {
 	return bts
 }
 
-func (b *Block) IncNonce() {
-	b.Head.Nonce += 1
+func (b *Block) UpdateNonce() {
+	// set tx nonce to block nonce
+	for _, tx := range b.Transactions {
+		tx.UpdateNonce(b.Head.Nonce)
+	}
 }
 
 // get nonce as [4]byte from header
