@@ -28,6 +28,12 @@ func VerifyBlockHash(b *Block) (bool, error) {
 		return false, fmt.Errorf("difficulty cannot be zero")
 	}
 
+	// ВАЖНО: Обновляем размер блока перед вычислением хэша, так как он влияет на хэш
+	blockBytes := b.ToBytes()
+	if blockBytes != nil {
+		b.Head.Size = len(blockBytes)
+	}
+
 	// Вычисляем target: target = 2^256 / difficulty
 	target := new(big.Int).Div(
 		new(big.Int).Lsh(big.NewInt(1), 256),
@@ -66,6 +72,12 @@ func VerifyBlockHashWithDetails(b *Block) (*HashVerificationResult, error) {
 		result.IsValid = false
 		result.Error = "difficulty cannot be zero"
 		return result, nil
+	}
+
+	// ВАЖНО: Обновляем размер блока перед вычислением хэша, так как он влияет на хэш
+	blockBytes := b.ToBytes()
+	if blockBytes != nil {
+		b.Head.Size = len(blockBytes)
 	}
 
 	// Вычисляем target: target = 2^256 / difficulty
@@ -205,6 +217,12 @@ func FindValidNonce(b *Block, startNonce uint64, maxAttempts uint64) (uint64, ui
 	for attempts < maxAttempts {
 		// Устанавливаем текущий nonce
 		b.Head.Nonce = currentNonce
+
+		// ВАЖНО: Обновляем размер блока после изменения nonce, так как он влияет на хэш
+		blockBytes := b.ToBytes()
+		if blockBytes != nil {
+			b.Head.Size = len(blockBytes)
+		}
 
 		// Вычисляем хэш
 		blockHash, err := b.CalculateHash()

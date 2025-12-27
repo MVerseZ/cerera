@@ -10,78 +10,127 @@ import (
 	"github.com/cerera/internal/cerera/common"
 )
 
-// MarshalJSON marshals as JSON with a hash.
-func (tx *GTransaction) MarshalJSON() ([]byte, error) {
-	var enc txJSON
-	// fmt.Printf("Marshall tx with hash: %s send to: %s\r\n", tx.Hash(), tx.To())
-	if tx.dna != nil {
-		// 	return []byte{}, nil
-		// }
-		// for all txs types
-		enc.Hash = tx.Hash()
-		enc.Type = common.Uint64(tx.Type())
-		enc.To = tx.To()
+// DecimalBig marshals/unmarshals as a JSON string in decimal format (not hex)
+type DecimalBig big.Int
+
+// MarshalJSON implements json.Marshaler
+func (b DecimalBig) MarshalJSON() ([]byte, error) {
+	bi := (*big.Int)(&b)
+	return json.Marshal(bi.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (b *DecimalBig) UnmarshalJSON(input []byte) error {
+	var s string
+	if err := json.Unmarshal(input, &s); err != nil {
+		return err
 	}
-	// other fields
+	bi, ok := new(big.Int).SetString(s, 10)
+	if !ok {
+		return fmt.Errorf("invalid decimal number: %s", s)
+	}
+	*b = DecimalBig(*bi)
+	return nil
+}
+
+// DecimalUint64 marshals/unmarshals as a JSON number (not hex string)
+type DecimalUint64 uint64
+
+// MarshalJSON implements json.Marshaler
+func (u DecimalUint64) MarshalJSON() ([]byte, error) {
+	return json.Marshal(uint64(u))
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (u *DecimalUint64) UnmarshalJSON(input []byte) error {
+	var num uint64
+	if err := json.Unmarshal(input, &num); err != nil {
+		return err
+	}
+	*u = DecimalUint64(num)
+	return nil
+}
+
+// txJSONOutput is used for serialization with unified format
+type txJSONOutput struct {
+	Hash     common.Hash    `json:"hash"`
+	Type     uint64         `json:"type,omitempty"`
+	To       *Address       `json:"to,omitempty"`
+	From     *Address       `json:"from,omitempty"`
+	Nonce    *DecimalUint64 `json:"nonce,omitempty"`
+	Gas      *DecimalUint64 `json:"gas,omitempty"`
+	GasPrice *DecimalBig    `json:"gasPrice,omitempty"`
+	Value    *DecimalBig    `json:"value,omitempty"`
+	Data     *common.Bytes  `json:"input,omitempty"`
+	Dna      *common.Bytes  `json:"dna,omitempty"`
+	Payload  *common.Bytes  `json:"payload,omitempty"`
+	Time     time.Time      `json:"time,omitempty"`
+	R        *Big           `json:"r,omitempty"`
+	S        *Big           `json:"s,omitempty"`
+	V        *Big           `json:"v,omitempty"`
+}
+
+// MarshalJSON marshals as JSON with unified format (decimal strings for value/gasPrice, numbers for gas/nonce)
+func (tx *GTransaction) MarshalJSON() ([]byte, error) {
+	var output txJSONOutput
+	
+	// Common fields for all transaction types
+	output.Hash = tx.Hash()
+	output.Type = uint64(tx.Type())
+	output.To = tx.To()
+	from := tx.From()
+	if !from.IsEmpty() {
+		output.From = &from
+	}
+	
+	// Type-specific fields
 	switch itx := tx.inner.(type) {
 	case *PGTransaction:
-		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		// PGTransaction.Gas is float64; encode as uint64 for JSON schema
-		{
-			u := common.Uint64(uint64(itx.Gas))
-			enc.Gas = &u
-		}
-		enc.GasPrice = (*common.Big)(itx.GasPrice)
-		enc.Value = (*common.Big)(itx.Value)
-		enc.Data = (*common.Bytes)(&itx.Data)
-		enc.To = tx.To()
-		enc.Dna = (*common.Bytes)(&itx.Dna)
-		enc.Time = (time.Time)(tx.GetTime())
-		enc.Type = LegacyTxType
-		enc.Hash = tx.Hash()
-		enc.Payload = (*common.Bytes)(&itx.Payload)
+		nonce := DecimalUint64(itx.Nonce)
+		output.Nonce = &nonce
+		gas := DecimalUint64(uint64(itx.Gas))
+		output.Gas = &gas
+		gasPrice := DecimalBig(*itx.GasPrice)
+		output.GasPrice = &gasPrice
+		value := DecimalBig(*itx.Value)
+		output.Value = &value
+		output.Data = (*common.Bytes)(&itx.Data)
+		output.Dna = (*common.Bytes)(&itx.Dna)
+		output.Time = tx.GetTime()
+		output.Payload = (*common.Bytes)(&itx.Payload)
 		var r, s, v = tx.RawSignatureValues()
-		enc.R = (*Big)(r)
-		enc.S = (*Big)(s)
-		enc.V = (*Big)(v)
+		output.R = (*Big)(r)
+		output.S = (*Big)(s)
+		output.V = (*Big)(v)
 	case *CBTransaction:
-		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		// CBTransaction.Gas is float64; encode as uint64 for JSON schema
-		{
-			u := common.Uint64(uint64(itx.Gas))
-			enc.Gas = &u
-		}
-		enc.GasPrice = (*common.Big)(itx.GasPrice)
-		enc.Value = (*common.Big)(itx.Value)
-		enc.Data = (*common.Bytes)(&itx.Data)
-		enc.To = tx.To()
-		enc.Dna = (*common.Bytes)(&itx.Dna)
-		enc.Time = (time.Time)(tx.GetTime())
-		enc.Type = CoinbaseTxType
-		enc.Hash = tx.Hash()
-		enc.Payload = (*common.Bytes)(&itx.Payload)
-		// var r, s, v = tx.RawSignatureValues()
-		// enc.R = (*Big)(r)
-		// enc.S = (*Big)(s)
-		// enc.V = (*Big)(v)
+		nonce := DecimalUint64(itx.Nonce)
+		output.Nonce = &nonce
+		gas := DecimalUint64(uint64(itx.Gas))
+		output.Gas = &gas
+		gasPrice := DecimalBig(*itx.GasPrice)
+		output.GasPrice = &gasPrice
+		value := DecimalBig(*itx.Value)
+		output.Value = &value
+		output.Data = (*common.Bytes)(&itx.Data)
+		output.Dna = (*common.Bytes)(&itx.Dna)
+		output.Time = tx.GetTime()
+		output.Payload = (*common.Bytes)(&itx.Payload)
+		// Coinbase transactions may not have signature fields
 	case *FaucetTransaction:
-		enc.Nonce = (*common.Uint64)(&itx.Nonce)
-		// CBTransaction.Gas is float64; encode as uint64 for JSON schema
-		{
-			u := common.Uint64(uint64(itx.Gas))
-			enc.Gas = &u
-		}
-		enc.GasPrice = (*common.Big)(itx.GasPrice)
-		enc.Value = (*common.Big)(itx.Value)
-		enc.To = tx.To()
-		enc.Time = (time.Time)(tx.GetTime())
-		enc.Type = FaucetTxType
-		enc.Hash = tx.Hash()
+		nonce := DecimalUint64(itx.Nonce)
+		output.Nonce = &nonce
+		gas := DecimalUint64(uint64(itx.Gas))
+		output.Gas = &gas
+		gasPrice := DecimalBig(*itx.GasPrice)
+		output.GasPrice = &gasPrice
+		value := DecimalBig(*itx.Value)
+		output.Value = &value
+		output.Time = tx.GetTime()
 	default:
-		fmt.Printf("%T\r\n", itx)
+		fmt.Printf("Unknown transaction type: %T\r\n", itx)
 	}
 
-	return json.Marshal(&enc)
+	return json.Marshal(&output)
 }
 
 // UnmarshalJSON unmarshals from JSON.

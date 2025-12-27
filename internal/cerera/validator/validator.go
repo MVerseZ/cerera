@@ -676,13 +676,13 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 					txBlock := v.GetBlockByNumber(index)
 					for _, btx := range txBlock.Transactions {
 						if btx.Hash() == hash {
-							// Return only selected fields
+							// Return only selected fields with unified format
 							result := map[string]interface{}{
 								"hash":  btx.Hash().Hex(),
 								"from":  btx.From().Hex(),
-								"value": btx.Value().String(),
-								"gas":   btx.Gas(),
-								"data":  string(btx.Data()),
+								"value": btx.Value().String(), // decimal string
+								"gas":   uint64(btx.Gas()),    // number, not hex
+								"data":  common.Bytes(btx.Data()).String(), // hex string
 							}
 							// Handle To() which can be nil
 							if to := btx.To(); to != nil {

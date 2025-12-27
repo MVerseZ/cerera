@@ -43,7 +43,7 @@ func main() {
 	testBlock := block.NewBlock(genesisHeader)
 	testBlock.Transactions = []types.GTransaction{}
 
-	// Рассчитываем размер блока
+	// ВАЖНО: Рассчитываем размер блока после установки nonce, так как он влияет на размер JSON
 	blockBytes := testBlock.ToBytes()
 	if blockBytes != nil {
 		testBlock.Head.Size = len(blockBytes)

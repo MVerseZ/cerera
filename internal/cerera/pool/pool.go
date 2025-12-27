@@ -41,6 +41,11 @@ var (
 		Name: "pool_max_size",
 		Help: "Maximum size of the pool",
 	})
+	poolGetPendingDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pool_get_pending_duration_seconds",
+		Help:    "Time spent getting pending transactions in seconds",
+		Buckets: []float64{0.0001, 0.001, 0.01, 0.1, 0.5, 1, 2},
+	})
 )
 
 func init() {
@@ -51,6 +56,7 @@ func init() {
 		poolTxRemovedTotal,
 		poolTxRejectedTotal,
 		poolMaxSize,
+		poolGetPendingDurationSeconds,
 	)
 }
 
@@ -242,6 +248,12 @@ func (p *Pool) GetMinimalGasValue() float64 {
 }
 
 func (p *Pool) GetPendingTransactions() []types.GTransaction {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Seconds()
+		poolGetPendingDurationSeconds.Observe(duration)
+	}()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	result := make([]types.GTransaction, 0)

@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
@@ -34,19 +35,26 @@ type Header struct {
 }
 
 func (h *Header) Bytes() []byte {
-	var b = make([]byte, 0)
-	b = append(b, byte(h.Difficulty))
-	b = append(b, h.Extra[:]...)
-	b = append(b, byte(h.GasLimit))
-	b = append(b, byte(h.GasUsed))
-	b = append(b, byte(h.Index))
-	b = append(b, byte(h.ChainId))
-	b = append(b, h.PrevHash.Bytes()...)
-	b = append(b, h.Root.Bytes()...)
-	b = append(b, byte(h.Size))
-	b = append(b, byte(h.Timestamp))
-	b = append(b, h.V[:]...)
-	return b
+	var buf bytes.Buffer
+
+	// Используем binary encoding вместо byte() для больших чисел
+	binary.Write(&buf, binary.BigEndian, h.Ctx)            // int32 -> 4 bytes
+	binary.Write(&buf, binary.BigEndian, h.Difficulty)     // uint64 -> 8 bytes
+	buf.Write(h.Extra[:])                                  // [8]byte -> 8 bytes
+	binary.Write(&buf, binary.BigEndian, h.GasLimit)       // uint64 -> 8 bytes
+	binary.Write(&buf, binary.BigEndian, h.GasUsed)        // uint64 -> 8 bytes
+	binary.Write(&buf, binary.BigEndian, int64(h.Height))  // int -> 8 bytes
+	binary.Write(&buf, binary.BigEndian, h.Index)          // uint64 -> 8 bytes
+	buf.Write(h.Node.Bytes())                              // Address -> 20 bytes
+	binary.Write(&buf, binary.BigEndian, int64(h.ChainId)) // int -> 8 bytes
+	buf.Write(h.PrevHash.Bytes())                          // Hash -> 32 bytes
+	buf.Write(h.Root.Bytes())                              // Hash -> 32 bytes
+	binary.Write(&buf, binary.BigEndian, int64(h.Size))    // int -> 8 bytes
+	binary.Write(&buf, binary.BigEndian, h.Timestamp)      // uint64 -> 8 bytes
+	buf.Write(h.V[:])                                      // [8]byte -> 8 bytes
+	binary.Write(&buf, binary.BigEndian, h.Nonce)          // uint64 -> 8 bytes
+
+	return buf.Bytes()
 }
 
 type Block struct {
@@ -186,18 +194,38 @@ func GenerateGenesis(nodeAddress types.Address) *Block {
 		Head: genesisHeader,
 	}
 	genesisBlock.Transactions = []types.GTransaction{}
-	gs, _ := json.Marshal(genesisBlock)
-	genesisBlock.Head.Size = len(gs)
+	// Используем ToBytes() вместо JSON для вычисления размера
+	blockBytes := genesisBlock.ToBytes()
+	genesisBlock.Head.Size = len(blockBytes)
 	return genesisBlock
 }
 
 func (b *Block) ToBytes() []byte {
-	jsonBytes, err := json.Marshal(b)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil
+	var buf bytes.Buffer
+
+	// Используем исправленный Header.Bytes()
+	if b.Head != nil {
+		buf.Write(b.Head.Bytes())
 	}
-	return jsonBytes
+
+	// Количество транзакций
+	binary.Write(&buf, binary.BigEndian, uint32(len(b.Transactions)))
+
+	// Хэши транзакций (как в CrvBlockHash)
+	for _, tx := range b.Transactions {
+		buf.Write(tx.Hash().Bytes())
+	}
+
+	// Confirmations
+	binary.Write(&buf, binary.BigEndian, int32(b.Confirmations))
+
+	// Размер вычисляем и обновляем в Header
+	blockBytes := buf.Bytes()
+	if b.Head != nil {
+		b.Head.Size = len(blockBytes)
+	}
+
+	return blockBytes
 }
 
 // get nonce as [8]byte from header

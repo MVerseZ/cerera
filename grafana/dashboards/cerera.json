@@ -568,17 +568,54 @@
       }
     },
     {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Pool GetPendingTransactions Duration",
+      "gridPos": { "x": 0, "y": 77, "w": 24, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(pool_get_pending_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(pool_get_pending_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p50 duration",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(pool_get_pending_duration_seconds_sum[5m]) / rate(pool_get_pending_duration_seconds_count[5m])", 
+          "legendFormat": "avg duration",
+          "refId": "C"
+        },
+        { 
+          "expr": "rate(pool_get_pending_duration_seconds_count[5m])", 
+          "legendFormat": "calls rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
       "id": 20,
       "type": "row",
       "title": "Validator",
-      "gridPos": { "x": 0, "y": 77, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 85, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 24,
       "type": "timeseries",
       "title": "Validator TXs (created/validated/rejected)",
-      "gridPos": { "x": 0, "y": 78, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 86, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -610,7 +647,7 @@
       "id": 25,
       "type": "timeseries",
       "title": "Validator Signing (success/error)",
-      "gridPos": { "x": 12, "y": 78, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 86, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -637,14 +674,14 @@
       "id": 26,
       "type": "row",
       "title": "Vault",
-      "gridPos": { "x": 0, "y": 86, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 94, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 27,
       "type": "timeseries",
       "title": "Vault Accounts & Circulating Supply",
-      "gridPos": { "x": 0, "y": 87, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 95, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -671,7 +708,7 @@
       "id": 28,
       "type": "timeseries",
       "title": "Vault Faucet / Transfers",
-      "gridPos": { "x": 12, "y": 87, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 95, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -698,14 +735,14 @@
       "id": 29,
       "type": "row",
       "title": "RPC",
-      "gridPos": { "x": 0, "y": 95, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 103, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 30,
       "type": "timeseries",
       "title": "RPC Requests Rate by Method",
-      "gridPos": { "x": 0, "y": 96, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 104, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -727,7 +764,7 @@
       "id": 31,
       "type": "timeseries",
       "title": "RPC Request Duration & Errors",
-      "gridPos": { "x": 12, "y": 96, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 104, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

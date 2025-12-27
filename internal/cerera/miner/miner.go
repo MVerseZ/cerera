@@ -385,19 +385,57 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 
 	// Создаем новый блок
 	newBlock := block.NewBlock(newHeader)
+
+	// Фильтруем транзакции по GasLimit: добавляем только те, которые помещаются в лимит
+	var totalGasUsed float64
+	var selectedTxs []types.GTransaction
+
+	for _, tx := range transactions {
+		txType := tx.Type()
+		txGas := tx.Gas()
+
+		// Coinbase и faucet транзакции не учитываются в GasUsed, но добавляются в блок
+		if txType == types.CoinbaseTxType || txType == types.FaucetTxType {
+			selectedTxs = append(selectedTxs, tx)
+			continue
+		}
+
+		// Для обычных транзакций проверяем GasLimit
+		// Проверяем, не превысит ли добавление этой транзакции GasLimit
+		if float64(totalGasUsed)+txGas <= float64(newHeader.GasLimit) {
+			selectedTxs = append(selectedTxs, tx)
+			totalGasUsed += txGas
+		} else {
+			// Транзакция не помещается в блок по лимиту газа
+			minerLog.Debugw("Transaction exceeds gas limit, skipping",
+				"tx_hash", tx.Hash(),
+				"tx_gas", txGas,
+				"current_gas_used", totalGasUsed,
+				"gas_limit", newHeader.GasLimit)
+			break // Остальные транзакции тоже не поместятся
+		}
+	}
+
+	// Добавляем отобранные транзакции в блок
+	newBlock.Transactions = selectedTxs
+
+	// Добавляем coinbase транзакцию (она не учитывается в GasUsed)
 	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastHeader.Nonce, m.config.NetCfg.ADDR)
-	newBlock.Transactions = append(transactions, coinbaaseTransaction)
+	newBlock.Transactions = append(newBlock.Transactions, coinbaaseTransaction)
 
 	// Рассчитываем размер блока
 	blockBytes := newBlock.ToBytes()
 	newBlock.Head.Size = len(blockBytes)
 
-	// Рассчитываем использованный газ
-	var totalGasUsed float64
-	for _, tx := range newBlock.Transactions {
-		totalGasUsed += tx.Gas()
-	}
+	// Устанавливаем использованный газ (только для обычных транзакций, без coinbase и faucet)
 	newBlock.Head.GasUsed = uint64(totalGasUsed)
+
+	minerLog.Debugw("Block created",
+		"height", newHeader.Height,
+		"gas_used", totalGasUsed,
+		"gas_limit", newHeader.GasLimit,
+		"txs_count", len(selectedTxs),
+		"total_txs_in_block", len(newBlock.Transactions))
 
 	return newBlock
 }
@@ -414,9 +452,9 @@ func (m *miner) performMining(block *block.Block) error {
 		minerLog.Errorw("Error calculating block hash", "err", err, "height", block.Header().Height)
 		return fmt.Errorf("failed to calculate block hash: %w", err)
 	}
-	fmt.Printf(">>>>>>>>>>Current block height: %d\r\n", block.Header().Height)
-	fmt.Printf(">>>>>>>>>>Difficulty: %d\r\n", block.Header().Difficulty)
-	fmt.Printf(">>>>>>>>>>Nonce: %d\r\n", block.Header().Nonce)
+	// fmt.Printf(">>>>>>>>>>Current block height: %d\r\n", block.Header().Height)
+	// fmt.Printf(">>>>>>>>>>Difficulty: %d\r\n", block.Header().Difficulty)
+	// fmt.Printf(">>>>>>>>>>Nonce: %d\r\n", block.Header().Nonce)
 
 	// Защита от деления на ноль
 	if block.Header().Difficulty == 0 {
@@ -447,9 +485,9 @@ func (m *miner) performMining(block *block.Block) error {
 		minerHashInvalidTotal.Inc()
 	}
 
-	fmt.Printf(">>>>>>>>>>[BLKINT]: %d\r\n", blockHashInt)
-	fmt.Printf(">>>>>>>>>>[TRGINT]: %d\r\n", target)
-	fmt.Printf(">>>>>>>>>>[BLKINTCMP]: %d\r\n", blockHashInt.Cmp(target))
+	// fmt.Printf(">>>>>>>>>>[BLKINT]: %d\r\n", blockHashInt)
+	// fmt.Printf(">>>>>>>>>>[TRGINT]: %d\r\n", target)
+	// fmt.Printf(">>>>>>>>>>[BLKINTCMP]: %d\r\n", blockHashInt.Cmp(target))
 
 	// Начинаем отслеживание поиска nonce
 	nonceSearchStartTime := time.Now()
@@ -508,8 +546,8 @@ func (m *miner) performMining(block *block.Block) error {
 	// 	return fmt.Errorf("block hash does not meet difficulty requirement")
 	// }
 	// Используем обновленный blockHash после цикла майнинга
-	fmt.Printf(">>>>>>>>>>Block mined: %x\r\n", blockHash)
-	fmt.Printf(">>>>>>>>>>Height: %d\r\n", block.Header().Height)
+	// fmt.Printf(">>>>>>>>>>Block mined: %x\r\n", blockHash)
+	// fmt.Printf(">>>>>>>>>>Height: %d\r\n", block.Header().Height)
 	minerLog.Infow("Block mined",
 		"height", block.Header().Height,
 		"nonce", block.Header().Nonce,

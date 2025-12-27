@@ -16,14 +16,14 @@ func GenesisHead(chainId int) *Header {
 		Index:      0,
 		Timestamp:  uint64(time.Date(2022, 6, 24, 0, 0, 0, 0, time.UTC).UnixMilli()),
 		GasLimit:   250000,
-		GasUsed:    249999,
+		GasUsed:    0,
 		ChainId:    chainId,
 		Node:       types.EmptyAddress(),
 		PrevHash:   common.EmptyHash(),
 		Root:       common.EmptyHash(),
 		Size:       0,
 		V:          [8]byte{0xe, 0x0, 0xf, 0xf, 0xf, 0xf, 0x2, 0x1},
-		Nonce:      844016,
+		Nonce:      431491,
 	}
 	return genesisHeader
 }
