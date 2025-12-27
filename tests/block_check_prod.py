@@ -199,6 +199,7 @@ def check_blockchain_integrity(api_url: str = "http://91.199.32.125:1337/app",
                     if tx_gas is not None:
                         # Преобразуем в float, если это строка или число
                         try:
+                            print(float(tx_gas))
                             total_tx_gas += float(tx_gas)
                         except (ValueError, TypeError):
                             pass
