@@ -133,8 +133,202 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&output)
 }
 
-// UnmarshalJSON unmarshals from JSON.
+// txJSONInput is used for deserialization with unified format support
+type txJSONInput struct {
+	Hash     *common.Hash   `json:"hash,omitempty"`
+	Type     *uint64        `json:"type,omitempty"`
+	To       *Address       `json:"to,omitempty"`
+	From     *Address       `json:"from,omitempty"`
+	Nonce    *DecimalUint64 `json:"nonce,omitempty"`
+	Gas      *DecimalUint64 `json:"gas,omitempty"`
+	GasPrice *DecimalBig    `json:"gasPrice,omitempty"`
+	Value    *DecimalBig    `json:"value,omitempty"`
+	Data     *common.Bytes  `json:"input,omitempty"`
+	Dna      *common.Bytes  `json:"dna,omitempty"`
+	Payload  *common.Bytes  `json:"payload,omitempty"`
+	Time     *time.Time     `json:"time,omitempty"`
+	R        *Big           `json:"r,omitempty"`
+	S        *Big           `json:"s,omitempty"`
+	V        *Big           `json:"v,omitempty"`
+}
+
+// unmarshalFromNewFormat handles deserialization from new unified format
+func (tx *GTransaction) unmarshalFromNewFormat(dec txJSONInput) error {
+	if dec.Type == nil {
+		return errors.New("missing required field 'type' in transaction")
+	}
+
+	var inner TxData
+	switch *dec.Type {
+	case LegacyTxType:
+		var itx PGTransaction
+		inner = &itx
+		if dec.To == nil {
+			return errors.New("missing required field 'to' in transaction")
+		}
+		itx.To = dec.To
+
+		if dec.Nonce == nil {
+			return errors.New("missing required field 'nonce' in transaction")
+		}
+		itx.Nonce = uint64(*dec.Nonce)
+
+		if dec.GasPrice == nil {
+			return errors.New("missing required field 'gasPrice' in transaction")
+		}
+		itx.GasPrice = (*big.Int)(dec.GasPrice)
+
+		if dec.Gas == nil {
+			return errors.New("missing required field 'gas' in transaction")
+		}
+		itx.Gas = float64(*dec.Gas)
+
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+		itx.Value = (*big.Int)(dec.Value)
+
+		if dec.Data == nil {
+			return errors.New("missing required field 'data' in transaction")
+		}
+		itx.Data = *dec.Data
+
+		if dec.Payload == nil {
+			return errors.New("missing required field 'payload' in transaction")
+		}
+		itx.Payload = *dec.Payload
+
+		if dec.Dna == nil {
+			return errors.New("missing required field 'dna' in transaction")
+		}
+		itx.Dna = *dec.Dna
+
+		if dec.Time != nil {
+			itx.Time = *dec.Time
+		} else {
+			itx.Time = time.Now()
+		}
+
+		if dec.R != nil {
+			itx.R = (*big.Int)(dec.R)
+		}
+		if dec.S != nil {
+			itx.S = (*big.Int)(dec.S)
+		}
+		if dec.V != nil {
+			itx.V = (*big.Int)(dec.V)
+		}
+	case FaucetTxType:
+		var itx PGTransaction
+		inner = &itx
+		if dec.To == nil {
+			return errors.New("missing required field 'to' in transaction")
+		}
+		itx.To = dec.To
+
+		if dec.Nonce == nil {
+			return errors.New("missing required field 'nonce' in transaction")
+		}
+		itx.Nonce = uint64(*dec.Nonce)
+
+		if dec.GasPrice == nil {
+			return errors.New("missing required field 'gasPrice' in transaction")
+		}
+		itx.GasPrice = (*big.Int)(dec.GasPrice)
+
+		if dec.Gas == nil {
+			return errors.New("missing required field 'gas' in transaction")
+		}
+		itx.Gas = float64(*dec.Gas)
+
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+		itx.Value = (*big.Int)(dec.Value)
+
+		if dec.Time != nil {
+			itx.Time = *dec.Time
+		} else {
+			itx.Time = time.Now()
+		}
+	case CoinbaseTxType:
+		var itx CBTransaction
+		inner = &itx
+		if dec.To == nil {
+			return errors.New("missing required field 'to' in transaction")
+		}
+		itx.To = dec.To
+
+		if dec.Nonce == nil {
+			return errors.New("missing required field 'nonce' in transaction")
+		}
+		itx.Nonce = uint64(*dec.Nonce)
+
+		if dec.GasPrice == nil {
+			return errors.New("missing required field 'gasPrice' in transaction")
+		}
+		itx.GasPrice = (*big.Int)(dec.GasPrice)
+
+		if dec.Gas == nil {
+			return errors.New("missing required field 'gas' in transaction")
+		}
+		itx.Gas = float64(*dec.Gas)
+
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+		itx.Value = (*big.Int)(dec.Value)
+
+		if dec.Data != nil {
+			itx.Data = *dec.Data
+		} else {
+			itx.Data = []byte{}
+		}
+
+		if dec.Payload != nil {
+			itx.Payload = *dec.Payload
+		} else {
+			itx.Payload = []byte{}
+		}
+
+		if dec.Dna != nil {
+			itx.Dna = *dec.Dna
+		} else {
+			itx.Dna = []byte{}
+		}
+
+		if dec.Time != nil {
+			itx.Time = *dec.Time
+		} else {
+			itx.Time = time.Now()
+		}
+
+		if dec.R != nil {
+			itx.R = (*big.Int)(dec.R)
+		}
+		if dec.S != nil {
+			itx.S = (*big.Int)(dec.S)
+		}
+		if dec.V != nil {
+			itx.V = (*big.Int)(dec.V)
+		}
+	default:
+		return ErrTxTypeNotSupported
+	}
+
+	tx.setDecoded(inner, 0)
+	return nil
+}
+
+// UnmarshalJSON unmarshals from JSON with support for new unified format
 func (tx *GTransaction) UnmarshalJSON(input []byte) error {
+	// Try new format first (with DecimalUint64 and DecimalBig)
+	var decNew txJSONInput
+	if err := json.Unmarshal(input, &decNew); err == nil && decNew.Type != nil {
+		return tx.unmarshalFromNewFormat(decNew)
+	}
+
+	// Fallback to old format (with common.Uint64 and common.Big for backward compatibility)
 	var dec txJSON
 	if err := json.Unmarshal(input, &dec); err != nil {
 		return err

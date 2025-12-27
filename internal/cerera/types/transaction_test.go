@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -104,19 +105,35 @@ func TestSerialize(t *testing.T) {
 
 	var tx GTransaction
 	if err := tx.UnmarshalJSON(txBytes); err != nil {
-		t.Error("Error while unmarshaling transaction:", err)
+		t.Fatalf("Error while unmarshaling transaction: %v", err)
 	}
 
-	// // Print unmarshaled transaction details
-	// t.Logf("\nUnmarshaled transaction:")
-	// t.Logf("  Data: %v", tx.Data())
-	// t.Logf("  DNA: %v", tx.Dna())
-	// t.Logf("  To: %v", tx.To())
-	// t.Logf("  Value: %v", tx.Value())
-	// t.Logf("  GasPrice: %v", tx.GasPrice())
-	// t.Logf("  Gas: %v", tx.Gas())
-	// t.Logf("  Nonce: %v", tx.Nonce())
-	// t.Logf("  Unmarshaled size: %d", tx.Size())
+	// Verify all fields are correctly deserialized
+	if tx.To() == nil || *tx.To() != to {
+		t.Errorf("To address mismatch: got %v, want %v", tx.To(), &to)
+	}
+
+	if tx.Value().Cmp(big.NewInt(10)) != 0 {
+		t.Errorf("Value mismatch: got %s, want 10", tx.Value().String())
+	}
+
+	if tx.GasPrice().Cmp(big.NewInt(15)) != 0 {
+		t.Errorf("GasPrice mismatch: got %s, want 15", tx.GasPrice().String())
+	}
+
+	if tx.Gas() != 1000000 {
+		t.Errorf("Gas mismatch: got %f, want 1000000", tx.Gas())
+	}
+
+	if tx.Nonce() != 0x1 {
+		t.Errorf("Nonce mismatch: got %d, want %d", tx.Nonce(), 0x1)
+	}
+
+	// Verify DNA is correctly deserialized
+	txDna := tx.Dna()
+	if !bytes.Equal(txDna, dna) {
+		t.Errorf("DNA mismatch: got %v, want %v", txDna, dna)
+	}
 
 	// Expected size calculation:
 	// - inner data: 0 bytes

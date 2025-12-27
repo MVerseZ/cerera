@@ -76,6 +76,7 @@ func (tx *PGTransaction) copy() TxData {
 		To:     copyAddressPtr(tx.To),
 		Data:   CopyBytes(tx.Data),
 		Gas:    tx.Gas,
+		Dna:    CopyBytes(tx.Dna),
 		// atomic
 		Value:    new(big.Int),
 		GasPrice: new(big.Int),
