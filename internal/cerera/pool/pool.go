@@ -164,38 +164,33 @@ func removeFromslice(observerList []observer.Observer, observerToRemove observer
 }
 
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	// fmt.Printf("Catch tx with value: %s\r\n", tx.Value())
+	// Check if transaction already exists in memPool
+	if _, exists := p.memPool[tx.Hash()]; exists {
+		// Transaction already exists, skip or update
+		return
+	}
 
-	// if p.Info.Bytes+int(tx.Size()) > p.maxSize {
-	// 	return
-	// } else {
-	var sLock = p.mu.TryLock()
-	if sLock {
-		defer p.mu.Unlock()
-		if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
-			p.memPool[tx.Hash()] = *tx
-			p.Prepared = append(p.Prepared, tx)
-			p.NotifyAll(tx)
-			// p.memPool = append(p.memPool, *tx)
-			// network.BroadcastTx(tx)
-			p.Info.Bytes += int(tx.Size())
-			p.Info.Size++
-			p.Info.Usage += uintptr(tx.Size())
-			p.Info.Hashes = append(p.Info.Hashes, tx.Hash())
-			p.Info.Txs = append(p.Info.Txs, *tx)
-			p.Info.UnbroadCastCount++
-			poolTxAddedTotal.Inc()
-			poolSize.Set(float64(p.Info.Size))
-			poolBytes.Set(float64(p.Info.Bytes))
-		} else {
-			poolTxRejectedTotal.Inc()
+	// Check if transaction already exists in Prepared to avoid duplicates
+	for _, preparedTx := range p.Prepared {
+		if preparedTx.Hash() == tx.Hash() {
+			// Transaction already in Prepared, skip
+			return
 		}
 	}
-	// }
-	// p.Listen <- []*types.GTransaction{tx}
-	// p.DataChannel <- tx.Bytes()
-	// fmt.Println(len(p.memPool))
+
+	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+		p.memPool[tx.Hash()] = *tx
+		p.Prepared = append(p.Prepared, tx)
+		p.NotifyAll(tx)
+		poolTxAddedTotal.Inc()
+		// Recalculate Info instead of manual update to prevent memory leaks
+		p.calcInfo()
+	} else {
+		poolTxRejectedTotal.Inc()
+	}
 }
 
 func (p *Pool) Clear() {
@@ -281,10 +276,11 @@ func (p *Pool) QueueTransaction(tx *types.GTransaction) {
 }
 
 func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
-	for _, tx := range p.memPool {
-		if tx.Hash() == transactionHash {
-			return &tx
-		}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// Use direct access by hash instead of iteration
+	if tx, ok := p.memPool[transactionHash]; ok {
+		return &tx
 	}
 	return nil
 }
@@ -372,8 +368,9 @@ func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 	defer p.mu.Unlock()
 	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
 		p.memPool[tx.Hash()] = tx
-		// p.memPool = append(p.memPool, tx)
-		// network.BroadcastTx(tx)
+		poolTxAddedTotal.Inc()
+		// Update metrics
+		p.calcInfo()
 	} else {
 		poolTxRejectedTotal.Inc()
 		pLogger.Warnw("Transaction rejected",
@@ -383,6 +380,7 @@ func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 			"gas", tx.Gas(),
 			"minGas", p.minGas,
 		)
+		return tx.Hash(), errors.New("transaction rejected: pool full or gas too low")
 	}
 	return tx.Hash(), nil
 }
@@ -392,18 +390,31 @@ func (p *Pool) ServiceName() string {
 }
 
 func (p *Pool) UnRegister(observer observer.Observer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.observers = removeFromslice(p.observers, observer)
 }
 
 func (p *Pool) UpdateTx(newTx types.GTransaction) {
-	for _, tx := range p.memPool {
-		if tx.Hash().String() == newTx.Hash().String() {
-			pLogger.Infow("Replace sign tx in pool",
-				"hash", newTx.Hash(),
-				"signed", newTx.IsSigned(),
-			)
-			p.AddRawTransaction(&newTx)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// Use direct access by hash instead of iteration
+	if _, exists := p.memPool[newTx.Hash()]; exists {
+		pLogger.Infow("Replace sign tx in pool",
+			"hash", newTx.Hash(),
+			"signed", newTx.IsSigned(),
+		)
+		p.memPool[newTx.Hash()] = newTx
+		// Update Prepared list if transaction is there
+		for i, preparedTx := range p.Prepared {
+			if preparedTx.Hash() == newTx.Hash() {
+				p.Prepared[i] = &newTx
+				break
+			}
 		}
+		p.calcInfo()
+		// Notify observers
+		p.NotifyAll(&newTx)
 	}
 }
 
