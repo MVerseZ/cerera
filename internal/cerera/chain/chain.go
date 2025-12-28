@@ -78,14 +78,15 @@ func init() {
 }
 
 type BlockChainStatus struct {
-	Total     int         `json:"total,omitempty"`
-	ChainWork int         `json:"chainWork,omitempty"`
-	Latest    common.Hash `json:"latest,omitempty"`
-	Size      int64       `json:"size,omitempty"`
-	AvgTime   float64     `json:"avgTime,omitempty"` // Renamed to AvgTime (exported)
-	Txs       uint64      `json:"txs,omitempty"`
-	Gas       float64     `json:"gas,omitempty"`
-	GasPrice  float64     `json:"gasPrice,omitempty"`
+	Total      int         `json:"total,omitempty"`
+	ChainWork  int         `json:"chainWork,omitempty"`
+	Latest     common.Hash `json:"latest,omitempty"`
+	Size       int64       `json:"size,omitempty"`
+	AvgTime    float64     `json:"avgTime,omitempty"` // Renamed to AvgTime (exported)
+	Txs        uint64      `json:"txs,omitempty"`
+	Gas        float64     `json:"gas,omitempty"`
+	GasPrice   float64     `json:"gasPrice,omitempty"`
+	Difficulty uint64      `json:"difficulty,omitempty"`
 }
 
 type Chain struct {
@@ -383,14 +384,15 @@ func (bc *Chain) GetInfo() BlockChainStatus {
 	}
 
 	return BlockChainStatus{
-		Size:      int64(totalSize),
-		Latest:    latestHash,
-		Total:     len(bc.data),
-		ChainWork: int(bc.chainWork.Int64()),
-		AvgTime:   bc.avgTime,
-		Txs:       totalTxs,
-		Gas:       bc.info.Gas,
-		GasPrice:  bc.info.GasPrice,
+		Size:       int64(totalSize),
+		Latest:     latestHash,
+		Total:      len(bc.data),
+		ChainWork:  int(bc.chainWork.Int64()),
+		AvgTime:    bc.avgTime,
+		Txs:        totalTxs,
+		Gas:        bc.info.Gas,
+		GasPrice:   bc.info.GasPrice,
+		Difficulty: uint64(bc.Difficulty),
 	}
 }
 
