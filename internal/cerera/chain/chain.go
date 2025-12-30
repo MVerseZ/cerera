@@ -22,59 +22,106 @@ const CHAIN_SERVICE_NAME = "CHAIN_CERERA_001_1_7"
 
 var clogger = logger.Named("chain")
 
-var (
-	chainBlocksTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "chain_blocks_total",
-		Help: "Total number of blocks added to the chain",
-	})
-	chainTxsTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "chain_txs_total",
-		Help: "Total number of transactions applied to the chain",
-	})
-	chainGasTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "chain_gas_total",
-		Help: "Total gas consumed by executed transactions",
-	})
-	chainAvgBlockTimeSeconds = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "chain_avg_block_time_seconds",
-		Help: "Average time between blocks (seconds)",
-	})
-	chainDifficultyGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "chain_difficulty",
-		Help: "Current chain difficulty",
-	})
-	chainBlockchainSizeBytes = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "chain_blockchain_size_bytes",
-		Help: "Total blockchain size in bytes (sum of block header sizes)",
-	})
-	chainHeight = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "chain_height",
-		Help: "Current chain height (latest block number)",
-	})
-	chainBlockSizeBytes = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "chain_block_size_bytes",
-		Help:    "Size of blocks in bytes",
-		Buckets: []float64{1024, 4096, 16384, 65536, 262144, 1048576},
-	})
-	chainBlockGasUsed = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "chain_block_gas_used",
-		Help:    "Gas used per block",
-		Buckets: []float64{1000, 5000, 10000, 50000, 100000, 500000, 1000000},
-	})
-)
+// ChainMetrics encapsulates Prometheus metrics for the chain
+type ChainMetrics struct {
+	blocksTotal         prometheus.Counter
+	txsTotal            prometheus.Counter
+	gasTotal            prometheus.Counter
+	avgBlockTimeSeconds prometheus.Gauge
+	difficultyGauge     prometheus.Gauge
+	blockchainSizeBytes prometheus.Gauge
+	height              prometheus.Gauge
+	blockSizeBytes      prometheus.Histogram
+	blockGasUsed        prometheus.Histogram
+}
 
-func init() {
+// NewChainMetrics creates and registers new chain metrics
+func NewChainMetrics() *ChainMetrics {
+	metrics := &ChainMetrics{
+		blocksTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "chain_blocks_total",
+			Help: "Total number of blocks added to the chain",
+		}),
+		txsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "chain_txs_total",
+			Help: "Total number of transactions applied to the chain",
+		}),
+		gasTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "chain_gas_total",
+			Help: "Total gas consumed by executed transactions",
+		}),
+		avgBlockTimeSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "chain_avg_block_time_seconds",
+			Help: "Average time between blocks (seconds)",
+		}),
+		difficultyGauge: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "chain_difficulty",
+			Help: "Current chain difficulty",
+		}),
+		blockchainSizeBytes: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "chain_blockchain_size_bytes",
+			Help: "Total blockchain size in bytes (sum of block header sizes)",
+		}),
+		height: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "chain_height",
+			Help: "Current chain height (latest block number)",
+		}),
+		blockSizeBytes: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "chain_block_size_bytes",
+			Help:    "Size of blocks in bytes",
+			Buckets: []float64{1024, 4096, 16384, 65536, 262144, 1048576},
+		}),
+		blockGasUsed: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "chain_block_gas_used",
+			Help:    "Gas used per block",
+			Buckets: []float64{1000, 5000, 10000, 50000, 100000, 500000, 1000000},
+		}),
+	}
+
 	prometheus.MustRegister(
-		chainBlocksTotal,
-		chainTxsTotal,
-		chainGasTotal,
-		chainAvgBlockTimeSeconds,
-		chainDifficultyGauge,
-		chainBlockchainSizeBytes,
-		chainHeight,
-		chainBlockSizeBytes,
-		chainBlockGasUsed,
+		metrics.blocksTotal,
+		metrics.txsTotal,
+		metrics.gasTotal,
+		metrics.avgBlockTimeSeconds,
+		metrics.difficultyGauge,
+		metrics.blockchainSizeBytes,
+		metrics.height,
+		metrics.blockSizeBytes,
+		metrics.blockGasUsed,
 	)
+
+	return metrics
+}
+
+// ChainStats holds chain statistics
+type ChainStats struct {
+	lastBlockTime int64
+	blockCount    int64
+	totalTime     int64
+	avgTime       float64
+}
+
+// BlockStorage interface for block storage operations
+type BlockStorage interface {
+	Save(block *block.Block, chainPath string) error
+	Load(chainPath string) ([]*block.Block, error)
+	Init(block *block.Block, chainPath string) error
+}
+
+// fileBlockStorage implements BlockStorage using file system
+type fileBlockStorage struct{}
+
+func (s *fileBlockStorage) Save(blk *block.Block, chainPath string) error {
+	return SaveToVaultWithPath(*blk, chainPath)
+}
+
+func (s *fileBlockStorage) Load(chainPath string) ([]*block.Block, error) {
+	return SyncVaultWithPath(chainPath)
+}
+
+func (s *fileBlockStorage) Init(blk *block.Block, chainPath string) error {
+	InitChainVaultWithPath(blk, chainPath)
+	return nil
 }
 
 type BlockChainStatus struct {
@@ -82,7 +129,7 @@ type BlockChainStatus struct {
 	ChainWork  int         `json:"chainWork,omitempty"`
 	Latest     common.Hash `json:"latest,omitempty"`
 	Size       int64       `json:"size,omitempty"`
-	AvgTime    float64     `json:"avgTime,omitempty"` // Renamed to AvgTime (exported)
+	AvgTime    float64     `json:"avgTime,omitempty"`
 	Txs        uint64      `json:"txs,omitempty"`
 	Gas        float64     `json:"gas,omitempty"`
 	GasPrice   float64     `json:"gasPrice,omitempty"`
@@ -95,9 +142,8 @@ type Chain struct {
 	chainWork      *big.Int
 	currentAddress types.Address
 	currentBlock   *block.Block
-	// rootHash       common.Hash
 
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	info   BlockChainStatus
 	status byte
 
@@ -111,137 +157,53 @@ type Chain struct {
 	Size           int
 
 	Difficulty uint64
-	// stats
-	lastBlockTime int64
-	blockCount    int64
-	totalTime     int64
-	avgTime       float64
+	stats      ChainStats
+
+	// dependencies
+	metrics   *ChainMetrics
+	storage   BlockStorage
+	chainPath string
 }
 
 var (
-	bch        Chain
 	BLOCKTIMER = time.Duration(30 * time.Second)
 )
 
-func GetBlockChain() *Chain {
-	return &bch
-}
-
 func Mold(cfg *config.Config) (*Chain, error) {
+	metrics := NewChainMetrics()
+	storage := &fileBlockStorage{}
 
-	var (
-		t         *trie.MerkleTree
-		chainWork = 0
-		total     = 0
-	)
-
-	stats := BlockChainStatus{
-		Total:     total,
-		ChainWork: chainWork,
-		Size:      0,
+	genesisBlock, err := loadGenesisBlock(cfg.Chain.ChainID)
+	if err != nil {
+		return nil, err
 	}
 
-	var err error
-
-	genesisHead := block.GenesisHead(cfg.Chain.ChainID)
-	genesisBlock := block.NewBlockWithHeaderAndHash(genesisHead)
-	genesisBlock.UpdateHash()
-	// genesisBlock.Hash = miner.CalculateHash(&genesisBlock)
-
-	dataBlocks := make([]*block.Block, 0)
-	var list []trie.Content
-
-	if cfg.IN_MEM {
-		clogger.Info("Using in-memory storage")
-		dataBlocks = append(dataBlocks, genesisBlock)
-	} else {
-		clogger.Info("Using D5 storage")
-		// Determine chain file path
-		chainPath := cfg.Chain.Path
-		if chainPath == "EMPTY" {
-			chainPath = "./chain.dat"
-			cfg.UpdateChainPath(chainPath)
-		}
-		// Check if chain file exists
-		if _, err := os.Stat(chainPath); os.IsNotExist(err) {
-			// File doesn't exist, create new chain with genesis block
-			list = append(list, genesisBlock)
-			stats.Total += 1
-			stats.ChainWork += genesisBlock.Head.Size
-			InitChainVaultWithPath(genesisBlock, chainPath)
-		} else {
-			// File exists, load blocks from file
-			readBlocks, err := SyncVaultWithPath(chainPath)
-			if err != nil {
-				clogger.Warnw("Failed to sync vault, using genesis block", "err", err)
-				// Fallback to genesis if sync fails
-				list = append(list, genesisBlock)
-				stats.Total += 1
-				stats.ChainWork += genesisBlock.Head.Size
-			} else if len(readBlocks) > 0 {
-				// Load blocks from file
-				dataBlocks = readBlocks
-				for _, blk := range readBlocks {
-					list = append(list, blk)
-					stats.Total += 1
-					stats.ChainWork += blk.Head.Size
-					stats.Latest = blk.GetHash()
-				}
-				clogger.Infow("Loaded blocks from chain file", "count", len(readBlocks), "path", chainPath)
-			} else {
-				// File exists but is empty, use genesis block
-				list = append(list, genesisBlock)
-				stats.Total += 1
-				stats.ChainWork += genesisBlock.Head.Size
-				InitChainVaultWithPath(genesisBlock, chainPath)
-			}
-		}
-		t, err = trie.NewTree(list)
-		if err != nil {
-			clogger.Warnw("trie validation error", "err", err)
-		}
-		t.VerifyTree()
-	}
-	//	0xb51551C31419695B703aD37a2c04A765AB9A6B4a183041354a6D392ce438Aec47eBb16495E84F18ef492B50f652342dE
-	// Set current block safely
-	var currentBlock *block.Block
-	var chainSize int
-	var chainDifficulty uint64
-	if len(dataBlocks) > 0 {
-		currentBlock = dataBlocks[len(dataBlocks)-1]
-		if currentBlock != nil && currentBlock.Head != nil {
-			if header := currentBlock.Header(); header != nil {
-				chainSize = header.Size
-			}
-			chainDifficulty = currentBlock.Head.Difficulty
-		} else {
-			// Fallback to genesis if loaded block is invalid
-			currentBlock = genesisBlock
-			chainSize = genesisBlock.Header().Size
-			chainDifficulty = genesisBlock.Head.Difficulty
-		}
-	} else {
-		currentBlock = genesisBlock
-		if header := genesisBlock.Header(); header != nil {
-			chainSize = header.Size
-		}
-		chainDifficulty = genesisBlock.Head.Difficulty
+	chainPath := determineChainPath(cfg)
+	if chainPath == "EMPTY" {
+		chainPath = "./chain.dat"
+		cfg.UpdateChainPath(chainPath)
 	}
 
-	// Ensure currentBlock is never nil
-	if currentBlock == nil {
-		currentBlock = genesisBlock
-		chainSize = genesisBlock.Header().Size
-		chainDifficulty = genesisBlock.Head.Difficulty
+	dataBlocks, stats, err := loadBlocksFromStorage(cfg, genesisBlock, chainPath, storage)
+	if err != nil {
+		return nil, err
 	}
 
-	// Calculate chainWork from loaded blocks
+	t, err := initializeTrie(dataBlocks)
+	if err != nil {
+		clogger.Warnw("trie validation error", "err", err)
+	}
+
+	currentBlock, chainSize, chainDifficulty := determineCurrentBlock(dataBlocks, genesisBlock)
+
 	chainWorkValue := big.NewInt(int64(stats.ChainWork))
 	if chainWorkValue.Cmp(big.NewInt(0)) == 0 {
 		chainWorkValue = big.NewInt(1)
 	}
 
-	bch = Chain{
+	initialTotalSize := calculateInitialTotalSize(dataBlocks)
+
+	chain := &Chain{
 		autoGen:        cfg.AUTOGEN,
 		chainId:        cfg.Chain.ChainID,
 		chainWork:      chainWorkValue,
@@ -255,39 +217,153 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		OutBoundEvents: make(chan []byte),
 		Size:           chainSize,
 		Difficulty:     chainDifficulty,
-		lastBlockTime:  time.Now().Unix(),
-		blockCount:     0,
-		totalTime:      0,
-		status:         0x0,
+		stats: ChainStats{
+			lastBlockTime: time.Now().Unix(),
+			blockCount:    0,
+			totalTime:     0,
+			avgTime:       0,
+		},
+		metrics:   metrics,
+		storage:   storage,
+		chainPath: chainPath,
 	}
-	// Initialize blockchain size (sum of block header sizes)
-	var initialTotalSize int
+
+	chain.info.Size = int64(initialTotalSize)
+	go chain.Start()
+
+	// Set initial gauges
+	metrics.difficultyGauge.Set(float64(chainDifficulty))
+	metrics.avgBlockTimeSeconds.Set(chain.stats.avgTime)
+	if currentBlock != nil && currentBlock.Head != nil {
+		metrics.height.Set(float64(currentBlock.Header().Height))
+	}
+	metrics.blockchainSizeBytes.Set(float64(initialTotalSize))
+
+	return chain, nil
+}
+
+func loadGenesisBlock(chainID int) (*block.Block, error) {
+	genesisHead := block.GenesisHead(chainID)
+	genesisBlock := block.NewBlockWithHeaderAndHash(genesisHead)
+	genesisBlock.UpdateHash()
+	return genesisBlock, nil
+}
+
+func determineChainPath(cfg *config.Config) string {
+	if cfg.IN_MEM {
+		return ""
+	}
+	return cfg.Chain.Path
+}
+
+func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainPath string, storage BlockStorage) ([]*block.Block, BlockChainStatus, error) {
+	stats := BlockChainStatus{
+		Total:     0,
+		ChainWork: 0,
+		Size:      0,
+	}
+
+	if cfg.IN_MEM {
+		clogger.Info("Using in-memory storage")
+		stats.Total = 1
+		stats.ChainWork = genesisBlock.Head.Size
+		return []*block.Block{genesisBlock}, stats, nil
+	}
+
+	clogger.Info("Using D5 storage")
+
+	if _, err := os.Stat(chainPath); os.IsNotExist(err) {
+		stats.Total = 1
+		stats.ChainWork = genesisBlock.Head.Size
+		if err := storage.Init(genesisBlock, chainPath); err != nil {
+			return nil, stats, err
+		}
+		return []*block.Block{genesisBlock}, stats, nil
+	}
+
+	readBlocks, err := storage.Load(chainPath)
+	if err != nil {
+		clogger.Warnw("Failed to sync vault, using genesis block", "err", err)
+		stats.Total = 1
+		stats.ChainWork = genesisBlock.Head.Size
+		return []*block.Block{genesisBlock}, stats, nil
+	}
+
+	if len(readBlocks) == 0 {
+		stats.Total = 1
+		stats.ChainWork = genesisBlock.Head.Size
+		if err := storage.Init(genesisBlock, chainPath); err != nil {
+			return nil, stats, err
+		}
+		return []*block.Block{genesisBlock}, stats, nil
+	}
+
+	dataBlocks := readBlocks
+	for _, blk := range readBlocks {
+		stats.Total++
+		stats.ChainWork += blk.Head.Size
+		stats.Latest = blk.GetHash()
+	}
+
+	clogger.Infow("Loaded blocks from chain file", "count", len(readBlocks), "path", chainPath)
+	return dataBlocks, stats, nil
+}
+
+func initializeTrie(blocks []*block.Block) (*trie.MerkleTree, error) {
+	var list []trie.Content
+	for _, blk := range blocks {
+		list = append(list, blk)
+	}
+	t, err := trie.NewTree(list)
+	if err != nil {
+		return nil, err
+	}
+	t.VerifyTree()
+	return t, nil
+}
+
+func determineCurrentBlock(dataBlocks []*block.Block, genesisBlock *block.Block) (*block.Block, int, uint64) {
+	if len(dataBlocks) == 0 {
+		if header := genesisBlock.Header(); header != nil {
+			return genesisBlock, header.Size, genesisBlock.Head.Difficulty
+		}
+		return genesisBlock, 0, genesisBlock.Head.Difficulty
+	}
+
+	currentBlock := dataBlocks[len(dataBlocks)-1]
+	if currentBlock == nil || currentBlock.Head == nil {
+		if header := genesisBlock.Header(); header != nil {
+			return genesisBlock, header.Size, genesisBlock.Head.Difficulty
+		}
+		return genesisBlock, 0, genesisBlock.Head.Difficulty
+	}
+
+	if header := currentBlock.Header(); header != nil {
+		return currentBlock, header.Size, currentBlock.Head.Difficulty
+	}
+	return currentBlock, 0, currentBlock.Head.Difficulty
+}
+
+func calculateInitialTotalSize(dataBlocks []*block.Block) int {
+	var totalSize int
 	for _, blk := range dataBlocks {
 		if blk != nil {
 			if header := blk.Header(); header != nil {
-				initialTotalSize += header.Size
+				totalSize += header.Size
 			}
 		}
 	}
-	bch.info.Size = int64(initialTotalSize)
-	// genesisBlock.Head.Node = bch.currentAddress
-	// go bch.BlockGenerator()
-	go bch.Start()
-
-	// Set initial gauges
-	chainDifficultyGauge.Set(float64(chainDifficulty))
-	chainAvgBlockTimeSeconds.Set(bch.avgTime)
-	if currentBlock != nil && currentBlock.Head != nil {
-		chainHeight.Set(float64(currentBlock.Header().Height))
-	}
-	chainBlockchainSizeBytes.Set(float64(initialTotalSize))
-
-	return &bch, nil
+	return totalSize
 }
 
+// Service methods
 // Methods ordered alphabetically
 
 func (bc *Chain) Exec(method string, params []interface{}) interface{} {
+	if method == "" {
+		return nil
+	}
+
 	switch method {
 	case "getInfo":
 		return bc.GetInfo()
@@ -298,11 +374,32 @@ func (bc *Chain) Exec(method string, params []interface{}) interface{} {
 		}
 		return latestBlock.Header().Height
 	case "getBlockByIndex":
-		return bc.GetBlockByNumber(int(params[0].(float64)))
+		if len(params) == 0 {
+			return nil
+		}
+		index, ok := params[0].(float64)
+		if !ok {
+			return nil
+		}
+		return bc.GetBlockByNumber(int(index))
 	case "getBlock":
-		return bc.GetBlock(common.HexToHash(params[0].(string)))
+		if len(params) == 0 {
+			return nil
+		}
+		hashStr, ok := params[0].(string)
+		if !ok {
+			return nil
+		}
+		return bc.GetBlock(common.HexToHash(hashStr))
 	case "getBlockHeader":
-		return bc.GetBlockHeader(params[0].(string))
+		if len(params) == 0 {
+			return nil
+		}
+		hashStr, ok := params[0].(string)
+		if !ok {
+			return nil
+		}
+		return bc.GetBlockHeader(hashStr)
 	case "getLatestBlock":
 		return bc.GetLatestBlock()
 	}
@@ -310,26 +407,47 @@ func (bc *Chain) Exec(method string, params []interface{}) interface{} {
 }
 
 func (bc *Chain) GetBlock(blockHash common.Hash) *block.Block {
+	if blockHash.Compare(common.EmptyHash()) == 0 {
+		return nil
+	}
+
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
 	for _, b := range bc.data {
-		if b.GetHash().Compare(blockHash) == 0 {
+		if b != nil && b.GetHash().Compare(blockHash) == 0 {
 			return b
 		}
 	}
-	return &block.Block{}
+	return nil
 }
 
 func (bc *Chain) GetBlockByNumber(number int) *block.Block {
+	if number < 0 {
+		return nil
+	}
+
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
 	for _, b := range bc.data {
-		if b.Header().Index == uint64(number) {
+		if b != nil && b.Header() != nil && b.Header().Index == uint64(number) {
 			return b
 		}
 	}
-	return &block.Block{}
+	return nil
 }
 
 func (bc *Chain) GetBlockHash(number int) common.Hash {
+	if number < 0 {
+		return common.EmptyHash()
+	}
+
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
 	for _, b := range bc.data {
-		if b.Header().Index == uint64(number) {
+		if b != nil && b.Header() != nil && b.Header().Index == uint64(number) {
 			return b.GetHash()
 		}
 	}
@@ -337,13 +455,16 @@ func (bc *Chain) GetBlockHash(number int) common.Hash {
 }
 
 func (bc *Chain) GetBlockHeader(blockHash string) *block.Header {
-	var bHash = common.HexToHash(blockHash)
-	for _, b := range bc.data {
-		if b.GetHash().Compare(bHash) == 0 {
-			return b.Header()
-		}
+	if blockHash == "" {
+		return nil
 	}
-	return &block.Header{}
+
+	bHash := common.HexToHash(blockHash)
+	block := bc.GetBlock(bHash)
+	if block == nil {
+		return nil
+	}
+	return block.Header()
 }
 
 func (bc *Chain) GetChainId() int {
@@ -355,54 +476,27 @@ func (bc *Chain) GetCurrentChainOwnerAddress() types.Address {
 }
 
 func (bc *Chain) GetInfo() BlockChainStatus {
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
-
-	// Calculate total size
-	var totalSize int
-	var totalTxs uint64
-	for _, b := range bc.data {
-		if b != nil {
-			if header := b.Header(); header != nil {
-				totalSize += header.Size
-			}
-		}
-		for _, tx := range b.Transactions {
-			if txType := tx.Type(); txType != types.CoinbaseTxType && txType != types.FaucetTxType {
-				totalTxs += 1
-			}
-		}
-	}
-
-	// Update Prometheus gauge for total blockchain size
-	chainBlockchainSizeBytes.Set(float64(totalSize))
-
-	// Create and return a fresh BlockChainStatus struct with calculated values
-	var latestHash common.Hash
-	if len(bc.data) > 0 {
-		latestHash = bc.data[len(bc.data)-1].GetHash()
-	}
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
 
 	return BlockChainStatus{
-		Size:       int64(totalSize),
-		Latest:     latestHash,
-		Total:      len(bc.data),
-		ChainWork:  int(bc.chainWork.Int64()),
-		AvgTime:    bc.avgTime,
-		Txs:        totalTxs,
+		Size:       bc.info.Size,
+		Latest:     bc.info.Latest,
+		Total:      bc.info.Total,
+		ChainWork:  bc.info.ChainWork,
+		AvgTime:    bc.info.AvgTime,
+		Txs:        bc.info.Txs,
 		Gas:        bc.info.Gas,
 		GasPrice:   bc.info.GasPrice,
-		Difficulty: uint64(bc.Difficulty),
+		Difficulty: bc.info.Difficulty,
 	}
 }
 
 func (bc *Chain) GetLatestBlock() *block.Block {
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
-	// Ensure currentBlock is never nil
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
 	if bc.currentBlock == nil {
-		// This should not happen, but if it does, return nil
-		// The caller should handle this case
 		return nil
 	}
 	return bc.currentBlock
@@ -426,78 +520,80 @@ param:
 
 	newBlock: new block for chain update
 */
-func (bc *Chain) UpdateChain(newBlock *block.Block) {
+func (bc *Chain) UpdateChain(newBlock *block.Block) error {
+	if newBlock == nil {
+		return errors.New("newBlock cannot be nil")
+	}
+	if newBlock.Head == nil {
+		return errors.New("newBlock.Head cannot be nil")
+	}
+
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
-	// mined block -> simply approved
+
 	currentTime := time.Now().Unix()
-	// Calculate time since last block
-	timeSinceLast := currentTime - bc.lastBlockTime
+	timeSinceLast := currentTime - bc.stats.lastBlockTime
 
-	// Update statistics
-	bc.blockCount++
-	bc.totalTime += timeSinceLast
-	bc.lastBlockTime = currentTime
+	bc.stats.blockCount++
+	bc.stats.totalTime += timeSinceLast
+	bc.stats.lastBlockTime = currentTime
 
-	// Calculate average
-	if bc.blockCount > 0 {
-		bc.avgTime = float64(bc.totalTime) / float64(bc.blockCount)
+	if bc.stats.blockCount > 0 {
+		bc.stats.avgTime = float64(bc.stats.totalTime) / float64(bc.stats.blockCount)
 	}
 
 	for _, v := range bc.data {
-		v.Confirmations += 1
+		if v != nil {
+			v.Confirmations += 1
+		}
 	}
 
 	bc.data = append(bc.data, newBlock)
 	bc.currentBlock = newBlock
 
-	// fill bc info with new latest block
 	bc.info.Latest = newBlock.GetHash()
-	bc.info.Total = bc.info.Total + 1
-	bc.info.ChainWork = bc.info.ChainWork + newBlock.Head.Size
-	bc.info.AvgTime = bc.avgTime
+	bc.info.Total++
+	bc.info.ChainWork += newBlock.Head.Size
+	bc.info.AvgTime = bc.stats.avgTime
 	bc.info.Txs += uint64(len(newBlock.Transactions))
+
+	var blockGas float64
 	for _, tx := range newBlock.Transactions {
 		if txType := tx.Type(); txType != types.CoinbaseTxType && txType != types.FaucetTxType {
 			gas := tx.Gas()
 			bc.info.Gas += gas
+			blockGas += gas
 		}
 	}
 
-	// Update Prometheus metrics
-	chainBlocksTotal.Inc()
-	chainTxsTotal.Add(float64(len(newBlock.Transactions)))
-	var blockGas float64
-	for _, tx := range newBlock.Transactions {
-		blockGas += tx.Gas()
-	}
-	chainGasTotal.Add(blockGas)
-	chainAvgBlockTimeSeconds.Set(bc.avgTime)
-	chainDifficultyGauge.Set(float64(bc.Difficulty))
-
-	// Update new metrics
-	if newBlock.Head != nil {
-		header := newBlock.Header()
-		chainHeight.Set(float64(header.Height))
-
-		// Block size metrics
-		blockSizeBytes := len(newBlock.ToBytes())
-		chainBlockSizeBytes.Observe(float64(blockSizeBytes))
-
-		// Update total blockchain size gauge using header size
+	header := newBlock.Header()
+	if header != nil {
 		bc.info.Size += int64(header.Size)
-		chainBlockchainSizeBytes.Set(float64(bc.info.Size))
-
-		chainBlockGasUsed.Observe(float64(newBlock.Head.GasUsed))
 	}
 
-	SaveToVault(*newBlock)
+	bc.metrics.blocksTotal.Inc()
+	bc.metrics.txsTotal.Add(float64(len(newBlock.Transactions)))
+	bc.metrics.gasTotal.Add(blockGas)
+	bc.metrics.avgBlockTimeSeconds.Set(bc.stats.avgTime)
+	bc.metrics.difficultyGauge.Set(float64(bc.Difficulty))
+
+	if header != nil {
+		bc.metrics.height.Set(float64(header.Height))
+		blockSizeBytes := len(newBlock.ToBytes())
+		bc.metrics.blockSizeBytes.Observe(float64(blockSizeBytes))
+		bc.metrics.blockchainSizeBytes.Set(float64(bc.info.Size))
+		bc.metrics.blockGasUsed.Observe(float64(newBlock.Head.GasUsed))
+	}
+
+	if err := bc.storage.Save(newBlock, bc.chainPath); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // return lenght of array
 func ValidateBlocks(blocks []*block.Block) (int, error) {
-	// var vld = validator.Get()
-
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
 	}
@@ -509,9 +605,13 @@ func (bc *Chain) GetChainConfigStatus() byte {
 }
 
 func (bc *Chain) GetData() []*block.Block {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
 	return bc.data
 }
 
 func (bc *Chain) SetChainConfigStatus(status byte) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
 	bc.status = status
 }

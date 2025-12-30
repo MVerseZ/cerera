@@ -11,45 +11,8 @@ import (
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/cerera/internal/icenet/metrics"
 )
-
-var (
-	// Метрики для синхронизации блоков
-	blocksReceivedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "icenet_blocks_received_total",
-		Help: "Total number of blocks received from other nodes",
-	})
-	blocksProcessedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "icenet_blocks_processed_total",
-		Help: "Total number of blocks successfully processed and added to chain",
-	})
-	blocksRejectedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "icenet_blocks_rejected_total",
-		Help: "Total number of blocks rejected (validation failed, duplicates, etc.)",
-	})
-	blocksBroadcastTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "icenet_blocks_broadcast_total",
-		Help: "Total number of blocks broadcasted to other nodes",
-	})
-	blockSyncErrorsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "icenet_block_sync_errors_total",
-			Help: "Total number of block synchronization errors by type",
-		},
-		[]string{"error_type"},
-	)
-)
-
-func init() {
-	prometheus.MustRegister(
-		blocksReceivedTotal,
-		blocksProcessedTotal,
-		blocksRejectedTotal,
-		blocksBroadcastTotal,
-		blockSyncErrorsTotal,
-	)
-}
 
 // monitorAndSendBlocks периодически проверяет новые блоки и отправляет их на bootstrap
 func (i *Ice) monitorAndSendBlocks() {
@@ -181,7 +144,7 @@ func (i *Ice) broadcastBlock(b *block.Block) error {
 		)
 		// Увеличиваем счетчик для каждого отправленного блока
 		for i := 0; i < sentCount; i++ {
-			blocksBroadcastTotal.Inc()
+			metrics.Get().BlocksBroadcastTotal.WithLabelValues("bootstrap").Inc()
 		}
 	} else {
 		// Обычная нода: отправляем bootstrap
@@ -197,12 +160,12 @@ func (i *Ice) broadcastBlock(b *block.Block) error {
 			icelogger().Warnw("Failed to send block to bootstrap",
 				"block_hash", b.Hash.Hex(),
 				"err", err)
-			blockSyncErrorsTotal.WithLabelValues("broadcast_error").Inc()
+			metrics.Get().BlockSyncErrorsTotal.WithLabelValues("broadcast_error").Inc()
 			return fmt.Errorf("failed to send block to bootstrap: %w", err)
 		}
 
 		sentCount++
-		blocksBroadcastTotal.Inc()
+		metrics.Get().BlocksBroadcastTotal.WithLabelValues("bootstrap").Inc()
 		icelogger().Infow("Block sent to bootstrap",
 			"block_hash", b.Hash.Hex(),
 			"block_height", b.Head.Height,
@@ -256,7 +219,7 @@ func (i *Ice) sendBlockToConnection(conn net.Conn, b *block.Block) error {
 // processReceivedBlock обрабатывает полученный блок от другой ноды
 func (i *Ice) processReceivedBlock(data string, source string) {
 	// Увеличиваем счетчик полученных блоков
-	blocksReceivedTotal.Inc()
+	metrics.Get().BlocksReceivedTotal.WithLabelValues(source).Inc()
 
 	// Парсим блок из сообщения
 	b, err := i.parseBlockMessage(data)
@@ -264,8 +227,8 @@ func (i *Ice) processReceivedBlock(data string, source string) {
 		icelogger().Warnw("Failed to parse block message",
 			"source", source,
 			"err", err)
-		blocksRejectedTotal.Inc()
-		blockSyncErrorsTotal.WithLabelValues("parse_error").Inc()
+		metrics.Get().BlocksRejectedTotal.WithLabelValues("parse_error").Inc()
+		metrics.Get().BlockSyncErrorsTotal.WithLabelValues("parse_error").Inc()
 		return
 	}
 
@@ -283,8 +246,8 @@ func (i *Ice) processReceivedBlock(data string, source string) {
 			"block_hash", b.Hash.Hex(),
 			"block_height", b.Head.Height,
 			"err", err)
-		blocksRejectedTotal.Inc()
-		blockSyncErrorsTotal.WithLabelValues("validation_error").Inc()
+		metrics.Get().BlocksRejectedTotal.WithLabelValues("validation_error").Inc()
+		metrics.Get().BlockSyncErrorsTotal.WithLabelValues("validation_error").Inc()
 		return
 	}
 
@@ -295,13 +258,13 @@ func (i *Ice) processReceivedBlock(data string, source string) {
 			"block_hash", b.Hash.Hex(),
 			"block_height", b.Head.Height,
 			"err", err)
-		blocksRejectedTotal.Inc()
-		blockSyncErrorsTotal.WithLabelValues("add_to_chain_error").Inc()
+		metrics.Get().BlocksRejectedTotal.WithLabelValues("add_to_chain_error").Inc()
+		metrics.Get().BlockSyncErrorsTotal.WithLabelValues("add_to_chain_error").Inc()
 		return
 	}
 
 	// Блок успешно обработан
-	blocksProcessedTotal.Inc()
+	metrics.Get().BlocksProcessedTotal.WithLabelValues(source).Inc()
 	icelogger().Infow("Successfully processed and added block",
 		"source", source,
 		"block_hash", b.Hash.Hex(),

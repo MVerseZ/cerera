@@ -1,6 +1,7 @@
 package icenet
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/icenet/connection"
+	"github.com/cerera/internal/icenet/protocol"
 )
 
 // Start запускает компонент Ice.
@@ -275,69 +278,72 @@ func (i *Ice) isBootstrapNode() bool {
 
 // startListener запускает listener для входящих подключений
 func (i *Ice) startListener() error {
-	addr := fmt.Sprintf(":%s", i.port)
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to start listener on %s: %w", addr, err)
+	// Use connection manager instead of direct listener
+	if err := i.connManager.Start(i.port); err != nil {
+		return fmt.Errorf("failed to start connection manager: %w", err)
 	}
 
-	i.mu.Lock()
-	i.listener = listener
-	i.mu.Unlock()
+	icelogger().Infow("Ice listener started via connection manager", "port", i.port)
 
-	icelogger().Infow("Ice listener started", "addr", addr)
-
-	// Обрабатываем входящие подключения
-	go i.handleConnections()
+	// Process messages from connection handler
+	go i.processConnectionMessages()
 
 	return nil
 }
 
-// handleConnections обрабатывает входящие подключения
-func (i *Ice) handleConnections() {
+// processConnectionMessages processes messages from the connection handler
+func (i *Ice) processConnectionMessages() {
+	handler := i.connManager.GetHandler()
+	msgChan := handler.MessageChannel()
+	
 	for {
-		// Check context cancellation
 		select {
 		case <-i.ctx.Done():
-			icelogger().Infow("Connection handler stopped due to context cancellation")
+			icelogger().Infow("Message processor stopped due to context cancellation")
 			return
-		default:
-		}
-
-		i.mu.RLock()
-		listener := i.listener
-		started := i.started
-		i.mu.RUnlock()
-
-		if !started || listener == nil {
-			return
-		}
-
-		// Set deadline for accept to allow periodic context checks
-		if tcpListener, ok := listener.(*net.TCPListener); ok {
-			tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
-		}
-
-		conn, err := listener.Accept()
-		if err != nil {
-			// Check if error is due to timeout (for context checking)
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				// Timeout is expected, continue to check context
+		case event := <-msgChan:
+			if event.Error != nil {
+				icelogger().Errorw("Message event error", "err", event.Error)
 				continue
 			}
-
-			i.mu.RLock()
-			started = i.started
-			i.mu.RUnlock()
-			if !started {
-				return
+			
+			if event.Message == nil {
+				continue
 			}
-			icelogger().Errorw("Error accepting connection", "err", err)
-			continue
+			
+			// Process domain-specific messages
+			i.processProtocolMessage(event.Message, event.Connection)
 		}
+	}
+}
 
-		// Обрабатываем каждое подключение в отдельной горутине
-		go i.handleConnection(conn)
+// processProtocolMessage processes a protocol message (domain-specific logic)
+func (i *Ice) processProtocolMessage(msg protocol.Message, conn *connection.Connection) {
+	// This replaces the old handleConnection logic
+	// Domain-specific message handling is preserved
+	if conn == nil || conn.Conn == nil {
+		return
+	}
+	
+	switch m := msg.(type) {
+	case *protocol.ReadyRequestMessage:
+		// Convert to old format for compatibility
+		data := fmt.Sprintf("%s|%s|%s", protocol.MsgTypeReadyRequest, m.Address.Hex(), m.NetworkAddr)
+		i.handleReadyRequest(conn.Conn, data, conn.NetworkAddr)
+	case *protocol.WhoIsMessage:
+		data := fmt.Sprintf("%s|%s", protocol.MsgTypeWhoIs, m.NodeAddress.Hex())
+		i.handleWhoIsRequest(conn.Conn, data, conn.NetworkAddr)
+	case *protocol.NodeOkMessage:
+		data := fmt.Sprintf("%s|%d|%d", protocol.MsgTypeNodeOk, m.Count, m.Nonce)
+		i.handleNodeOk(conn.Conn, data, conn.NetworkAddr)
+	case *protocol.BlockMessage:
+		// Block messages need special handling
+		if m.Block != nil {
+			blockJSON, _ := json.Marshal(m.Block)
+			data := fmt.Sprintf("%s|%s", protocol.MsgTypeBlock, string(blockJSON))
+			i.processReceivedBlock(data, conn.NetworkAddr)
+		}
+	// Add other message types as needed
 	}
 }
 

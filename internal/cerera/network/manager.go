@@ -36,9 +36,7 @@ func NewWsManager() *WsManager {
 }
 
 // Start runs the WebSocket manager
-func (manager *WsManager) Start(ctx context.Context) error {
-	var bc = chain.GetBlockChain()
-	// var pul = pool.Get()
+func (manager *WsManager) Start(ctx context.Context, bc *chain.Chain) error {
 	for {
 		select {
 		case <-ctx.Done():

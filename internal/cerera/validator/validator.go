@@ -367,7 +367,9 @@ func (v *CoreValidator) ProposeBlock(b *block.Block) {
 					// Игнорируем панику при обновлении цепи
 				}
 			}()
-			v.UpdateChain(b)
+			if err := v.UpdateChain(b); err != nil {
+				vlogger.Errorw("Failed to update chain", "err", err)
+			}
 		}()
 	}
 }
@@ -680,8 +682,8 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 							result := map[string]interface{}{
 								"hash":  btx.Hash().Hex(),
 								"from":  btx.From().Hex(),
-								"value": btx.Value().String(), // decimal string
-								"gas":   uint64(btx.Gas()),    // number, not hex
+								"value": btx.Value().String(),              // decimal string
+								"gas":   uint64(btx.Gas()),                 // number, not hex
 								"data":  common.Bytes(btx.Data()).String(), // hex string
 							}
 							// Handle To() which can be nil

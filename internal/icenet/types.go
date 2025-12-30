@@ -11,6 +11,7 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/icenet/connection"
 	"go.uber.org/zap"
 )
 
@@ -55,6 +56,7 @@ type Ice struct {
 	consensusOnce       sync.Once                  // гарантирует однократное закрытие consensusChan
 	consensusManager    ConsensusManager           // менеджер консенсуса (инжектированная зависимость)
 	receivedBlockHashes map[common.Hash]bool       // кэш полученных блоков для защиты от дублирования
+	connManager         *connection.Manager        // менеджер соединений
 }
 
 // getBootstrapIP returns the bootstrap IP from config, environment variable, or default
@@ -136,6 +138,7 @@ func NewIce(cfg *config.Config, ctx context.Context, port string) (*Ice, error) 
 		confirmedNodes:      make(map[types.Address]int),      // инициализируем map для отслеживания подтверждений (каждый узел должен подтвердить 2 раза)
 		consensusManager:    NewGigeaConsensusManager(),       // используем адаптер для gigea по умолчанию
 		receivedBlockHashes: make(map[common.Hash]bool),       // кэш для защиты от дублирования блоков
+		connManager:         connection.NewManager(ctx, nil),  // менеджер соединений
 	}
 
 	icelogger().Infow("Ice component created",
