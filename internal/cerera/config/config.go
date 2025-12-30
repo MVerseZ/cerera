@@ -22,12 +22,14 @@ type ChainConfig struct {
 	Type    string
 }
 type NetworkConfig struct {
-	PID  protocol.ID
-	P2P  int
-	RPC  int
-	ADDR types.Address // address of running node
-	PRIV string        // private key of current running node
-	PUB  []byte        // public key of current running node
+	PID           protocol.ID
+	P2P           int
+	RPC           int
+	ADDR          types.Address // address of running node
+	PRIV          string        // private key of current running node
+	PUB           []byte        // public key of current running node
+	BootstrapIP   string        // bootstrap node IP address
+	BootstrapPort string        // bootstrap node port
 }
 type VaultConfig struct {
 	MEM  bool
@@ -79,7 +81,9 @@ func GenerageConfig() *Config {
 				},
 			},
 			NetCfg: NetworkConfig{
-				PID: "/vavilov/1.0.0",
+				PID:           "/vavilov/1.0.0",
+				BootstrapIP:   "192.168.1.6",
+				BootstrapPort: "31100",
 			},
 			Chain: ChainConfig{
 				ChainID: 11,

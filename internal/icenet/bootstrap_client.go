@@ -15,32 +15,67 @@ import (
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) connectToBootstrap() {
 	bootstrapAddr := i.GetBootstrapAddr()
-	retryDelay := 3 * time.Second
-	var maxRetries = 10
-	var retries = 0
+	baseDelay := 3 * time.Second
+	maxDelay := 60 * time.Second
+	maxRetries := 10
+	retries := 0
 
 	for {
-		i.mu.Lock()
+		// Check context cancellation
+		select {
+		case <-i.ctx.Done():
+			icelogger().Infow("Bootstrap connection cancelled due to context")
+			return
+		default:
+		}
+
+		i.mu.RLock()
 		started := i.started
-		i.mu.Unlock()
+		i.mu.RUnlock()
 
 		if !started {
 			return
 		}
 
-		icelogger().Debugw("Connecting to bootstrap node", "bootstrap_addr", bootstrapAddr)
+		icelogger().Debugw("Connecting to bootstrap node", "bootstrap_addr", bootstrapAddr, "attempt", retries+1)
 
-		conn, err := net.DialTimeout("tcp", bootstrapAddr, 10*time.Second)
+		// Use context-aware dial with timeout
+		dialer := &net.Dialer{
+			Timeout: 10 * time.Second,
+		}
+		conn, err := dialer.DialContext(i.ctx, "tcp", bootstrapAddr)
 		if err != nil {
-
 			retries++
 			if retries >= maxRetries {
-				icelogger().Errorw("Failed to connect to bootstrap", "bootstrap_addr", bootstrapAddr, "retries", retries, "max_retries", maxRetries, "err", err)
+				icelogger().Errorw("Failed to connect to bootstrap after max retries",
+					"bootstrap_addr", bootstrapAddr,
+					"retries", retries,
+					"max_retries", maxRetries,
+					"err", err)
 				break
 			}
-			time.Sleep(retryDelay)
+
+			// Calculate exponential backoff
+			backoffDelay := CalculateBackoff(retries-1, baseDelay, maxDelay)
+			icelogger().Warnw("Failed to connect to bootstrap, retrying",
+				"bootstrap_addr", bootstrapAddr,
+				"attempt", retries,
+				"max_retries", maxRetries,
+				"backoff_delay", backoffDelay,
+				"err", err)
+
+			// Wait with context cancellation support
+			select {
+			case <-i.ctx.Done():
+				return
+			case <-time.After(backoffDelay):
+				// Continue retry
+			}
 			continue
 		}
+
+		// Reset retry counter on successful connection
+		retries = 0
 
 		icelogger().Infow("Successfully connected to bootstrap", "bootstrap_addr", bootstrapAddr)
 
@@ -53,14 +88,23 @@ func (i *Ice) connectToBootstrap() {
 		i.recalculateConsensus()
 
 		// Отправляем запрос на включение с информацией о себе
-		readyRequest := fmt.Sprintf("READY_REQUEST|%s|%s\n", i.address.Hex(), i.GetNetworkAddr())
+		readyRequest := fmt.Sprintf("%s|%s|%s\n", MsgTypeReadyRequest, i.address.Hex(), i.GetNetworkAddr())
+		conn.SetWriteDeadline(time.Now().Add(DefaultConnectionTimeout))
 		if _, err := conn.Write([]byte(readyRequest)); err != nil {
 			icelogger().Errorw("Error sending ready request to bootstrap", "err", err)
 			conn.Close()
 			i.mu.Lock()
 			i.bootstrapConn = nil
 			i.mu.Unlock()
-			time.Sleep(retryDelay)
+
+			// Wait before retry with context support
+			backoffDelay := CalculateBackoff(0, baseDelay, maxDelay)
+			select {
+			case <-i.ctx.Done():
+				return
+			case <-time.After(backoffDelay):
+				// Continue retry
+			}
 			continue
 		}
 
@@ -75,25 +119,27 @@ func (i *Ice) connectToBootstrap() {
 
 		// Ждем разрыва соединения
 		// Проверяем соединение периодически
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(DefaultPingInterval)
+		defer ticker.Stop()
+
 		connectionAlive := true
 		for connectionAlive {
 			select {
 			case <-ticker.C:
 				// Проверяем, что соединение еще живо
-				conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
-				if _, err := conn.Write([]byte("PING\n")); err != nil {
+				conn.SetWriteDeadline(time.Now().Add(DefaultPingTimeout))
+				pingMsg := fmt.Sprintf("%s\n", MsgTypePing)
+				if _, err := conn.Write([]byte(pingMsg)); err != nil {
 					icelogger().Warnw("Bootstrap connection lost, reconnecting", "err", err)
 					conn.Close()
 					i.mu.Lock()
 					i.bootstrapConn = nil
 					i.mu.Unlock()
 					i.resetBootstrapReady()
-					ticker.Stop()
 					connectionAlive = false
 				}
 			case <-i.ctx.Done():
-				ticker.Stop()
+				icelogger().Infow("Bootstrap connection cancelled, closing")
 				conn.Close()
 				i.mu.Lock()
 				i.bootstrapConn = nil
@@ -102,17 +148,23 @@ func (i *Ice) connectToBootstrap() {
 			}
 		}
 
-		// Если соединение разорвано, ждем перед переподключением
-		time.Sleep(retryDelay)
+		// Если соединение разорвано, ждем перед переподключением с экспоненциальной задержкой
+		backoffDelay := CalculateBackoff(0, baseDelay, maxDelay)
+		select {
+		case <-i.ctx.Done():
+			return
+		case <-time.After(backoffDelay):
+			// Continue to reconnect
+		}
 	}
 }
 
 // readFromBootstrap читает данные от bootstrap соединения
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) readFromBootstrap(conn net.Conn) {
-	buffer := make([]byte, 4096)
+	buffer := make([]byte, DefaultReadBufferSize)
 	for {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(DefaultBootstrapReadTimeout))
 		n, err := conn.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
@@ -126,7 +178,15 @@ func (i *Ice) readFromBootstrap(conn net.Conn) {
 		}
 
 		if n > 0 {
+			// Validate message size
+			if err := ValidateMessageSize(n); err != nil {
+				icelogger().Errorw("Invalid message size from bootstrap", "size", n, "err", err)
+				return
+			}
+
 			data := string(buffer[:n])
+			// Sanitize message to prevent injection attacks
+			data = SanitizeMessage(data)
 			icelogger().Infow("Received data from bootstrap",
 				"size", n,
 				"data", data,
@@ -183,6 +243,13 @@ func (i *Ice) readFromBootstrap(conn net.Conn) {
 					i.processConsensusStatusMessage(line)
 					continue
 				}
+
+				// Проверяем, является ли сообщение блоком
+				if i.isBlockMessage(line) {
+					icelogger().Infow("Received BLOCK message from bootstrap")
+					i.processReceivedBlock(line, "bootstrap")
+					continue
+				}
 			}
 		}
 	}
@@ -191,22 +258,24 @@ func (i *Ice) readFromBootstrap(conn net.Conn) {
 // sendKeepAlive отправляет keep-alive пакеты для поддержания соединения
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) sendKeepAlive(conn net.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(DefaultKeepAliveInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			i.mu.Lock()
+			i.mu.RLock()
 			started := i.started
 			currentConn := i.bootstrapConn
-			i.mu.Unlock()
+			i.mu.RUnlock()
 
 			if !started || currentConn != conn {
 				return
 			}
 
-			if _, err := conn.Write([]byte("KEEPALIVE\n")); err != nil {
+			keepAliveMsg := fmt.Sprintf("%s\n", MsgTypeKeepAlive)
+			conn.SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
+			if _, err := conn.Write([]byte(keepAliveMsg)); err != nil {
 				icelogger().Warnw("Failed to send keep-alive", "err", err)
 				return
 			}
@@ -221,7 +290,7 @@ func (i *Ice) sendKeepAlive(conn net.Conn) {
 func (i *Ice) sendPeriodicNodeOk(conn net.Conn) {
 	// Отправляем первое подтверждение сразу после подключения (уже отправляется в processNodesCountMessage)
 	// Затем отправляем периодически с интервалом
-	ticker := time.NewTicker(3 * time.Second) // Отправляем каждые 3 секунд
+	ticker := time.NewTicker(DefaultNodeOkInterval)
 	defer ticker.Stop()
 
 	// Пропускаем первый тик, так как первое подтверждение уже отправлено
@@ -230,20 +299,23 @@ func (i *Ice) sendPeriodicNodeOk(conn net.Conn) {
 	for {
 		select {
 		case <-ticker.C:
-			i.mu.Lock()
+			i.mu.RLock()
 			started := i.started
 			currentConn := i.bootstrapConn
 			bootstrapReady := i.bootstrapReady
-			i.mu.Unlock()
+			i.mu.RUnlock()
 
 			if !started || currentConn != conn || !bootstrapReady {
 				continue
 			}
 
 			// Получаем текущее количество узлов и nonce
-			nodes := gigea.GetNodes()
+			i.mu.RLock()
+			consensusManager := i.consensusManager
+			i.mu.RUnlock()
+			nodes := consensusManager.GetNodes()
 			actualCount := len(nodes)
-			currentNonce := gigea.GetNonce()
+			currentNonce := consensusManager.GetNonce()
 
 			// Логируем текущий nonce перед отправкой
 			icelogger().Debugw("Preparing to send periodic NODE_OK",
@@ -252,8 +324,8 @@ func (i *Ice) sendPeriodicNodeOk(conn net.Conn) {
 			)
 
 			// Отправляем периодическое подтверждение NODE_OK
-			message := fmt.Sprintf("NODE_OK|%d|%d\n", actualCount, currentNonce)
-			conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			message := fmt.Sprintf("%s|%d|%d\n", MsgTypeNodeOk, actualCount, currentNonce)
+			conn.SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
 			if _, err := conn.Write([]byte(message)); err != nil {
 				icelogger().Warnw("Failed to send periodic NODE_OK to bootstrap", "err", err)
 				return
@@ -288,23 +360,13 @@ func (i *Ice) processREQMessage(data string) {
 	// Устанавливаем флаг готовности (это заменяет READY)
 	i.setBootstrapReady()
 
-	// Обрабатываем список узлов (это заменяет NODES)
-	addedCount := 0
-	for _, nodeInfo := range req.Nodes {
-		// Пропускаем себя
-		if nodeInfo.Address == i.address {
-			continue
-		}
-
-		// Добавляем узел в консенсус
-		gigea.AddVoter(nodeInfo.Address)
-		gigea.AddNode(nodeInfo.Address, nodeInfo.NetworkAddr)
-		addedCount++
-
-		icelogger().Debugw("Added node from REQ",
-			"address", nodeInfo.Address.Hex(),
-			"network_addr", nodeInfo.NetworkAddr,
-		)
+	// Обрабатываем список узлов (это заменяет NODES) - используем общую функцию
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	addedCount, err := addNodesFromList(req.Nodes, &i.address, consensusManager)
+	if err != nil {
+		icelogger().Warnw("Error adding nodes from REQ", "err", err)
 	}
 
 	if addedCount > 0 {
@@ -320,19 +382,21 @@ func (i *Ice) processREQMessage(data string) {
 	}
 
 	// Обновляем nonce (это заменяет NONCE)
-	currentNonce := gigea.GetNonce()
+	// consensusManager уже получен выше, используем его
+	currentNonce := consensusManager.GetNonce()
 	if req.Nonce != currentNonce {
 		icelogger().Infow("Updating consensus nonce from REQ",
 			"old_nonce", currentNonce,
 			"new_nonce", req.Nonce,
 		)
-		gigea.SetNonce(req.Nonce)
+		consensusManager.SetNonce(req.Nonce)
 	} else {
 		icelogger().Debugw("Nonce already synchronized", "nonce", req.Nonce)
 	}
 
 	// Получаем обновленную информацию о консенсусе
-	consensusInfo := gigea.GetConsensusInfo()
+	// consensusManager уже получен выше, используем его
+	consensusInfo := consensusManager.GetConsensusInfo()
 	icelogger().Infow("REQ message processed successfully",
 		"voters", consensusInfo["voters"],
 		"nodes", consensusInfo["nodes"],
@@ -345,7 +409,7 @@ func (i *Ice) processREQMessage(data string) {
 func (i *Ice) isNodeListMessage(data string) bool {
 	// Формат: NODES|address1#network_addr1,address2#network_addr2,...
 	// Проверяем, что это именно NODES, а не NODES_COUNT
-	return len(data) > 5 && data[:5] == "NODES" && !strings.HasPrefix(data, "NODES_COUNT")
+	return len(data) > len(MsgTypeNodes) && strings.HasPrefix(data, MsgTypeNodes) && !strings.HasPrefix(data, MsgTypeNodesCount)
 }
 
 // processNodeListMessage обрабатывает сообщение со списком узлов и добавляет их в консенсус
@@ -375,20 +439,18 @@ func (i *Ice) processNodeListMessage(data string) {
 				continue
 			}
 
-			// Добавляем узел в консенсус
-			gigea.AddVoter(*nodeAddr)
-			gigea.AddNode(*nodeAddr, networkAddr)
+			// Добавляем узел в консенсус (используем общую функцию)
+			i.mu.RLock()
+			consensusManager := i.consensusManager
+			i.mu.RUnlock()
+			if err := addNodeToConsensus(*nodeAddr, networkAddr, consensusManager); err != nil {
+				icelogger().Warnw("Failed to add node to consensus from node list",
+					"address", nodeAddr.Hex(),
+					"network_addr", networkAddr,
+					"err", err)
+				continue
+			}
 			addedCount++
-
-			// Обновляем nonce при добавлении узла
-			// currentNonce := gigea.GetNonce()
-			// newNonce := currentNonce + 1
-			// gigea.SetNonce(newNonce)
-
-			icelogger().Debugw("Added node to consensus",
-				"address", nodeAddr.Hex(),
-				"network_addr", networkAddr,
-			)
 		}
 	}
 
@@ -419,7 +481,7 @@ func (i *Ice) processNodeListMessage(data string) {
 // isNodesCountMessage проверяет, содержит ли сообщение COUNT узлов
 func (i *Ice) isNodesCountMessage(data string) bool {
 	// Формат: NODES_COUNT|{count}
-	return len(data) > 11 && strings.HasPrefix(data, "NODES_COUNT")
+	return len(data) > len(MsgTypeNodesCount) && strings.HasPrefix(data, MsgTypeNodesCount)
 }
 
 // processNodesCountMessage обрабатывает сообщение с COUNT узлов
@@ -440,7 +502,10 @@ func (i *Ice) processNodesCountMessage(data string) {
 	}
 
 	// Получаем текущее количество узлов в консенсусе
-	nodes := gigea.GetNodes()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	nodes := consensusManager.GetNodes()
 	actualCount := len(nodes)
 
 	icelogger().Infow("Received NODES_COUNT from bootstrap",
@@ -464,8 +529,11 @@ func (i *Ice) processNodesCountMessage(data string) {
 		i.mu.Unlock()
 		if conn != nil {
 			// Отправляем подтверждение NODE_OK, количество узлов и nonce в одном пакете формата: NODE_OK|count|nonce
-			currentNonce := gigea.GetNonce()
-			message := fmt.Sprintf("NODE_OK|%d|%d\n", actualCount, currentNonce)
+			i.mu.RLock()
+			consensusManager := i.consensusManager
+			i.mu.RUnlock()
+			currentNonce := consensusManager.GetNonce()
+			message := fmt.Sprintf("%s|%d|%d\n", MsgTypeNodeOk, actualCount, currentNonce)
 			if _, err := conn.Write([]byte(message)); err != nil {
 				icelogger().Warnw("Failed to send NODE_OK|count|nonce to bootstrap", "err", err)
 			}
@@ -476,7 +544,7 @@ func (i *Ice) processNodesCountMessage(data string) {
 // isBroadcastNonceMessage проверяет, содержит ли сообщение broadcast nonce
 func (i *Ice) isBroadcastNonceMessage(data string) bool {
 	// Формат: BROADCAST_NONCE|{nonce_value}|{node_list}
-	return len(data) > 15 && data[:15] == "BROADCAST_NONCE"
+	return len(data) > len(MsgTypeBroadcastNonce) && strings.HasPrefix(data, MsgTypeBroadcastNonce)
 }
 
 // processBroadcastNonceMessage обрабатывает сообщение с broadcast nonce
@@ -498,13 +566,16 @@ func (i *Ice) processBroadcastNonceMessage(data string) {
 	}
 
 	// Обновляем nonce в консенсусе
-	currentNonce := gigea.GetNonce()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	currentNonce := consensusManager.GetNonce()
 	if nonce != currentNonce {
 		icelogger().Infow("Updating consensus nonce from broadcast",
 			"old_nonce", currentNonce,
 			"new_nonce", nonce,
 		)
-		gigea.SetNonce(nonce)
+		consensusManager.SetNonce(nonce)
 	}
 
 	// Если есть список узлов, обрабатываем его
@@ -520,7 +591,12 @@ func (i *Ice) processBroadcastNonceMessage(data string) {
 // isConsensusStartCommand проверяет, является ли сообщение командой начала консенсуса
 func (i *Ice) isConsensusStartCommand(data string) bool {
 	// Проверяем различные варианты команд начала консенсуса
-	commands := []string{"START_CONSENSUS", "CONSENSUS_START", "BEGIN_CONSENSUS", "CONSENSUS_BEGIN"}
+	commands := []string{
+		MsgTypeStartConsensus,
+		MsgTypeConsensusStart,
+		MsgTypeBeginConsensus,
+		MsgTypeConsensusBegin,
+	}
 	data = trimResponse(data)
 	for _, cmd := range commands {
 		if data == cmd {
@@ -533,7 +609,10 @@ func (i *Ice) isConsensusStartCommand(data string) bool {
 // verifyNodesIPAddresses сверяет узлы со своими и проверяет IP адреса
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) verifyNodesIPAddresses() {
-	nodes := gigea.GetNodes()
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	nodes := consensusManager.GetNodes()
 
 	knownCount := 0
 	unknownCount := 0
@@ -575,7 +654,7 @@ func (i *Ice) verifyNodesIPAddresses() {
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) sendWhoIsRequest(nodeAddress string) {
 	// Формируем запрос: WHO_IS|{node_address}
-	message := fmt.Sprintf("WHO_IS|%s\n", nodeAddress)
+	message := fmt.Sprintf("%s|%s\n", MsgTypeWhoIs, nodeAddress)
 
 	// Отправляем запрос на bootstrap
 	i.mu.Lock()
@@ -616,7 +695,10 @@ func (i *Ice) processWhoIsResponse(data string) {
 	}
 
 	// Обновляем IP адрес узла в консенсусе
-	gigea.AddNode(*nodeAddr, networkAddr)
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	consensusManager.AddNode(*nodeAddr, networkAddr)
 
 	icelogger().Infow("Updated node network address from WHO_IS response",
 		"node_address", nodeAddr.Hex(),
@@ -627,7 +709,7 @@ func (i *Ice) processWhoIsResponse(data string) {
 // isConsensusStatusMessage проверяет, содержит ли сообщение статус консенсуса
 func (i *Ice) isConsensusStatusMessage(data string) bool {
 	// Формат: CONSENSUS_STATUS|{status}|{voters_addresses}|{nodes_addresses}|{nonce}
-	return len(data) > 15 && strings.HasPrefix(data, "CONSENSUS_STATUS")
+	return len(data) > len(MsgTypeConsensusStatus) && strings.HasPrefix(data, MsgTypeConsensusStatus)
 }
 
 // processConsensusStatusMessage обрабатывает сообщение со статусом консенсуса
@@ -689,28 +771,32 @@ func (i *Ice) processConsensusStatusMessage(data string) {
 	}
 
 	// Обновляем статус консенсуса
-	gigea.SetStatus(status)
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	consensusManager.SetStatus(status)
 
 	// Обновляем nonce от bootstrap (bootstrap является источником истины)
 	// Всегда обновляем nonce на значение от bootstrap, даже если оно меньше
 	// (это может произойти при переподключении или сбросе)
-	currentNonce := gigea.GetNonce()
+	currentNonce := consensusManager.GetNonce()
 	if nonce != currentNonce {
 		icelogger().Infow("Updating consensus nonce from CONSENSUS_STATUS",
 			"old_nonce", currentNonce,
 			"new_nonce", nonce,
 		)
-		gigea.SetNonce(nonce)
+		consensusManager.SetNonce(nonce)
 		icelogger().Infow("Nonce updated successfully from CONSENSUS_STATUS",
 			"new_nonce", nonce,
-			"verified_nonce", gigea.GetNonce(),
+			"verified_nonce", consensusManager.GetNonce(),
 		)
 	} else {
 		icelogger().Debugw("Nonce already synchronized from CONSENSUS_STATUS", "nonce", nonce)
 	}
 
 	// Обновляем список voters в консенсусе
-	currentVoters := gigea.GetVoters()
+	// consensusManager уже получен выше, используем его
+	currentVoters := consensusManager.GetVoters()
 	votersMap := make(map[string]bool)
 	for _, voter := range currentVoters {
 		votersMap[voter.Hex()] = true
@@ -719,13 +805,13 @@ func (i *Ice) processConsensusStatusMessage(data string) {
 	// Добавляем новых voters, которых еще нет
 	for _, voterAddr := range voterAddresses {
 		if !votersMap[voterAddr.Hex()] {
-			gigea.AddVoter(voterAddr)
+			consensusManager.AddVoter(voterAddr)
 			icelogger().Infow("Added new voter from CONSENSUS_STATUS", "voter_address", voterAddr.Hex())
 		}
 	}
 
 	// Обновляем список nodes в консенсусе
-	currentNodes := gigea.GetNodes()
+	currentNodes := consensusManager.GetNodes()
 	nodesMap := make(map[string]bool)
 	for addrStr := range currentNodes {
 		nodesMap[addrStr] = true
@@ -736,11 +822,11 @@ func (i *Ice) processConsensusStatusMessage(data string) {
 		addrStr := nodeAddr.Hex()
 		if !nodesMap[addrStr] {
 			// Добавляем новый узел (networkAddr будет пустым, обновится позже)
-			gigea.AddNode(nodeAddr, "")
+			consensusManager.AddNode(nodeAddr, "")
 			icelogger().Infow("Added new node from CONSENSUS_STATUS", "node_address", addrStr)
 		} else {
 			// Обновляем LastSeen для существующего узла
-			gigea.UpdateNodeLastSeen(nodeAddr)
+			consensusManager.UpdateNodeLastSeen(nodeAddr)
 			icelogger().Debugw("Updated existing node from CONSENSUS_STATUS", "node_address", addrStr)
 		}
 	}
@@ -757,11 +843,14 @@ func (i *Ice) processConsensusStatusMessage(data string) {
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) updateConsensusAfterNodes() {
 	// Убеждаемся, что текущий узел добавлен в консенсус
-	gigea.AddVoter(i.address)
-	gigea.AddNode(i.address, i.GetNetworkAddr())
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+	consensusManager.AddVoter(i.address)
+	consensusManager.AddNode(i.address, i.GetNetworkAddr())
 
 	// Получаем информацию о консенсусе
-	consensusInfo := gigea.GetConsensusInfo()
+	consensusInfo := consensusManager.GetConsensusInfo()
 	icelogger().Infow("Consensus updated after receiving nodes list",
 		"address", i.address.Hex(),
 		"network_addr", i.GetNetworkAddr(),
@@ -775,19 +864,23 @@ func (i *Ice) updateConsensusAfterNodes() {
 // recalculateConsensus пересчитывает консенсус при подключении к bootstrap
 // Используется только обычными узлами (не bootstrap)
 func (i *Ice) recalculateConsensus() {
+	i.mu.RLock()
+	consensusManager := i.consensusManager
+	i.mu.RUnlock()
+
 	// Добавляем текущий узел в список voters консенсуса
-	gigea.AddVoter(i.address)
+	consensusManager.AddVoter(i.address)
 
 	// Добавляем текущий узел в список nodes
-	gigea.AddNode(i.address, i.GetNetworkAddr())
+	consensusManager.AddNode(i.address, i.GetNetworkAddr())
 
 	// Обновляем nonce при добавлении узла в консенсус
-	oldNonce := gigea.GetNonce()
+	oldNonce := consensusManager.GetNonce()
 	newNonce := oldNonce + 1
-	gigea.SetNonce(newNonce)
+	consensusManager.SetNonce(newNonce)
 
 	// Получаем обновленный nonce
-	currentNonce := gigea.GetNonce()
+	currentNonce := consensusManager.GetNonce()
 
 	// Не bootstrap узлы не отправляют nonce при пересчете консенсуса
 	// Они получают nonce от bootstrap при подключении
@@ -800,7 +893,7 @@ func (i *Ice) recalculateConsensus() {
 	)
 
 	// Получаем информацию о консенсусе для логирования
-	consensusInfo := gigea.GetConsensusInfo()
+	consensusInfo := consensusManager.GetConsensusInfo()
 	icelogger().Infow("Consensus info",
 		"voters", consensusInfo["voters"],
 		"nodes", consensusInfo["nodes"],

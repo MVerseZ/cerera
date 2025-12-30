@@ -49,6 +49,7 @@ type TxData interface {
 	gasPrice() *big.Int
 	value() *big.Int
 	nonce() uint64
+	setNonce(nonce uint64)
 	to() *Address
 
 	dna() []byte
@@ -418,4 +419,11 @@ func (tx *GTransaction) Bytes() []byte {
 		fmt.Printf("err while tx marhsal: %s\r\n", err)
 	}
 	return bytes
+}
+
+// //////////////////////////////////////////////////////////
+// Update nonce to block nonce
+// //////////////////////////////////////////////////////////
+func (tx *GTransaction) UpdateNonce(nonce uint64) {
+	tx.inner.setNonce(nonce)
 }

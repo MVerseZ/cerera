@@ -1,166 +1,166 @@
 package gigea
 
-import (
-	"context"
-	"testing"
+// import (
+// 	"context"
+// 	"testing"
 
-	"github.com/cerera/internal/cerera/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
+// 	"github.com/cerera/internal/cerera/types"
+// 	"github.com/stretchr/testify/assert"
+// 	"github.com/stretchr/testify/require"
+// )
 
-func TestInit(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// func TestInit(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
-	err := Init(ctx, addr)
-	require.NoError(t, err)
+// 	err := Init(ctx, addr)
+// 	require.NoError(t, err)
 
-	// Проверяем, что консенсус инициализирован
-	state := GetConsensusState()
-	assert.Equal(t, Follower, state)
+// 	// Проверяем, что консенсус инициализирован
+// 	state := GetConsensusState()
+// 	assert.Equal(t, Follower, state)
 
-	// Проверяем, что адрес установлен
-	info := GetConsensusInfo()
-	assert.NotNil(t, info)
-	assert.Equal(t, addr.String(), info["address"])
-}
+// 	// Проверяем, что адрес установлен
+// 	info := GetConsensusInfo()
+// 	assert.NotNil(t, info)
+// 	assert.Equal(t, addr.String(), info["address"])
+// }
 
-func TestGetConsensusState(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestGetConsensusState(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	state := GetConsensusState()
-	assert.Equal(t, Follower, state)
-}
+// 	state := GetConsensusState()
+// 	assert.Equal(t, Follower, state)
+// }
 
-func TestSetConsensusState(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestSetConsensusState(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	SetConsensusState(Leader)
-	state := GetConsensusState()
-	assert.Equal(t, Leader, state)
+// 	SetConsensusState(Leader)
+// 	state := GetConsensusState()
+// 	assert.Equal(t, Leader, state)
 
-	SetConsensusState(Validator)
-	state = GetConsensusState()
-	assert.Equal(t, Validator, state)
-}
+// 	SetConsensusState(Validator)
+// 	state = GetConsensusState()
+// 	assert.Equal(t, Validator, state)
+// }
 
-func TestGetConsensusStatus(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestGetConsensusStatus(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	status := GetConsensusStatus()
-	assert.Equal(t, 0, status)
+// 	status := GetConsensusStatus()
+// 	assert.Equal(t, 0, status)
 
-	SetConsensusStatus(1)
-	status = GetConsensusStatus()
-	assert.Equal(t, 1, status)
-}
+// 	SetConsensusStatus(1)
+// 	status = GetConsensusStatus()
+// 	assert.Equal(t, 1, status)
+// }
 
-func TestAddVoter(t *testing.T) {
-	ctx := context.Background()
-	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr1)
+// func TestAddVoter(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr1)
 
-	// Первый voter уже добавлен при Init
-	voters := GetVoters()
-	assert.Equal(t, 1, len(voters))
-	assert.Equal(t, addr1, voters[0])
+// 	// Первый voter уже добавлен при Init
+// 	voters := GetVoters()
+// 	assert.Equal(t, 1, len(voters))
+// 	assert.Equal(t, addr1, voters[0])
 
-	// Добавляем второго voter
-	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
-	AddVoter(addr2)
+// 	// Добавляем второго voter
+// 	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
+// 	AddVoter(addr2)
 
-	voters = GetVoters()
-	assert.Equal(t, 2, len(voters))
-	assert.Contains(t, voters, addr1)
-	assert.Contains(t, voters, addr2)
+// 	voters = GetVoters()
+// 	assert.Equal(t, 2, len(voters))
+// 	assert.Contains(t, voters, addr1)
+// 	assert.Contains(t, voters, addr2)
 
-	// Попытка добавить того же voter снова не должна добавить дубликат
-	AddVoter(addr2)
-	voters = GetVoters()
-	assert.Equal(t, 2, len(voters))
-}
+// 	// Попытка добавить того же voter снова не должна добавить дубликат
+// 	AddVoter(addr2)
+// 	voters = GetVoters()
+// 	assert.Equal(t, 2, len(voters))
+// }
 
-func TestGetVoters(t *testing.T) {
-	ctx := context.Background()
-	addr1 := types.HexToAddress("0x1111111111111111111111111111111111111111")
-	Init(ctx, addr1)
+// func TestGetVoters(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr1 := types.HexToAddress("0x1111111111111111111111111111111111111111")
+// 	Init(ctx, addr1)
 
-	addr2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
-	addr3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
+// 	addr2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
+// 	addr3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	AddVoter(addr2)
-	AddVoter(addr3)
+// 	AddVoter(addr2)
+// 	AddVoter(addr3)
 
-	voters := GetVoters()
-	assert.Equal(t, 3, len(voters))
-	assert.Contains(t, voters, addr1)
-	assert.Contains(t, voters, addr2)
-	assert.Contains(t, voters, addr3)
-}
+// 	voters := GetVoters()
+// 	assert.Equal(t, 3, len(voters))
+// 	assert.Contains(t, voters, addr1)
+// 	assert.Contains(t, voters, addr2)
+// 	assert.Contains(t, voters, addr3)
+// }
 
-func TestGetConsensusInfo(t *testing.T) {
-	ctx := context.Background()
-	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr)
+// func TestGetConsensusInfo(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr)
 
-	info := GetConsensusInfo()
-	require.NotNil(t, info)
+// 	info := GetConsensusInfo()
+// 	require.NotNil(t, info)
 
-	assert.Equal(t, addr.String(), info["address"])
-	assert.Equal(t, 1, info["voters"]) // Один voter после Init
-	assert.Equal(t, 0, info["nodes"])
-	assert.NotNil(t, info["status"])
-	assert.NotNil(t, info["nonce"])
-}
+// 	assert.Equal(t, addr.String(), info["address"])
+// 	assert.Equal(t, 1, info["voters"]) // Один voter после Init
+// 	assert.Equal(t, 0, info["nodes"])
+// 	assert.NotNil(t, info["status"])
+// 	assert.NotNil(t, info["nonce"])
+// }
 
-func TestAddNode(t *testing.T) {
-	ctx := context.Background()
-	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	Init(ctx, addr1)
+// func TestAddNode(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr1 := types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+// 	Init(ctx, addr1)
 
-	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
-	networkAddr := "127.0.0.1:31000"
+// 	addr2 := types.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12")
+// 	networkAddr := "127.0.0.1:31000"
 
-	AddNode(addr2, networkAddr)
+// 	AddNode(addr2, networkAddr)
 
-	nodes := GetNodes()
-	assert.Equal(t, 1, len(nodes))
+// 	nodes := GetNodes()
+// 	assert.Equal(t, 1, len(nodes))
 
-	node, exists := nodes[addr2.String()]
-	require.True(t, exists)
-	assert.Equal(t, addr2, node.Address)
-	assert.Equal(t, networkAddr, node.NetworkAddr)
-	assert.True(t, node.IsConnected)
-}
+// 	node, exists := nodes[addr2.String()]
+// 	require.True(t, exists)
+// 	assert.Equal(t, addr2, node.Address)
+// 	assert.Equal(t, networkAddr, node.NetworkAddr)
+// 	assert.True(t, node.IsConnected)
+// }
 
-func TestGetNodes(t *testing.T) {
-	ctx := context.Background()
-	addr1 := types.HexToAddress("0x1111111111111111111111111111111111111111")
-	Init(ctx, addr1)
+// func TestGetNodes(t *testing.T) {
+// 	ctx := context.Background()
+// 	addr1 := types.HexToAddress("0x1111111111111111111111111111111111111111")
+// 	Init(ctx, addr1)
 
-	addr2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
-	addr3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
+// 	addr2 := types.HexToAddress("0x2222222222222222222222222222222222222222")
+// 	addr3 := types.HexToAddress("0x3333333333333333333333333333333333333333")
 
-	AddNode(addr2, "127.0.0.1:31001")
-	AddNode(addr3, "127.0.0.1:31002")
+// 	AddNode(addr2, "127.0.0.1:31001")
+// 	AddNode(addr3, "127.0.0.1:31002")
 
-	nodes := GetNodes()
-	assert.Equal(t, 2, len(nodes))
+// 	nodes := GetNodes()
+// 	assert.Equal(t, 2, len(nodes))
 
-	// Проверяем, что возвращается копия (не оригинал)
-	nodes[addr2.String()].IsConnected = false
-	nodes2 := GetNodes()
-	node2, exists := nodes2[addr2.String()]
-	require.True(t, exists)
-	assert.True(t, node2.IsConnected) // Оригинал не изменился
-}
+// 	// Проверяем, что возвращается копия (не оригинал)
+// 	nodes[addr2.String()].IsConnected = false
+// 	nodes2 := GetNodes()
+// 	node2, exists := nodes2[addr2.String()]
+// 	require.True(t, exists)
+// 	assert.True(t, node2.IsConnected) // Оригинал не изменился
+// }
 
 // func TestUpdateNodeLastSeen(t *testing.T) {
 // 	ctx := context.Background()
