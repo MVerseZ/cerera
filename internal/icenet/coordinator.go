@@ -15,72 +15,70 @@ import (
 
 // Coordinator coordinates all icenet components
 type Coordinator struct {
-	ctx              context.Context
-	cfg              *config.Config
-	address          types.Address
-	networkAddr      string
-	isBootstrap      bool
-	meshEnabled      bool
-	
+	ctx         context.Context
+	cfg         *config.Config
+	address     types.Address
+	networkAddr string
+	isBootstrap bool
+	meshEnabled bool
+
 	// Components
-	protocol         *protocol.Encoder
-	decoder          *protocol.Decoder
-	validator        *protocol.Validator
-	connManager      *connection.Manager
-	consensusCoord   *consensus.Coordinator
-	meshNetwork      *mesh.Network
-	
+	protocol       *protocol.Encoder
+	decoder        *protocol.Decoder
+	validator      *protocol.Validator
+	connManager    *connection.Manager
+	consensusCoord *consensus.Coordinator
+	meshNetwork    *mesh.Network
+
 	// State
-	started          bool
+	started bool
 }
 
 // NewCoordinator creates a new coordinator
 func NewCoordinator(ctx context.Context, cfg *config.Config, address types.Address, networkAddr string, isBootstrap bool, meshEnabled bool) (*Coordinator, error) {
 	// Initialize metrics
 	metrics.Init()
-	
+
 	// Initialize protocol components
 	encoder := protocol.NewEncoder()
 	decoder := protocol.NewDecoder()
 	validator := protocol.NewValidator()
-	
+
 	// Initialize connection manager
 	connConfig := connection.DefaultConnectionConfig()
 	connManager := connection.NewManager(ctx, connConfig)
-	
+
 	// Initialize consensus coordinator
 	consensusManager := consensus.NewGigeaManager()
 	consensusCoord := consensus.NewCoordinator(consensusManager, isBootstrap)
-	
+
 	coord := &Coordinator{
-		ctx:              ctx,
-		cfg:              cfg,
-		address:          address,
-		networkAddr:      networkAddr,
-		isBootstrap:      isBootstrap,
-		meshEnabled:      meshEnabled,
-		protocol:         encoder,
-		decoder:          decoder,
-		validator:        validator,
-		connManager:      connManager,
-		consensusCoord:   consensusCoord,
-		started:          false,
+		ctx:            ctx,
+		cfg:            cfg,
+		address:        address,
+		networkAddr:    networkAddr,
+		isBootstrap:    isBootstrap,
+		meshEnabled:    meshEnabled,
+		protocol:       encoder,
+		decoder:        decoder,
+		validator:      validator,
+		connManager:    connManager,
+		consensusCoord: consensusCoord,
+		started:        false,
 	}
-	
+
 	// Initialize mesh network if enabled
 	if meshEnabled {
 		peerStore := mesh.NewPeerStore()
-		bootstrapAddr := ""
-		bootstrapPort := ""
-		if cfg != nil {
-			bootstrapAddr = cfg.NetCfg.BootstrapIP
-			bootstrapPort = cfg.NetCfg.BootstrapPort
+		seedNodes := []string{}
+		if cfg != nil && len(cfg.NetCfg.SeedNodes) > 0 {
+			seedNodes = cfg.NetCfg.SeedNodes
 		}
-		discovery := mesh.NewDiscovery(ctx, peerStore, bootstrapAddr, bootstrapPort, connManager)
+		discovery := mesh.NewDiscovery(ctx, peerStore, seedNodes, connManager)
 		meshConfig := mesh.DefaultNetworkConfig()
 		coord.meshNetwork = mesh.NewNetwork(ctx, meshConfig, peerStore, discovery, connManager)
 	}
-	
+
 	return coord, nil
 }
 
@@ -89,22 +87,22 @@ func (c *Coordinator) Start(port string) error {
 	if c.started {
 		return fmt.Errorf("coordinator already started")
 	}
-	
+
 	// Start connection manager
 	if err := c.connManager.Start(port); err != nil {
 		return fmt.Errorf("failed to start connection manager: %w", err)
 	}
-	
+
 	// Start consensus coordinator
 	c.consensusCoord.Start()
-	
+
 	// Start mesh network if enabled
 	if c.meshEnabled && c.meshNetwork != nil {
 		if err := c.meshNetwork.Start(); err != nil {
 			return fmt.Errorf("failed to start mesh network: %w", err)
 		}
 	}
-	
+
 	c.started = true
 	return nil
 }
@@ -114,22 +112,22 @@ func (c *Coordinator) Stop() error {
 	if !c.started {
 		return nil
 	}
-	
+
 	// Stop mesh network if enabled
 	if c.meshEnabled && c.meshNetwork != nil {
 		if err := c.meshNetwork.Stop(); err != nil {
 			return fmt.Errorf("failed to stop mesh network: %w", err)
 		}
 	}
-	
+
 	// Stop consensus coordinator
 	c.consensusCoord.Stop()
-	
+
 	// Stop connection manager
 	if err := c.connManager.Stop(); err != nil {
 		return fmt.Errorf("failed to stop connection manager: %w", err)
 	}
-	
+
 	c.started = false
 	return nil
 }
@@ -178,4 +176,3 @@ func (c *Coordinator) IsMeshEnabled() bool {
 func (c *Coordinator) GetMeshNetwork() *mesh.Network {
 	return c.meshNetwork
 }
-

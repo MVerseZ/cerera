@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/cerera/internal/cerera/common"
@@ -12,16 +13,37 @@ import (
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/connection"
+	"github.com/cerera/internal/icenet/discovery"
+	"github.com/cerera/internal/icenet/mesh"
 	"go.uber.org/zap"
 )
 
 const ICE_SERVICE_NAME = "ICE_CERERA_001_1_0"
 
-// DefaultBootstrapIP is the default bootstrap IP address if not configured
-const DefaultBootstrapIP = "192.168.1.6"
-
-// DefaultBootstrapPort is the default bootstrap port if not configured
-const DefaultBootstrapPort = "31100"
+// getSeedNodes returns seed nodes from config, environment variable, or empty list
+func getSeedNodes(cfg *config.Config) []string {
+	// Check environment variable first
+	if envSeeds := os.Getenv("CERERA_SEED_NODES"); envSeeds != "" {
+		// Parse comma-separated list
+		seeds := strings.Split(envSeeds, ",")
+		result := make([]string, 0, len(seeds))
+		for _, seed := range seeds {
+			seed = strings.TrimSpace(seed)
+			if seed != "" {
+				result = append(result, seed)
+			}
+		}
+		return result
+	}
+	
+	// Use config value if set
+	if cfg != nil && len(cfg.NetCfg.SeedNodes) > 0 {
+		return cfg.NetCfg.SeedNodes
+	}
+	
+	// Fall back to empty list (no seed nodes)
+	return []string{}
+}
 
 // icelogger returns a sugared logger for the icenet package.
 // It is defined as a function (not a global variable) so that it always
@@ -40,15 +62,10 @@ type Ice struct {
 	address             types.Address              // адрес cerera
 	ip                  string                     // IP адрес узла
 	port                string                     // порт узла
-	bootstrapIP         string                     // IP адрес bootstrap узла
-	bootstrapPort       string                     // порт bootstrap узла
 	listener            net.Listener               // listener для входящих подключений
-	bootstrapConn       net.Conn                   // постоянное соединение с bootstrap
-	connectedNodes      map[types.Address]net.Conn // активные соединения с узлами (только для bootstrap)
-	confirmedNodes      map[types.Address]int      // количество подтверждений от каждого узла (только для bootstrap)
 	mu                  sync.RWMutex               // мьютекс для потокобезопасности (RWMutex для оптимизации чтения)
 	lastSentBlockHash   common.Hash                // хеш последнего отправленного блока
-	bootstrapReady      bool                       // флаг готовности bootstrap соединения
+	networkReady        bool                       // флаг готовности сети
 	readyChan           chan struct{}              // канал для уведомления о готовности
 	readyOnce           sync.Once                  // гарантирует однократное закрытие readyChan
 	consensusStarted    bool                       // флаг начала консенсуса
@@ -57,39 +74,15 @@ type Ice struct {
 	consensusManager    ConsensusManager           // менеджер консенсуса (инжектированная зависимость)
 	receivedBlockHashes map[common.Hash]bool       // кэш полученных блоков для защиты от дублирования
 	connManager         *connection.Manager        // менеджер соединений
+	meshNetwork         *mesh.Network              // mesh сеть для P2P
+	peerStore           *mesh.PeerStore            // хранилище информации о пирах
+	discovery           *mesh.Discovery            // обнаружение пиров
+	seedDiscovery       *discovery.SeedDiscovery   // seed nodes discovery
 }
 
-// getBootstrapIP returns the bootstrap IP from config, environment variable, or default
-func getBootstrapIP(cfg *config.Config) string {
-	// Check environment variable first
-	if envIP := os.Getenv("CERERA_BOOTSTRAP_IP"); envIP != "" {
-		return envIP
-	}
-	// Use config value if set
-	if cfg != nil && cfg.NetCfg.BootstrapIP != "" {
-		return cfg.NetCfg.BootstrapIP
-	}
-	// Fall back to default
-	return DefaultBootstrapIP
-}
-
-// getBootstrapPort returns the bootstrap port from config, environment variable, or default
-func getBootstrapPort(cfg *config.Config) string {
-	// Check environment variable first
-	if envPort := os.Getenv("CERERA_BOOTSTRAP_PORT"); envPort != "" {
-		return envPort
-	}
-	// Use config value if set
-	if cfg != nil && cfg.NetCfg.BootstrapPort != "" {
-		return cfg.NetCfg.BootstrapPort
-	}
-	// Fall back to default
-	return DefaultBootstrapPort
-}
 
 // NewIce создаёт новый экземпляр Ice.
-// Определяет IP адрес автоматически, инициализирует все необходимые структуры данных
-// и настраивает bootstrap адрес из конфигурации или переменных окружения.
+// Определяет IP адрес автоматически, инициализирует все необходимые структуры данных.
 // Возвращает ошибку, если не удалось определить IP адрес или создать компонент.
 //
 // Параметры:
@@ -117,8 +110,13 @@ func NewIce(cfg *config.Config, ctx context.Context, port string) (*Ice, error) 
 		return nil, fmt.Errorf("no IPv4 interface found")
 	}
 
-	bootstrapIP := getBootstrapIP(cfg)
-	bootstrapPort := getBootstrapPort(cfg)
+	// Инициализируем компоненты mesh сети
+	connManager := connection.NewManager(ctx, nil)
+	peerStore := mesh.NewPeerStore()
+	seedNodes := getSeedNodes(cfg)
+	meshDiscovery := mesh.NewDiscovery(ctx, peerStore, seedNodes, connManager)
+	meshNetwork := mesh.NewNetwork(ctx, mesh.DefaultNetworkConfig(), peerStore, meshDiscovery, connManager)
+	seedDiscovery := discovery.NewSeedDiscovery(ctx, seedNodes, connManager)
 
 	ice := &Ice{
 		cfg:                 cfg,
@@ -128,37 +126,24 @@ func NewIce(cfg *config.Config, ctx context.Context, port string) (*Ice, error) 
 		address:             cfg.NetCfg.ADDR, // адрес cerera из конфигурации
 		ip:                  currentIP,
 		port:                port,
-		bootstrapIP:         bootstrapIP,
-		bootstrapPort:       bootstrapPort,
-		bootstrapReady:      false,
+		networkReady:        false,
 		readyChan:           make(chan struct{}),
 		consensusStarted:    false,
 		consensusChan:       make(chan struct{}),
-		connectedNodes:      make(map[types.Address]net.Conn), // инициализируем map для хранения соединений
-		confirmedNodes:      make(map[types.Address]int),      // инициализируем map для отслеживания подтверждений (каждый узел должен подтвердить 2 раза)
 		consensusManager:    NewGigeaConsensusManager(),       // используем адаптер для gigea по умолчанию
 		receivedBlockHashes: make(map[common.Hash]bool),       // кэш для защиты от дублирования блоков
-		connManager:         connection.NewManager(ctx, nil),  // менеджер соединений
+		connManager:         connManager,
+		meshNetwork:         meshNetwork,
+		peerStore:           peerStore,
+		discovery:           meshDiscovery,
+		seedDiscovery:       seedDiscovery,
 	}
 
 	icelogger().Infow("Ice component created",
 		"address", cfg.NetCfg.ADDR.Hex(),
 		"ip", currentIP,
 		"port", port,
-		"bootstrap", fmt.Sprintf("%s:%s", bootstrapIP, bootstrapPort),
-		"bootstrap_source", getBootstrapSource(cfg),
 	)
 
 	return ice, nil
-}
-
-// getBootstrapSource returns a string indicating where the bootstrap config came from
-func getBootstrapSource(cfg *config.Config) string {
-	if os.Getenv("CERERA_BOOTSTRAP_IP") != "" || os.Getenv("CERERA_BOOTSTRAP_PORT") != "" {
-		return "environment"
-	}
-	if cfg != nil && (cfg.NetCfg.BootstrapIP != "" || cfg.NetCfg.BootstrapPort != "") {
-		return "config"
-	}
-	return "default"
 }

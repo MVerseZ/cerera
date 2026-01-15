@@ -11,7 +11,9 @@ import (
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
+	"github.com/cerera/internal/icenet/connection"
 	"github.com/cerera/internal/icenet/metrics"
+	"github.com/cerera/internal/icenet/protocol"
 )
 
 // monitorAndSendBlocks периодически проверяет новые блоки и отправляет их на bootstrap
@@ -78,7 +80,7 @@ func (i *Ice) monitorAndSendBlocks() {
 			i.mu.Lock()
 			i.lastSentBlockHash = latestBlock.Hash
 			i.mu.Unlock()
-			icelogger().Infow("Block sent to bootstrap",
+			icelogger().Infow("Block broadcasted to network",
 				"block_hash", latestBlock.Hash.Hex(),
 				"block_index", latestBlock.Head.Index,
 			)
@@ -89,100 +91,64 @@ func (i *Ice) monitorAndSendBlocks() {
 // sendBlockToBootstrap отправляет блок на bootstrap узел через постоянное соединение
 // Deprecated: используйте broadcastBlock() вместо этой функции
 func (i *Ice) sendBlockToBootstrap(b *block.Block) error {
-	if i.isBootstrapNode() {
-		return nil // Не отправляем блоки самому себе
-	}
-
-	i.mu.Lock()
-	conn := i.bootstrapConn
-	i.mu.Unlock()
-
-	if conn == nil {
-		return fmt.Errorf("bootstrap connection not established")
-	}
-
-	return i.sendBlockToConnection(conn, b)
+	// TODO: Удалить эту функцию после полного перехода на P2P
+	return fmt.Errorf("deprecated: use broadcastBlock() instead")
 }
 
-// broadcastBlock рассылает блок всем подключенным нодам
-// Для bootstrap ноды: рассылает всем из connectedNodes
-// Для обычных нод: отправляет bootstrap и другим известным нодам
+// broadcastBlock рассылает блок всем подключенным нодам через ConnectionManager
+// TODO: Переделать на gossip-based рассылку после интеграции mesh network
 func (i *Ice) broadcastBlock(b *block.Block) error {
 	if b == nil {
 		return fmt.Errorf("block is nil")
 	}
 
-	var errors []error
-	sentCount := 0
-
-	if i.isBootstrapNode() {
-		// Bootstrap нода: рассылаем всем подключенным нодам
-		i.mu.RLock()
-		connectedNodes := make(map[types.Address]net.Conn)
-		for addr, conn := range i.connectedNodes {
-			connectedNodes[addr] = conn
-		}
-		i.mu.RUnlock()
-
-		for addr, conn := range connectedNodes {
-			if err := i.sendBlockToConnection(conn, b); err != nil {
-				icelogger().Warnw("Failed to send block to connected node",
-					"node_address", addr.Hex(),
-					"block_hash", b.Hash.Hex(),
-					"err", err)
-				errors = append(errors, fmt.Errorf("node %s: %w", addr.Hex(), err))
-			} else {
-				sentCount++
-			}
-		}
-
-		icelogger().Infow("Block broadcasted from bootstrap",
+	// Получаем все соединения через ConnectionManager
+	allConnections := i.connManager.GetAllConnections()
+	if len(allConnections) == 0 {
+		icelogger().Debugw("No connections available for block broadcast",
 			"block_hash", b.Hash.Hex(),
-			"block_height", b.Head.Height,
-			"sent_to_nodes", sentCount,
-			"total_nodes", len(connectedNodes),
 		)
-		// Увеличиваем счетчик для каждого отправленного блока
-		for i := 0; i < sentCount; i++ {
-			metrics.Get().BlocksBroadcastTotal.WithLabelValues("bootstrap").Inc()
-		}
-	} else {
-		// Обычная нода: отправляем bootstrap
-		i.mu.RLock()
-		conn := i.bootstrapConn
-		i.mu.RUnlock()
-
-		if conn == nil {
-			return fmt.Errorf("bootstrap connection not established")
-		}
-
-		if err := i.sendBlockToConnection(conn, b); err != nil {
-			icelogger().Warnw("Failed to send block to bootstrap",
-				"block_hash", b.Hash.Hex(),
-				"err", err)
-			metrics.Get().BlockSyncErrorsTotal.WithLabelValues("broadcast_error").Inc()
-			return fmt.Errorf("failed to send block to bootstrap: %w", err)
-		}
-
-		sentCount++
-		metrics.Get().BlocksBroadcastTotal.WithLabelValues("bootstrap").Inc()
-		icelogger().Infow("Block sent to bootstrap",
-			"block_hash", b.Hash.Hex(),
-			"block_height", b.Head.Height,
-		)
+		return nil
 	}
 
-	// Если были ошибки, но хотя бы один блок отправлен, возвращаем частичный успех
-	if len(errors) > 0 && sentCount > 0 {
-		icelogger().Warnw("Block broadcasted with some errors",
-			"block_hash", b.Hash.Hex(),
-			"sent_count", sentCount,
-			"error_count", len(errors))
-		return nil // Частичный успех
+	var errors []error
+	sentCount := 0
+	handler := i.connManager.GetHandler()
+
+	// Создаем блок сообщение
+	blockMsg := &protocol.BlockMessage{Block: b}
+
+	// Рассылаем всем подключенным узлам
+	for _, conn := range allConnections {
+		if conn.State != connection.StateConnected {
+			continue
+		}
+
+		if err := handler.WriteMessage(conn, blockMsg); err != nil {
+			icelogger().Warnw("Failed to send block to connected node",
+				"node_address", conn.RemoteAddr.Hex(),
+				"block_hash", b.Hash.Hex(),
+				"err", err)
+			errors = append(errors, fmt.Errorf("node %s: %w", conn.RemoteAddr.Hex(), err))
+		} else {
+			sentCount++
+		}
+	}
+
+	icelogger().Infow("Block broadcasted",
+		"block_hash", b.Hash.Hex(),
+		"block_height", b.Head.Height,
+		"sent_to_nodes", sentCount,
+		"total_nodes", len(allConnections),
+	)
+	
+	// Увеличиваем счетчик для каждого отправленного блока
+	for i := 0; i < sentCount; i++ {
+		metrics.Get().BlocksBroadcastTotal.WithLabelValues("p2p").Inc()
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("failed to broadcast block: %d errors", len(errors))
+		return fmt.Errorf("some broadcasts failed: %d errors", len(errors))
 	}
 
 	return nil
@@ -532,16 +498,12 @@ func (i *Ice) Exec(method string, params []interface{}) interface{} {
 		return i.Status()
 	case "getInfo":
 		return map[string]interface{}{
-			"status":         i.status,
-			"started":        i.started,
-			"address":        i.address.Hex(),
-			"ip":             i.ip,
-			"port":           i.port,
-			"network_addr":   i.GetNetworkAddr(),
-			"bootstrap_ip":   i.bootstrapIP,
-			"bootstrap_port": i.bootstrapPort,
-			"bootstrap_addr": i.GetBootstrapAddr(),
-			"is_bootstrap":   i.isBootstrapNode(),
+			"status":       i.status,
+			"started":      i.started,
+			"address":      i.address.Hex(),
+			"ip":           i.ip,
+			"port":         i.port,
+			"network_addr": i.GetNetworkAddr(),
 		}
 	case "getAddress":
 		return i.address.Hex()
@@ -551,14 +513,10 @@ func (i *Ice) Exec(method string, params []interface{}) interface{} {
 		return i.port
 	case "getNetworkAddr":
 		return i.GetNetworkAddr()
-	case "getBootstrapAddr":
-		return i.GetBootstrapAddr()
-	case "isBootstrap":
-		return i.isBootstrapNode()
-	case "isBootstrapReady":
-		return i.IsBootstrapReady()
-	case "waitForBootstrapReady":
-		i.WaitForBootstrapReady()
+	case "isNetworkReady":
+		return i.IsNetworkReady()
+	case "waitForNetworkReady":
+		i.WaitForNetworkReady()
 		return true
 	case "isConsensusStarted":
 		return i.IsConsensusStarted()

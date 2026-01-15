@@ -109,6 +109,14 @@ func (d *Decoder) Decode(data string) (Message, error) {
 		return &KeepAliveMessage{}, nil
 	case MsgTypeBroadcastNonce:
 		return d.decodeBroadcastNonce(data)
+	case MsgTypeProposal:
+		return d.decodeProposal(data)
+	case MsgTypeVote:
+		return d.decodeVote(data)
+	case MsgTypeConsensusResult:
+		return d.decodeConsensusResult(data)
+	case MsgTypePeerDiscovery:
+		return d.decodePeerDiscovery(data)
 	default:
 		return nil, fmt.Errorf("unknown message type: %s", msgType)
 	}
@@ -212,12 +220,12 @@ func (d *Decoder) decodeREQ(data string) (*REQMessage, error) {
 			if len(nodeParts) == 2 {
 				nodeAddrStr := strings.TrimSpace(nodeParts[0])
 				networkAddr := strings.TrimSpace(nodeParts[1])
-				
+
 				nodeAddr, err := d.validator.ValidateHexAddress(nodeAddrStr)
 				if err != nil {
 					continue // skip invalid addresses
 				}
-				
+
 				req.Nodes = append(req.Nodes, NodeInfo{
 					Address:     *nodeAddr,
 					NetworkAddr: networkAddr,
@@ -435,6 +443,80 @@ func (d *Decoder) decodeBlock(data string) (*BlockMessage, error) {
 	}, nil
 }
 
+func (d *Decoder) decodeProposal(data string) (*ProposalMessage, error) {
+	parts := d.splitMessage(data, "|")
+	if len(parts) < 6 {
+		return nil, fmt.Errorf("invalid PROPOSAL format")
+	}
+
+	var timestamp int64
+	fmt.Sscanf(parts[5], "%d", &timestamp)
+
+	return &ProposalMessage{
+		ProposalID:   parts[1],
+		ProposalType: parts[2],
+		Data:         parts[3],
+		Proposer:     types.HexToAddress(parts[4]),
+		Timestamp:    timestamp,
+	}, nil
+}
+
+func (d *Decoder) decodeVote(data string) (*VoteMessage, error) {
+	parts := d.splitMessage(data, "|")
+	if len(parts) < 5 {
+		return nil, fmt.Errorf("invalid VOTE format")
+	}
+
+	var voteInt int
+	var timestamp int64
+	fmt.Sscanf(parts[3], "%d", &voteInt)
+	fmt.Sscanf(parts[4], "%d", &timestamp)
+
+	return &VoteMessage{
+		ProposalID: parts[1],
+		Voter:      types.HexToAddress(parts[2]),
+		Vote:       voteInt == 1,
+		Timestamp:  timestamp,
+	}, nil
+}
+
+func (d *Decoder) decodeConsensusResult(data string) (*ConsensusResultMessage, error) {
+	parts := d.splitMessage(data, "|")
+	if len(parts) < 6 {
+		return nil, fmt.Errorf("invalid CONSENSUS_RESULT format")
+	}
+
+	var resultInt, votesFor, votesAgainst int
+	var timestamp int64
+	fmt.Sscanf(parts[2], "%d", &resultInt)
+	fmt.Sscanf(parts[3], "%d", &votesFor)
+	fmt.Sscanf(parts[4], "%d", &votesAgainst)
+	fmt.Sscanf(parts[5], "%d", &timestamp)
+
+	return &ConsensusResultMessage{
+		ProposalID:    parts[1],
+		Result:        resultInt == 1,
+		VotesFor:      votesFor,
+		VotesAgainst:  votesAgainst,
+		Timestamp:     timestamp,
+	}, nil
+}
+
+func (d *Decoder) decodePeerDiscovery(data string) (*PeerDiscoveryMessage, error) {
+	parts := d.splitMessage(data, "|")
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("invalid PEER_DISCOVERY format")
+	}
+
+	var maxPeers int
+	fmt.Sscanf(parts[2], "%d", &maxPeers)
+
+	return &PeerDiscoveryMessage{
+		Requester: types.HexToAddress(parts[1]),
+		MaxPeers:  maxPeers,
+	}, nil
+}
+
 func (d *Decoder) decodeBroadcastNonce(data string) (*BroadcastNonceMessage, error) {
 	parts := d.splitMessage(data, "|")
 	if len(parts) < 2 {
@@ -480,4 +562,3 @@ func (d *Decoder) decodeBroadcastNonce(data string) (*BroadcastNonceMessage, err
 type MessageDecoder interface {
 	Decode(data string) (Message, error)
 }
-

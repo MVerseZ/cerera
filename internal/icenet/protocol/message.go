@@ -14,21 +14,25 @@ type MessageType string
 const (
 	// Message type constants
 	MsgTypeReadyRequest    MessageType = "READY_REQUEST"
-	MsgTypeREQ            MessageType = "REQ"
-	MsgTypeNodeOk         MessageType = "NODE_OK"
-	MsgTypeWhoIs          MessageType = "WHO_IS"
-	MsgTypeWhoIsResponse  MessageType = "WHO_IS_RESPONSE"
+	MsgTypeREQ             MessageType = "REQ"
+	MsgTypeNodeOk          MessageType = "NODE_OK"
+	MsgTypeWhoIs           MessageType = "WHO_IS"
+	MsgTypeWhoIsResponse   MessageType = "WHO_IS_RESPONSE"
 	MsgTypeConsensusStatus MessageType = "CONSENSUS_STATUS"
-	MsgTypeNodes          MessageType = "NODES"
-	MsgTypeNodesCount     MessageType = "NODES_COUNT"
-	MsgTypeBlock          MessageType = "BLOCK"
-	MsgTypePing           MessageType = "PING"
-	MsgTypeKeepAlive      MessageType = "KEEPALIVE"
-	MsgTypeStartConsensus MessageType = "START_CONSENSUS"
-	MsgTypeConsensusStart MessageType = "CONSENSUS_START"
-	MsgTypeBeginConsensus MessageType = "BEGIN_CONSENSUS"
-	MsgTypeConsensusBegin MessageType = "CONSENSUS_BEGIN"
-	MsgTypeBroadcastNonce MessageType = "BROADCAST_NONCE"
+	MsgTypeNodes           MessageType = "NODES"
+	MsgTypeNodesCount      MessageType = "NODES_COUNT"
+	MsgTypeBlock           MessageType = "BLOCK"
+	MsgTypePing            MessageType = "PING"
+	MsgTypeKeepAlive       MessageType = "KEEPALIVE"
+	MsgTypeStartConsensus  MessageType = "START_CONSENSUS"
+	MsgTypeConsensusStart  MessageType = "CONSENSUS_START"
+	MsgTypeBeginConsensus  MessageType = "BEGIN_CONSENSUS"
+	MsgTypeConsensusBegin  MessageType = "CONSENSUS_BEGIN"
+	MsgTypeBroadcastNonce  MessageType = "BROADCAST_NONCE"
+	MsgTypeProposal        MessageType = "PROPOSAL"
+	MsgTypeVote            MessageType = "VOTE"
+	MsgTypeConsensusResult MessageType = "CONSENSUS_RESULT"
+	MsgTypePeerDiscovery   MessageType = "PEER_DISCOVERY"
 )
 
 // IsValid checks if the message type is valid
@@ -50,6 +54,10 @@ func (mt MessageType) IsValid() bool {
 		MsgTypeBeginConsensus,
 		MsgTypeConsensusBegin,
 		MsgTypeBroadcastNonce,
+		MsgTypeProposal,
+		MsgTypeVote,
+		MsgTypeConsensusResult,
+		MsgTypePeerDiscovery,
 	}
 	for _, vt := range validTypes {
 		if mt == vt {
@@ -144,10 +152,10 @@ func (m *WhoIsResponseMessage) Version() string {
 
 // ConsensusStatusMessage represents a CONSENSUS_STATUS message
 type ConsensusStatusMessage struct {
-	Status      int
-	Voters      []types.Address
-	Nodes       []types.Address
-	Nonce       uint64
+	Status int
+	Voters []types.Address
+	Nodes  []types.Address
+	Nonce  uint64
 }
 
 func (m *ConsensusStatusMessage) Type() MessageType {
@@ -233,3 +241,66 @@ func (m *BroadcastNonceMessage) Version() string {
 	return ProtocolVersion
 }
 
+// ProposalMessage represents a PROPOSAL message for voting
+type ProposalMessage struct {
+	ProposalID   string
+	ProposalType string // "NONCE", "NODE_ADD", "NODE_REMOVE", etc.
+	Data         string // JSON-encoded proposal data
+	Proposer     types.Address
+	Timestamp    int64
+}
+
+func (m *ProposalMessage) Type() MessageType {
+	return MsgTypeProposal
+}
+
+func (m *ProposalMessage) Version() string {
+	return ProtocolVersion
+}
+
+// VoteMessage represents a VOTE message
+type VoteMessage struct {
+	ProposalID string
+	Voter      types.Address
+	Vote       bool // true = approve, false = reject
+	Timestamp  int64
+}
+
+func (m *VoteMessage) Type() MessageType {
+	return MsgTypeVote
+}
+
+func (m *VoteMessage) Version() string {
+	return ProtocolVersion
+}
+
+// ConsensusResultMessage represents a CONSENSUS_RESULT message
+type ConsensusResultMessage struct {
+	ProposalID string
+	Result     bool   // true = approved, false = rejected
+	VotesFor   int    // number of votes for
+	VotesAgainst int  // number of votes against
+	Timestamp  int64
+}
+
+func (m *ConsensusResultMessage) Type() MessageType {
+	return MsgTypeConsensusResult
+}
+
+func (m *ConsensusResultMessage) Version() string {
+	return ProtocolVersion
+}
+
+// PeerDiscoveryMessage represents a PEER_DISCOVERY message
+type PeerDiscoveryMessage struct {
+	Requester types.Address
+	MaxPeers  int
+}
+
+func (m *PeerDiscoveryMessage) Type() MessageType {
+	return MsgTypePeerDiscovery
+}
+
+func (m *PeerDiscoveryMessage) Version() string {
+	return ProtocolVersion
+}

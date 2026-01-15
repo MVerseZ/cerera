@@ -15,8 +15,7 @@ import (
 )
 
 // Start запускает компонент Ice.
-// Инициализирует listener для входящих подключений, подключается к bootstrap узлу
-// (если текущий узел не является bootstrap), и запускает мониторинг блоков.
+// Инициализирует listener для входящих подключений и запускает мониторинг блоков.
 // Возвращает ошибку, если не удалось запустить listener.
 func (i *Ice) Start() error {
 	if i.started {
@@ -29,30 +28,37 @@ func (i *Ice) Start() error {
 	i.status = 0x1
 	i.mu.Unlock()
 
-	// Запускаем listener для входящих подключений
+	// Запускаем listener для входящих подключений через ConnectionManager
 	if err := i.startListener(); err != nil {
 		return fmt.Errorf("failed to start listener: %w", err)
 	}
 
-	// Если мы bootstrap узел, сразу помечаем как готовый и начинаем консенсус
-	if i.isBootstrapNode() {
-		i.setBootstrapReady()
-		i.startConsensus()
-		icelogger().Infow("Bootstrap node - marked as ready and consensus started immediately")
-	} else {
-		// Подключаемся к bootstrap узлу
-		go i.connectToBootstrap()
+	// Запускаем mesh network (discovery, gossip, connection management)
+	if err := i.meshNetwork.Start(); err != nil {
+		return fmt.Errorf("failed to start mesh network: %w", err)
 	}
 
-	// while
+	// Подключаемся к seed nodes для первоначального обнаружения пиров
+	if i.seedDiscovery != nil {
+		go func() {
+			if err := i.seedDiscovery.ConnectToSeedNodes(); err != nil {
+				icelogger().Warnw("Failed to connect to seed nodes", "err", err)
+			} else {
+				icelogger().Infow("Connected to seed nodes successfully")
+			}
+		}()
+	}
 
-	// Запускаем мониторинг блоков для отправки на bootstrap
+	// Помечаем сеть как готовую и начинаем консенсус
+	i.setNetworkReady()
+	i.startConsensus()
+
+	// Запускаем мониторинг блоков для рассылки
 	go i.monitorAndSendBlocks()
 
 	icelogger().Infow("Ice component started",
 		"address", i.address.Hex(),
 		"network_addr", i.GetNetworkAddr(),
-		"bootstrap", i.GetBootstrapAddr(),
 	)
 	return nil
 }
@@ -79,24 +85,15 @@ func (i *Ice) Stop() error {
 		i.listener = nil
 	}
 
-	// Закрываем соединение с bootstrap
-	i.mu.Lock()
-	if i.bootstrapConn != nil {
-		if err := i.bootstrapConn.Close(); err != nil {
-			icelogger().Errorw("Error closing bootstrap connection", "err", err)
-		}
-		i.bootstrapConn = nil
+	// Останавливаем mesh network
+	if i.meshNetwork != nil {
+		i.meshNetwork.Stop()
 	}
 
-	// Закрываем все соединения с узлами (для bootstrap узла)
-	for addr, conn := range i.connectedNodes {
-		if err := conn.Close(); err != nil {
-			icelogger().Errorw("Error closing node connection", "node_address", addr.Hex(), "err", err)
-		}
+	// Закрываем все соединения через connection manager
+	if i.connManager != nil {
+		i.connManager.Stop()
 	}
-	i.connectedNodes = make(map[types.Address]net.Conn)
-	i.confirmedNodes = make(map[types.Address]int)
-	i.mu.Unlock()
 
 	icelogger().Infow("Ice component stopped")
 	return nil
@@ -143,32 +140,19 @@ func (i *Ice) GetNetworkAddr() string {
 	return fmt.Sprintf("%s:%s", i.ip, i.port)
 }
 
-// GetBootstrapAddr возвращает полный сетевой адрес bootstrap узла в формате "ip:port".
-// Bootstrap узел используется для первоначального подключения и синхронизации состояния.
-func (i *Ice) GetBootstrapAddr() string {
-	return fmt.Sprintf("%s:%s", i.bootstrapIP, i.bootstrapPort)
-}
-
-// IsBootstrapReady проверяет, готов ли bootstrap узел.
-// Возвращает true, если соединение с bootstrap установлено и получен подтверждающий ответ.
-// Для bootstrap узла всегда возвращает true.
-func (i *Ice) IsBootstrapReady() bool {
+// IsNetworkReady проверяет, готова ли сеть.
+// Возвращает true, если сеть готова к работе.
+func (i *Ice) IsNetworkReady() bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return i.bootstrapReady
+	return i.networkReady
 }
 
-// WaitForBootstrapReady блокирует выполнение до тех пор, пока bootstrap не будет готов.
-// Для bootstrap узла возвращается немедленно.
+// WaitForNetworkReady блокирует выполнение до тех пор, пока сеть не будет готова.
 // Используется для синхронизации перед началом работы валидатора.
-func (i *Ice) WaitForBootstrapReady() {
-	if i.isBootstrapNode() {
-		// Если мы сами bootstrap, сразу готовы
-		return
-	}
-
+func (i *Ice) WaitForNetworkReady() {
 	// Проверяем, может уже готов
-	if i.IsBootstrapReady() {
+	if i.IsNetworkReady() {
 		return
 	}
 
@@ -181,11 +165,11 @@ func (i *Ice) WaitForBootstrapReady() {
 	<-readyChan
 }
 
-// setBootstrapReady устанавливает флаг готовности bootstrap
-func (i *Ice) setBootstrapReady() {
+// setNetworkReady устанавливает флаг готовности сети
+func (i *Ice) setNetworkReady() {
 	i.mu.Lock()
-	wasReady := i.bootstrapReady
-	i.bootstrapReady = true
+	wasReady := i.networkReady
+	i.networkReady = true
 	readyChan := i.readyChan
 	i.mu.Unlock()
 
@@ -193,22 +177,22 @@ func (i *Ice) setBootstrapReady() {
 		// Безопасно закрываем канал только один раз
 		i.readyOnce.Do(func() {
 			close(readyChan)
-			icelogger().Infow("Bootstrap is ready - validator can proceed")
+			icelogger().Infow("Network is ready - validator can proceed")
 		})
 	}
 }
 
-// resetBootstrapReady сбрасывает флаг готовности (при разрыве соединения)
-func (i *Ice) resetBootstrapReady() {
+// resetNetworkReady сбрасывает флаг готовности сети
+func (i *Ice) resetNetworkReady() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if i.bootstrapReady {
-		i.bootstrapReady = false
+	if i.networkReady {
+		i.networkReady = false
 		// Создаем новый канал и новый sync.Once для следующего цикла
 		i.readyChan = make(chan struct{})
 		i.readyOnce = sync.Once{}
-		icelogger().Warnw("Bootstrap ready status reset - validator will wait")
+		icelogger().Warnw("Network ready status reset - validator will wait")
 	}
 
 	// Также сбрасываем консенсус при разрыве соединения
@@ -230,14 +214,8 @@ func (i *Ice) IsConsensusStarted() bool {
 }
 
 // WaitForConsensus блокирует выполнение до начала консенсуса.
-// Для bootstrap узла возвращается немедленно.
 // Используется для синхронизации перед созданием блоков.
 func (i *Ice) WaitForConsensus() {
-	if i.isBootstrapNode() {
-		// Если мы сами bootstrap, консенсус может начаться сразу
-		return
-	}
-
 	// Проверяем, может уже начался
 	if i.IsConsensusStarted() {
 		return
@@ -269,12 +247,6 @@ func (i *Ice) startConsensus() {
 	}
 }
 
-// isBootstrapNode проверяет, является ли текущий узел bootstrap узлом
-func (i *Ice) isBootstrapNode() bool {
-	// Bootstrap узел определяется по порту - если порт совпадает с bootstrap портом
-	// и узел слушает входящие подключения (не подключается к bootstrap)
-	return i.port == i.bootstrapPort
-}
 
 // startListener запускает listener для входящих подключений
 func (i *Ice) startListener() error {
@@ -295,7 +267,7 @@ func (i *Ice) startListener() error {
 func (i *Ice) processConnectionMessages() {
 	handler := i.connManager.GetHandler()
 	msgChan := handler.MessageChannel()
-	
+
 	for {
 		select {
 		case <-i.ctx.Done():
@@ -306,11 +278,11 @@ func (i *Ice) processConnectionMessages() {
 				icelogger().Errorw("Message event error", "err", event.Error)
 				continue
 			}
-			
+
 			if event.Message == nil {
 				continue
 			}
-			
+
 			// Process domain-specific messages
 			i.processProtocolMessage(event.Message, event.Connection)
 		}
@@ -324,7 +296,7 @@ func (i *Ice) processProtocolMessage(msg protocol.Message, conn *connection.Conn
 	if conn == nil || conn.Conn == nil {
 		return
 	}
-	
+
 	switch m := msg.(type) {
 	case *protocol.ReadyRequestMessage:
 		// Convert to old format for compatibility
@@ -343,7 +315,15 @@ func (i *Ice) processProtocolMessage(msg protocol.Message, conn *connection.Conn
 			data := fmt.Sprintf("%s|%s", protocol.MsgTypeBlock, string(blockJSON))
 			i.processReceivedBlock(data, conn.NetworkAddr)
 		}
-	// Add other message types as needed
+	case *protocol.ProposalMessage:
+		i.handleProposalMessage(m)
+	case *protocol.VoteMessage:
+		i.handleVoteMessage(m)
+	case *protocol.ConsensusResultMessage:
+		i.handleConsensusResultMessage(m)
+	case *protocol.PeerDiscoveryMessage:
+		i.handlePeerDiscoveryMessage(m, conn)
+		// Add other message types as needed
 	}
 }
 
@@ -352,21 +332,8 @@ func (i *Ice) handleConnection(conn net.Conn) {
 	remoteAddr := conn.RemoteAddr().String()
 	icelogger().Infow("New connection", "remote_addr", remoteAddr)
 
-	// При закрытии соединения удаляем его из списка (для bootstrap узла)
+	// При закрытии соединения закрываем его
 	defer func() {
-		if i.isBootstrapNode() {
-			i.mu.Lock()
-			// Находим и удаляем соединение по адресу
-			for addr, storedConn := range i.connectedNodes {
-				if storedConn == conn {
-					delete(i.connectedNodes, addr)
-					delete(i.confirmedNodes, addr) // Также удаляем из confirmedNodes
-					icelogger().Infow("Removed connection for node", "node_address", addr.Hex())
-					break
-				}
-			}
-			i.mu.Unlock()
-		}
 		if err := conn.Close(); err != nil {
 			icelogger().Debugw("Error closing connection", "remote_addr", remoteAddr, "err", err)
 		}
@@ -439,31 +406,26 @@ func (i *Ice) handleConnection(conn net.Conn) {
 					continue
 				}
 
-				// Обрабатываем WHO_IS запрос (только для bootstrap узла)
+				// Обрабатываем WHO_IS запрос
 				if i.isWhoIsRequest(line) {
 					icelogger().Infow("Received WHO_IS request", "remote_addr", remoteAddr, "data", line)
 					i.handleWhoIsRequest(conn, line, remoteAddr)
 					continue
 				}
 
-				// Обрабатываем NODE_OK (только для bootstrap узла)
+				// Обрабатываем NODE_OK
 				if i.isNodeOkMessage(line) {
 					icelogger().Debugw("Received NODE_OK", "remote_addr", remoteAddr, "data", line)
 					i.handleNodeOk(conn, line, remoteAddr)
 					continue
 				}
 
-				// Обрабатываем BLOCK сообщения (для bootstrap узла от других нод)
+				// Обрабатываем BLOCK сообщения
 				if i.isBlockMessage(line) {
 					icelogger().Infow("Received BLOCK message from node", "remote_addr", remoteAddr)
 					i.processReceivedBlock(line, remoteAddr)
 					continue
 				}
-
-				// WHO_IS_RESPONSE и CONSENSUS_STATUS обрабатываются только в readFromBootstrap
-				// для обычных узлов, которые получают эти сообщения от bootstrap.
-				// Bootstrap узел не должен получать эти сообщения через handleConnection.
-				// Обычные узлы не должны получать эти сообщения от других узлов (только от bootstrap).
 			}
 		}
 	}

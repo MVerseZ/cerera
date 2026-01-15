@@ -28,8 +28,9 @@ type NetworkConfig struct {
 	ADDR          types.Address // address of running node
 	PRIV          string        // private key of current running node
 	PUB           []byte        // public key of current running node
-	BootstrapIP   string        // bootstrap node IP address
-	BootstrapPort string        // bootstrap node port
+	BootstrapIP   string        // bootstrap node IP address (deprecated, use SeedNodes)
+	BootstrapPort string        // bootstrap node port (deprecated, use SeedNodes)
+	SeedNodes     []string      // список seed nodes для первоначального подключения в формате "ip:port"
 }
 type VaultConfig struct {
 	MEM  bool

@@ -53,6 +53,14 @@ func (e *Encoder) Encode(msg Message) ([]byte, error) {
 		data = e.encodeKeepAlive(m)
 	case *BroadcastNonceMessage:
 		data = e.encodeBroadcastNonce(m)
+	case *ProposalMessage:
+		data = e.encodeProposal(m)
+	case *VoteMessage:
+		data = e.encodeVote(m)
+	case *ConsensusResultMessage:
+		data = e.encodeConsensusResult(m)
+	case *PeerDiscoveryMessage:
+		data = e.encodePeerDiscovery(m)
 	default:
 		return nil, fmt.Errorf("unsupported message type: %T", msg)
 	}
@@ -228,6 +236,74 @@ func (e *Encoder) encodePing(msg *PingMessage) []byte {
 func (e *Encoder) encodeKeepAlive(msg *KeepAliveMessage) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(string(MsgTypeKeepAlive))
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+func (e *Encoder) encodeProposal(msg *ProposalMessage) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(string(MsgTypeProposal))
+	buf.WriteByte('|')
+	buf.WriteString(msg.ProposalID)
+	buf.WriteByte('|')
+	buf.WriteString(msg.ProposalType)
+	buf.WriteByte('|')
+	buf.WriteString(msg.Data)
+	buf.WriteByte('|')
+	buf.WriteString(msg.Proposer.Hex())
+	buf.WriteByte('|')
+	buf.WriteString(fmt.Sprintf("%d", msg.Timestamp))
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+func (e *Encoder) encodeVote(msg *VoteMessage) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(string(MsgTypeVote))
+	buf.WriteByte('|')
+	buf.WriteString(msg.ProposalID)
+	buf.WriteByte('|')
+	buf.WriteString(msg.Voter.Hex())
+	buf.WriteByte('|')
+	if msg.Vote {
+		buf.WriteString("1")
+	} else {
+		buf.WriteString("0")
+	}
+	buf.WriteByte('|')
+	buf.WriteString(fmt.Sprintf("%d", msg.Timestamp))
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+func (e *Encoder) encodeConsensusResult(msg *ConsensusResultMessage) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(string(MsgTypeConsensusResult))
+	buf.WriteByte('|')
+	buf.WriteString(msg.ProposalID)
+	buf.WriteByte('|')
+	if msg.Result {
+		buf.WriteString("1")
+	} else {
+		buf.WriteString("0")
+	}
+	buf.WriteByte('|')
+	buf.WriteString(fmt.Sprintf("%d", msg.VotesFor))
+	buf.WriteByte('|')
+	buf.WriteString(fmt.Sprintf("%d", msg.VotesAgainst))
+	buf.WriteByte('|')
+	buf.WriteString(fmt.Sprintf("%d", msg.Timestamp))
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+func (e *Encoder) encodePeerDiscovery(msg *PeerDiscoveryMessage) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(string(MsgTypePeerDiscovery))
+	buf.WriteByte('|')
+	buf.WriteString(msg.Requester.Hex())
+	buf.WriteByte('|')
+	buf.WriteString(fmt.Sprintf("%d", msg.MaxPeers))
 	buf.WriteByte('\n')
 	return buf.Bytes()
 }
