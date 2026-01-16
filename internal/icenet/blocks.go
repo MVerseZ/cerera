@@ -16,7 +16,7 @@ import (
 	"github.com/cerera/internal/icenet/protocol"
 )
 
-// monitorAndSendBlocks периодически проверяет новые блоки и отправляет их на bootstrap
+// monitorAndSendBlocks периодически проверяет новые блоки и рассылает их по сети
 func (i *Ice) monitorAndSendBlocks() {
 	ticker := time.NewTicker(DefaultBlockCheckInterval)
 	defer ticker.Stop()
@@ -86,13 +86,6 @@ func (i *Ice) monitorAndSendBlocks() {
 			)
 		}
 	}
-}
-
-// sendBlockToBootstrap отправляет блок на bootstrap узел через постоянное соединение
-// Deprecated: используйте broadcastBlock() вместо этой функции
-func (i *Ice) sendBlockToBootstrap(b *block.Block) error {
-	// TODO: Удалить эту функцию после полного перехода на P2P
-	return fmt.Errorf("deprecated: use broadcastBlock() instead")
 }
 
 // broadcastBlock рассылает блок всем подключенным нодам через ConnectionManager
@@ -480,10 +473,6 @@ func (i *Ice) handleChainFork(newBlock *block.Block) error {
 //   - "getIP": возвращает IP адрес узла (string)
 //   - "getPort": возвращает порт узла (string)
 //   - "getNetworkAddr": возвращает сетевой адрес узла (string)
-//   - "getBootstrapAddr": возвращает адрес bootstrap узла (string)
-//   - "isBootstrap": возвращает true, если текущий узел является bootstrap (bool)
-//   - "isBootstrapReady": возвращает готовность bootstrap (bool)
-//   - "waitForBootstrapReady": блокирует до готовности bootstrap (bool)
 //   - "isConsensusStarted": возвращает статус консенсуса (bool)
 //   - "waitForConsensus": блокирует до начала консенсуса (bool)
 //

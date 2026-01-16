@@ -21,10 +21,7 @@ const (
 type ConsensusState struct {
 	mu                sync.RWMutex
 	state             State
-	bootstrapReady    bool
 	consensusStarted  bool
-	readyChan         chan struct{}
-	readyOnce         sync.Once
 	consensusChan     chan struct{}
 	consensusOnce     sync.Once
 	confirmedNodes    map[types.Address]int
@@ -35,9 +32,7 @@ type ConsensusState struct {
 func NewConsensusState() *ConsensusState {
 	return &ConsensusState{
 		state:          StateStopped,
-		bootstrapReady: false,
 		consensusStarted: false,
-		readyChan:      make(chan struct{}),
 		consensusChan:  make(chan struct{}),
 		confirmedNodes: make(map[types.Address]int),
 	}
@@ -56,53 +51,6 @@ func (cs *ConsensusState) SetState(state State) {
 	defer cs.mu.Unlock()
 	cs.state = state
 	cs.lastStateChange = time.Now()
-}
-
-// IsBootstrapReady returns whether bootstrap is ready
-func (cs *ConsensusState) IsBootstrapReady() bool {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-	return cs.bootstrapReady
-}
-
-// SetBootstrapReady sets the bootstrap ready flag
-func (cs *ConsensusState) SetBootstrapReady() {
-	cs.mu.Lock()
-	wasReady := cs.bootstrapReady
-	cs.bootstrapReady = true
-	readyChan := cs.readyChan
-	cs.mu.Unlock()
-
-	if !wasReady {
-		cs.readyOnce.Do(func() {
-			close(readyChan)
-		})
-	}
-}
-
-// ResetBootstrapReady resets the bootstrap ready flag
-func (cs *ConsensusState) ResetBootstrapReady() {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	if cs.bootstrapReady {
-		cs.bootstrapReady = false
-		cs.readyChan = make(chan struct{})
-		cs.readyOnce = sync.Once{}
-	}
-}
-
-// WaitForBootstrapReady waits for bootstrap to be ready
-func (cs *ConsensusState) WaitForBootstrapReady() {
-	if cs.IsBootstrapReady() {
-		return
-	}
-
-	cs.mu.RLock()
-	readyChan := cs.readyChan
-	cs.mu.RUnlock()
-
-	<-readyChan
 }
 
 // IsConsensusStarted returns whether consensus has started

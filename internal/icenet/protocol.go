@@ -52,7 +52,7 @@ const (
 const (
 	DefaultConnectionTimeout  = 10 * time.Second
 	DefaultReadTimeout       = 30 * time.Second
-	DefaultBootstrapReadTimeout = 60 * time.Second
+	DefaultExtendedReadTimeout = 60 * time.Second // Extended timeout for long-running operations
 	DefaultWriteTimeout      = 5 * time.Second
 	DefaultPingTimeout        = 1 * time.Second
 	DefaultKeepAliveInterval = 30 * time.Second
@@ -181,7 +181,7 @@ func SanitizeMessage(msg string) string {
 
 // CalculateBackoff вычисляет экспоненциальную задержку для повторных попыток.
 // Формула: baseDelay * (2^attempt), ограничена значением maxDelay.
-// Используется для переподключения к bootstrap узлу.
+// Используется для переподключения к узлам сети.
 //
 // Параметры:
 //   - attempt: номер попытки (начинается с 0)

@@ -25,8 +25,8 @@ import (
 // ...
 // NONCE<nonce_value>
 type REQ struct {
-	Address     types.Address // A - адрес bootstrap узла
-	NetworkAddr string        // NA - сетевой адрес bootstrap узла
+	Address     types.Address // A - адрес узла
+	NetworkAddr string        // NA - сетевой адрес узла
 	Nodes       []NodeInfo    // N - список узлов
 	Nonce       uint64        // NONCE - текущий nonce
 }
@@ -343,7 +343,7 @@ func (i *Ice) handleReadyRequest(conn net.Conn, data string, remoteAddr string) 
 		}
 	}
 
-	// Добавляем bootstrap узел в список
+	// Добавляем текущий узел в список
 	nodeList = append(nodeList, NodeInfo{
 		Address:     i.address,
 		NetworkAddr: i.GetNetworkAddr(),
@@ -550,7 +550,7 @@ func (i *Ice) broadcastNodeList() {
 		}
 	}
 
-	nodeList = append(nodeList, fmt.Sprintf("%s#%s", i.address.Hex(), i.GetNetworkAddr())) // добавляем себя в список узлов (bootstrap узел)
+	nodeList = append(nodeList, fmt.Sprintf("%s#%s", i.address.Hex(), i.GetNetworkAddr())) // добавляем себя в список узлов
 
 	if len(nodeList) == 0 {
 		return
@@ -681,7 +681,7 @@ func (i *Ice) handleNodeOk(conn net.Conn, data string, remoteAddr string) {
 		return
 	}
 
-	// Получаем текущий nonce bootstrap узла
+	// Получаем текущий nonce узла
 	i.mu.RLock()
 	consensusManager := i.consensusManager
 	i.mu.RUnlock()

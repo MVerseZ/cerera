@@ -24,7 +24,6 @@ type ConnectionType int
 const (
 	TypeIncoming ConnectionType = iota
 	TypeOutgoing
-	TypeBootstrap
 )
 
 // String returns the string representation of ConnectionType
@@ -34,8 +33,6 @@ func (ct ConnectionType) String() string {
 		return "incoming"
 	case TypeOutgoing:
 		return "outgoing"
-	case TypeBootstrap:
-		return "bootstrap"
 	default:
 		return "unknown"
 	}
