@@ -1,16 +1,22 @@
 package icenet
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/icenet/connection"
+	"github.com/cerera/internal/icenet/protocol"
 )
 
-// Start запускает компонент Ice
+// Start запускает компонент Ice.
+// Инициализирует listener для входящих подключений и запускает мониторинг блоков.
+// Возвращает ошибку, если не удалось запустить listener.
 func (i *Ice) Start() error {
 	if i.started {
 		icelogger().Warnw("Ice already started")
@@ -22,35 +28,44 @@ func (i *Ice) Start() error {
 	i.status = 0x1
 	i.mu.Unlock()
 
-	// Запускаем listener для входящих подключений
+	// Запускаем listener для входящих подключений через ConnectionManager
 	if err := i.startListener(); err != nil {
 		return fmt.Errorf("failed to start listener: %w", err)
 	}
 
-	// Если мы bootstrap узел, сразу помечаем как готовый и начинаем консенсус
-	if i.isBootstrapNode() {
-		i.setBootstrapReady()
-		i.startConsensus()
-		icelogger().Infow("Bootstrap node - marked as ready and consensus started immediately")
-	} else {
-		// Подключаемся к bootstrap узлу
-		go i.connectToBootstrap()
+	// Запускаем mesh network (discovery, gossip, connection management)
+	if err := i.meshNetwork.Start(); err != nil {
+		return fmt.Errorf("failed to start mesh network: %w", err)
 	}
 
-	// while
+	// Подключаемся к seed nodes для первоначального обнаружения пиров
+	if i.seedDiscovery != nil {
+		go func() {
+			if err := i.seedDiscovery.ConnectToSeedNodes(); err != nil {
+				icelogger().Warnw("Failed to connect to seed nodes", "err", err)
+			} else {
+				icelogger().Infow("Connected to seed nodes successfully")
+			}
+		}()
+	}
 
-	// Запускаем мониторинг блоков для отправки на bootstrap
+	// Помечаем сеть как готовую и начинаем консенсус
+	i.setNetworkReady()
+	i.startConsensus()
+
+	// Запускаем мониторинг блоков для рассылки
 	go i.monitorAndSendBlocks()
 
 	icelogger().Infow("Ice component started",
 		"address", i.address.Hex(),
 		"network_addr", i.GetNetworkAddr(),
-		"bootstrap", i.GetBootstrapAddr(),
 	)
 	return nil
 }
 
-// Stop останавливает компонент Ice
+// Stop останавливает компонент Ice.
+// Закрывает все соединения, listener и освобождает ресурсы.
+// Безопасно вызывать несколько раз - проверяет состояние перед остановкой.
 func (i *Ice) Stop() error {
 	i.mu.Lock()
 	if !i.started {
@@ -67,200 +82,248 @@ func (i *Ice) Stop() error {
 		if err := i.listener.Close(); err != nil {
 			icelogger().Errorw("Error closing listener", "err", err)
 		}
+		i.listener = nil
 	}
 
-	// Закрываем соединение с bootstrap
-	i.mu.Lock()
-	if i.bootstrapConn != nil {
-		if err := i.bootstrapConn.Close(); err != nil {
-			icelogger().Errorw("Error closing bootstrap connection", "err", err)
-		}
-		i.bootstrapConn = nil
+	// Останавливаем mesh network
+	if i.meshNetwork != nil {
+		i.meshNetwork.Stop()
 	}
-	i.mu.Unlock()
+
+	// Закрываем все соединения через connection manager
+	if i.connManager != nil {
+		i.connManager.Stop()
+	}
 
 	icelogger().Infow("Ice component stopped")
 	return nil
 }
 
-// Close закрывает компонент Ice
+// Close закрывает компонент Ice.
+// Является алиасом для Stop() для совместимости с интерфейсами.
 func (i *Ice) Close() error {
 	return i.Stop()
 }
 
-// Status возвращает статус компонента
+// Status возвращает текущий статус компонента Ice.
+// 0x0 - остановлен, 0x1 - запущен.
 func (i *Ice) Status() byte {
 	return i.status
 }
 
-// ServiceName возвращает имя сервиса для регистрации
+// ServiceName возвращает имя сервиса для регистрации в service registry.
+// Используется для идентификации компонента в системе сервисов.
 func (i *Ice) ServiceName() string {
 	return ICE_SERVICE_NAME
 }
 
-// GetAddress возвращает адрес cerera
+// GetAddress возвращает Cerera адрес текущего узла.
+// Адрес используется для идентификации узла в сети.
 func (i *Ice) GetAddress() types.Address {
 	return i.address
 }
 
-// GetIP возвращает IP адрес узла
+// GetIP возвращает IP адрес текущего узла.
+// IP адрес определяется автоматически при создании компонента.
 func (i *Ice) GetIP() string {
 	return i.ip
 }
 
-// GetPort возвращает порт узла
+// GetPort возвращает порт, на котором узел слушает входящие подключения.
 func (i *Ice) GetPort() string {
 	return i.port
 }
 
-// GetNetworkAddr возвращает полный сетевой адрес в формате "ip:port"
+// GetNetworkAddr возвращает полный сетевой адрес узла в формате "ip:port".
+// Используется для сетевых операций и идентификации узла в P2P сети.
 func (i *Ice) GetNetworkAddr() string {
 	return fmt.Sprintf("%s:%s", i.ip, i.port)
 }
 
-// GetBootstrapAddr возвращает адрес bootstrap узла
-func (i *Ice) GetBootstrapAddr() string {
-	return fmt.Sprintf("%s:%s", i.bootstrapIP, i.bootstrapPort)
-}
-
-// IsBootstrapReady проверяет, готов ли bootstrap (подключен и получен подтверждающий ответ)
-func (i *Ice) IsBootstrapReady() bool {
+// IsNetworkReady проверяет, готова ли сеть.
+// Возвращает true, если сеть готова к работе.
+func (i *Ice) IsNetworkReady() bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return i.bootstrapReady
+	return i.networkReady
 }
 
-// WaitForBootstrapReady блокирует выполнение до тех пор, пока bootstrap не будет готов
-func (i *Ice) WaitForBootstrapReady() {
-	if i.isBootstrapNode() {
-		// Если мы сами bootstrap, сразу готовы
+// WaitForNetworkReady блокирует выполнение до тех пор, пока сеть не будет готова.
+// Используется для синхронизации перед началом работы валидатора.
+func (i *Ice) WaitForNetworkReady() {
+	// Проверяем, может уже готов
+	if i.IsNetworkReady() {
 		return
 	}
 
-	// Проверяем, может уже готов
-	if i.IsBootstrapReady() {
-		return
-	}
+	// Безопасно получаем канал под блокировкой
+	i.mu.RLock()
+	readyChan := i.readyChan
+	i.mu.RUnlock()
 
 	// Ждем сигнала о готовности
-	<-i.readyChan
+	<-readyChan
 }
 
-// setBootstrapReady устанавливает флаг готовности bootstrap
-func (i *Ice) setBootstrapReady() {
+// setNetworkReady устанавливает флаг готовности сети
+func (i *Ice) setNetworkReady() {
 	i.mu.Lock()
-	defer i.mu.Unlock()
-	if !i.bootstrapReady {
-		i.bootstrapReady = true
-		close(i.readyChan)
-		icelogger().Infow("Bootstrap is ready - validator can proceed")
+	wasReady := i.networkReady
+	i.networkReady = true
+	readyChan := i.readyChan
+	i.mu.Unlock()
+
+	if !wasReady {
+		// Безопасно закрываем канал только один раз
+		i.readyOnce.Do(func() {
+			close(readyChan)
+			icelogger().Infow("Network is ready - validator can proceed")
+		})
 	}
 }
 
-// resetBootstrapReady сбрасывает флаг готовности (при разрыве соединения)
-func (i *Ice) resetBootstrapReady() {
+// resetNetworkReady сбрасывает флаг готовности сети
+func (i *Ice) resetNetworkReady() {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.bootstrapReady {
-		i.bootstrapReady = false
-		i.readyChan = make(chan struct{}) // Создаем новый канал
-		icelogger().Warnw("Bootstrap ready status reset - validator will wait")
+
+	if i.networkReady {
+		i.networkReady = false
+		// Создаем новый канал и новый sync.Once для следующего цикла
+		i.readyChan = make(chan struct{})
+		i.readyOnce = sync.Once{}
+		icelogger().Warnw("Network ready status reset - validator will wait")
 	}
+
 	// Также сбрасываем консенсус при разрыве соединения
 	if i.consensusStarted {
 		i.consensusStarted = false
-		i.consensusChan = make(chan struct{}) // Создаем новый канал
+		// Создаем новый канал и новый sync.Once для следующего цикла
+		i.consensusChan = make(chan struct{})
+		i.consensusOnce = sync.Once{}
 		icelogger().Warnw("Consensus status reset - blocks will not be created")
 	}
 }
 
-// IsConsensusStarted проверяет, начался ли консенсус
+// IsConsensusStarted проверяет, начался ли процесс консенсуса.
+// Возвращает true, если консенсус активен и блоки могут создаваться.
 func (i *Ice) IsConsensusStarted() bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.consensusStarted
 }
 
-// WaitForConsensus блокирует выполнение до начала консенсуса
+// WaitForConsensus блокирует выполнение до начала консенсуса.
+// Используется для синхронизации перед созданием блоков.
 func (i *Ice) WaitForConsensus() {
-	if i.isBootstrapNode() {
-		// Если мы сами bootstrap, консенсус может начаться сразу
-		return
-	}
-
 	// Проверяем, может уже начался
 	if i.IsConsensusStarted() {
 		return
 	}
 
+	// Безопасно получаем канал под блокировкой
+	i.mu.RLock()
+	consensusChan := i.consensusChan
+	i.mu.RUnlock()
+
 	// Ждем сигнала о начале консенсуса
-	<-i.consensusChan
+	<-consensusChan
 }
 
 // startConsensus устанавливает флаг начала консенсуса
 func (i *Ice) startConsensus() {
 	i.mu.Lock()
-	defer i.mu.Unlock()
-	if !i.consensusStarted {
-		i.consensusStarted = true
-		close(i.consensusChan)
-		icelogger().Infow("Consensus started - blocks can now be created")
+	wasStarted := i.consensusStarted
+	i.consensusStarted = true
+	consensusChan := i.consensusChan
+	i.mu.Unlock()
+
+	if !wasStarted {
+		// Безопасно закрываем канал только один раз
+		i.consensusOnce.Do(func() {
+			close(consensusChan)
+			icelogger().Infow("Consensus started - blocks can now be created")
+		})
 	}
 }
 
-// isBootstrapNode проверяет, является ли текущий узел bootstrap узлом
-func (i *Ice) isBootstrapNode() bool {
-	// Bootstrap узел определяется по порту - если порт совпадает с bootstrap портом
-	// и узел слушает входящие подключения (не подключается к bootstrap)
-	return i.port == i.bootstrapPort
-}
 
 // startListener запускает listener для входящих подключений
 func (i *Ice) startListener() error {
-	addr := fmt.Sprintf(":%s", i.port)
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to start listener on %s: %w", addr, err)
+	// Use connection manager instead of direct listener
+	if err := i.connManager.Start(i.port); err != nil {
+		return fmt.Errorf("failed to start connection manager: %w", err)
 	}
 
-	i.mu.Lock()
-	i.listener = listener
-	i.mu.Unlock()
+	icelogger().Infow("Ice listener started via connection manager", "port", i.port)
 
-	icelogger().Infow("Ice listener started", "addr", addr)
-
-	// Обрабатываем входящие подключения
-	go i.handleConnections()
+	// Process messages from connection handler
+	go i.processConnectionMessages()
 
 	return nil
 }
 
-// handleConnections обрабатывает входящие подключения
-func (i *Ice) handleConnections() {
+// processConnectionMessages processes messages from the connection handler
+func (i *Ice) processConnectionMessages() {
+	handler := i.connManager.GetHandler()
+	msgChan := handler.MessageChannel()
+
 	for {
-		i.mu.Lock()
-		listener := i.listener
-		started := i.started
-		i.mu.Unlock()
-
-		if !started || listener == nil {
+		select {
+		case <-i.ctx.Done():
+			icelogger().Infow("Message processor stopped due to context cancellation")
 			return
-		}
-
-		conn, err := listener.Accept()
-		if err != nil {
-			i.mu.Lock()
-			started = i.started
-			i.mu.Unlock()
-			if !started {
-				return
+		case event := <-msgChan:
+			if event.Error != nil {
+				icelogger().Errorw("Message event error", "err", event.Error)
+				continue
 			}
-			icelogger().Errorw("Error accepting connection", "err", err)
-			continue
-		}
 
-		// Обрабатываем каждое подключение в отдельной горутине
-		go i.handleConnection(conn)
+			if event.Message == nil {
+				continue
+			}
+
+			// Process domain-specific messages
+			i.processProtocolMessage(event.Message, event.Connection)
+		}
+	}
+}
+
+// processProtocolMessage processes a protocol message (domain-specific logic)
+func (i *Ice) processProtocolMessage(msg protocol.Message, conn *connection.Connection) {
+	// This replaces the old handleConnection logic
+	// Domain-specific message handling is preserved
+	if conn == nil || conn.Conn == nil {
+		return
+	}
+
+	switch m := msg.(type) {
+	case *protocol.ReadyRequestMessage:
+		// Convert to old format for compatibility
+		data := fmt.Sprintf("%s|%s|%s", protocol.MsgTypeReadyRequest, m.Address.Hex(), m.NetworkAddr)
+		i.handleReadyRequest(conn.Conn, data, conn.NetworkAddr)
+	case *protocol.WhoIsMessage:
+		data := fmt.Sprintf("%s|%s", protocol.MsgTypeWhoIs, m.NodeAddress.Hex())
+		i.handleWhoIsRequest(conn.Conn, data, conn.NetworkAddr)
+	case *protocol.NodeOkMessage:
+		data := fmt.Sprintf("%s|%d|%d", protocol.MsgTypeNodeOk, m.Count, m.Nonce)
+		i.handleNodeOk(conn.Conn, data, conn.NetworkAddr)
+	case *protocol.BlockMessage:
+		// Block messages need special handling
+		if m.Block != nil {
+			blockJSON, _ := json.Marshal(m.Block)
+			data := fmt.Sprintf("%s|%s", protocol.MsgTypeBlock, string(blockJSON))
+			i.processReceivedBlock(data, conn.NetworkAddr)
+		}
+	case *protocol.ProposalMessage:
+		i.handleProposalMessage(m)
+	case *protocol.VoteMessage:
+		i.handleVoteMessage(m)
+	case *protocol.ConsensusResultMessage:
+		i.handleConsensusResultMessage(m)
+	case *protocol.PeerDiscoveryMessage:
+		i.handlePeerDiscoveryMessage(m, conn)
+		// Add other message types as needed
 	}
 }
 
@@ -269,40 +332,59 @@ func (i *Ice) handleConnection(conn net.Conn) {
 	remoteAddr := conn.RemoteAddr().String()
 	icelogger().Infow("New connection", "remote_addr", remoteAddr)
 
-	// При закрытии соединения удаляем его из списка (для bootstrap узла)
+	// При закрытии соединения закрываем его
 	defer func() {
-		if i.isBootstrapNode() {
-			i.mu.Lock()
-			// Находим и удаляем соединение по адресу
-			for addr, storedConn := range i.connectedNodes {
-				if storedConn == conn {
-					delete(i.connectedNodes, addr)
-					delete(i.confirmedNodes, addr) // Также удаляем из confirmedNodes
-					icelogger().Infow("Removed connection for node", "node_address", addr.Hex())
-					break
-				}
-			}
-			i.mu.Unlock()
+		if err := conn.Close(); err != nil {
+			icelogger().Debugw("Error closing connection", "remote_addr", remoteAddr, "err", err)
 		}
+	}()
+
+	// Check context cancellation in the connection handler
+	ctxDone := make(chan struct{})
+	go func() {
+		<-i.ctx.Done()
+		close(ctxDone)
 		conn.Close()
 	}()
 
 	// Читаем данные от подключения
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, DefaultConnectionBufferSize)
 	for {
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		// Check context cancellation
+		select {
+		case <-ctxDone:
+			icelogger().Infow("Connection handler cancelled", "remote_addr", remoteAddr)
+			return
+		default:
+		}
+
+		conn.SetReadDeadline(time.Now().Add(DefaultReadTimeout))
 		n, err := conn.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
 				icelogger().Infow("Connection closed by peer", "remote_addr", remoteAddr)
 				return
 			}
+			// Check if error is due to context cancellation
+			select {
+			case <-ctxDone:
+				return
+			default:
+			}
 			icelogger().Errorw("Error reading from connection", "remote_addr", remoteAddr, "err", err)
 			return
 		}
 
 		if n > 0 {
+			// Validate message size
+			if err := ValidateMessageSize(n); err != nil {
+				icelogger().Errorw("Invalid message size", "remote_addr", remoteAddr, "size", n, "err", err)
+				return
+			}
+
 			data := string(buffer[:n])
+			// Sanitize message to prevent injection attacks
+			data = SanitizeMessage(data)
 			icelogger().Debugw("Received data from connection",
 				"remote_addr", remoteAddr,
 				"size", n,
@@ -324,24 +406,26 @@ func (i *Ice) handleConnection(conn net.Conn) {
 					continue
 				}
 
-				// Обрабатываем WHO_IS запрос (только для bootstrap узла)
+				// Обрабатываем WHO_IS запрос
 				if i.isWhoIsRequest(line) {
 					icelogger().Infow("Received WHO_IS request", "remote_addr", remoteAddr, "data", line)
 					i.handleWhoIsRequest(conn, line, remoteAddr)
 					continue
 				}
 
-				// Обрабатываем NODE_OK (только для bootstrap узла)
+				// Обрабатываем NODE_OK
 				if i.isNodeOkMessage(line) {
 					icelogger().Debugw("Received NODE_OK", "remote_addr", remoteAddr, "data", line)
 					i.handleNodeOk(conn, line, remoteAddr)
 					continue
 				}
 
-				// WHO_IS_RESPONSE и CONSENSUS_STATUS обрабатываются только в readFromBootstrap
-				// для обычных узлов, которые получают эти сообщения от bootstrap.
-				// Bootstrap узел не должен получать эти сообщения через handleConnection.
-				// Обычные узлы не должны получать эти сообщения от других узлов (только от bootstrap).
+				// Обрабатываем BLOCK сообщения
+				if i.isBlockMessage(line) {
+					icelogger().Infow("Received BLOCK message from node", "remote_addr", remoteAddr)
+					i.processReceivedBlock(line, remoteAddr)
+					continue
+				}
 			}
 		}
 	}

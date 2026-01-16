@@ -74,13 +74,11 @@ func SyncVaultWithPath(chainPath string) ([]*block.Block, error) {
 }
 
 func SaveToVault(newBlock block.Block) error {
+	return SaveToVaultWithPath(newBlock, "./chain.dat")
+}
 
-	// Only write to file if batch size is reached
-	// if totalSize < BATCH_SIZE {
-	// 	return nil
-	// }
-
-	f, err := os.OpenFile("./chain.dat", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func SaveToVaultWithPath(newBlock block.Block, chainPath string) error {
+	f, err := os.OpenFile(chainPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}

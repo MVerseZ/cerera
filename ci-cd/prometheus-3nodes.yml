@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    cluster: "cerera-3nodes"
+    environment: "development"
+
+scrape_configs:
+  - job_name: cerera-nodes
+    metrics_path: /metrics
+    scrape_interval: 5s
+    scrape_timeout: 5s
+    static_configs:
+      # Сбор метрик со всех трех нод через Docker network
+      - targets:
+          - "node1:1337"
+        labels:
+          cluster: "cerera"
+          deployment: "3nodes"
+          node: "node1"
+          instance: "cerera-node1"
+      - targets:
+          - "node2:1338"
+        labels:
+          cluster: "cerera"
+          deployment: "3nodes"
+          node: "node2"
+          instance: "cerera-node2"
+      - targets:
+          - "node3:1339"
+        labels:
+          cluster: "cerera"
+          deployment: "3nodes"
+          node: "node3"
+          instance: "cerera-node3"
+

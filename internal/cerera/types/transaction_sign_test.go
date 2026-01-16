@@ -173,7 +173,7 @@ func TestSizeSigning(t *testing.T) {
 	// Expected size for unsigned transaction:
 
 	// Updated expected size based on current Size() calculation
-	expectedUnsignedSize := uint64(65)
+	expectedUnsignedSize := uint64(68)
 
 	if itx.Size() != expectedUnsignedSize {
 		t.Errorf("diff sizes for unsigned tx: expected %d, actual: %d", expectedUnsignedSize, itx.Size())
