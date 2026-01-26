@@ -1,315 +1,592 @@
 package consensus
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/icenet/protocol"
+	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/message"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
-
-// ProposalType represents the type of proposal
-type ProposalType string
 
 const (
-	ProposalTypeNonce     ProposalType = "NONCE"
-	ProposalTypeNodeAdd   ProposalType = "NODE_ADD"
-	ProposalTypeNodeRemove ProposalType = "NODE_REMOVE"
+	// VoteTimeout is the timeout for a voting round
+	VoteTimeout = 30 * time.Second
+	// MaxPendingVotes is the maximum number of pending votes to keep
+	MaxPendingVotes = 1000
+	// CleanupInterval controls how often we check for round expiry.
+	CleanupInterval = 5 * time.Second
 )
 
-// Proposal represents a voting proposal
-type Proposal struct {
-	ProposalID   string
-	ProposalType ProposalType
-	Data         string
-	Proposer     types.Address
-	Timestamp    int64
-	Votes        map[types.Address]bool // voter -> vote (true = approve, false = reject)
-	Result       *bool                  // nil = pending, true = approved, false = rejected
-	ResultTime   *time.Time
+// VotingMessage represents a voting message
+type VotingMessage struct {
+	Type        message.MType `json:"type"`
+	BlockHash   common.Hash   `json:"blockHash"`
+	BlockHeight int           `json:"blockHeight"`
+	ViewID      int64         `json:"viewId"`
+	SequenceID  int64         `json:"sequenceId"`
+	VoterID     peer.ID       `json:"voterId"`
+	VoteType    VoteType      `json:"voteType"`
+	// Block is included only in PrePrepare to ensure availability.
+	Block     *block.Block `json:"block,omitempty"`
+	Signature []byte       `json:"signature"`
+	Timestamp int64        `json:"timestamp"`
 }
 
-// VotingConsensus manages voting-based consensus
-type VotingConsensus struct {
-	mu          sync.RWMutex
-	proposals   map[string]*Proposal
-	voters      map[types.Address]bool // known voters
-	minVotes    int                    // minimum votes required for consensus
-	timeout     time.Duration          // timeout for proposals
-	meshNetwork interface{}            // mesh network for broadcasting (will be set via SetMeshNetwork)
-	selfAddress types.Address          // address of the current node
-}
-
-// NewVotingConsensus creates a new voting consensus manager
-func NewVotingConsensus(minVotes int, timeout time.Duration) *VotingConsensus {
-	return &VotingConsensus{
-		proposals: make(map[string]*Proposal),
-		voters:    make(map[types.Address]bool),
-		minVotes:  minVotes,
-		timeout:   timeout,
+// NewVotingMessage creates a new voting message
+func NewVotingMessage(msgType message.MType, blockHash common.Hash, height int, viewID, seqID int64, voterID peer.ID, voteType VoteType) *VotingMessage {
+	return &VotingMessage{
+		Type:        msgType,
+		BlockHash:   blockHash,
+		BlockHeight: height,
+		ViewID:      viewID,
+		SequenceID:  seqID,
+		VoterID:     voterID,
+		VoteType:    voteType,
+		Timestamp:   time.Now().UnixNano(),
 	}
 }
 
-// SetMeshNetwork sets the mesh network for broadcasting
-func (vc *VotingConsensus) SetMeshNetwork(meshNetwork interface{}) {
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
-	vc.meshNetwork = meshNetwork
+// Marshal serializes the voting message
+func (vm *VotingMessage) Marshal() ([]byte, error) {
+	return json.Marshal(vm)
 }
 
-// AddVoter adds a voter to the consensus
-func (vc *VotingConsensus) AddVoter(addr types.Address) {
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
-	vc.voters[addr] = true
+// SignBytes returns a canonical payload to sign/verify for this message.
+// IMPORTANT: Signature and Block are excluded from the payload.
+// Block is only for availability in PrePrepare and should not affect signature.
+func (vm *VotingMessage) SignBytes() ([]byte, error) {
+	if vm == nil {
+		return nil, fmt.Errorf("nil voting message")
+	}
+
+	// Create a clone without Signature and Block for signing
+	clone := *vm
+	clone.Signature = nil
+	clone.Block = nil
+	return json.Marshal(&clone)
 }
 
-// RemoveVoter removes a voter from the consensus
-func (vc *VotingConsensus) RemoveVoter(addr types.Address) {
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
-	delete(vc.voters, addr)
+// Unmarshal deserializes a voting message
+func UnmarshalVotingMessage(data []byte) (*VotingMessage, error) {
+	var vm VotingMessage
+	if err := json.Unmarshal(data, &vm); err != nil {
+		return nil, err
+	}
+	return &vm, nil
 }
 
-// GetVoters returns all known voters
-func (vc *VotingConsensus) GetVoters() []types.Address {
-	vc.mu.RLock()
-	defer vc.mu.RUnlock()
-	voters := make([]types.Address, 0, len(vc.voters))
-	for addr := range vc.voters {
-		voters = append(voters, addr)
-	}
-	return voters
+// VotingManager handles voting for block consensus
+type VotingManager struct {
+	mu                  sync.RWMutex
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	validatorSet        *ValidatorSet
+	currentRound        *RoundState
+	pendingPrepareVotes map[RoundKey][]*Vote
+	pendingCommitVotes  map[RoundKey][]*Vote
+	localPeerID         peer.ID
+
+	// Callbacks
+	onPrepareQuorum func(common.Hash, int)
+	onCommitQuorum  func(common.Hash, int)
+	onRoundTimeout  func(RoundKey, common.Hash)
+	broadcastVote   func(*VotingMessage) error
 }
 
-// generateProposalID generates a unique proposal ID
-func generateProposalID(proposalType ProposalType, data string, proposer types.Address, timestamp int64) string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d", proposalType, data, proposer.Hex(), timestamp)))
-	return hex.EncodeToString(hash[:16]) // Use first 16 bytes as ID
+// NewVotingManager creates a new voting manager
+func NewVotingManager(ctx context.Context, localPeerID peer.ID) *VotingManager {
+	ctx, cancel := context.WithCancel(ctx)
+
+	return &VotingManager{
+		ctx:                 ctx,
+		cancel:              cancel,
+		validatorSet:        NewValidatorSet(),
+		pendingPrepareVotes: make(map[RoundKey][]*Vote),
+		pendingCommitVotes:  make(map[RoundKey][]*Vote),
+		localPeerID:         localPeerID,
+	}
 }
 
-// Propose creates a new proposal
-func (vc *VotingConsensus) Propose(proposalType ProposalType, data string, proposer types.Address) (*Proposal, error) {
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
-
-	timestamp := time.Now().Unix()
-	proposalID := generateProposalID(proposalType, data, proposer, timestamp)
-
-	// Check if proposal already exists
-	if _, exists := vc.proposals[proposalID]; exists {
-		return nil, fmt.Errorf("proposal already exists: %s", proposalID)
-	}
-
-	proposal := &Proposal{
-		ProposalID:   proposalID,
-		ProposalType: proposalType,
-		Data:         data,
-		Proposer:     proposer,
-		Timestamp:    timestamp,
-		Votes:        make(map[types.Address]bool),
-	}
-
-	vc.proposals[proposalID] = proposal
-
-	// Start timeout goroutine
-	go vc.handleProposalTimeout(proposalID)
-
-	return proposal, nil
+// Start starts the voting manager
+func (vm *VotingManager) Start() {
+	go vm.cleanupLoop()
+	consensusLogger().Infow("Voting manager started")
 }
 
-// Vote votes on a proposal
-func (vc *VotingConsensus) Vote(proposalID string, voter types.Address, vote bool) error {
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
-
-	proposal, exists := vc.proposals[proposalID]
-	if !exists {
-		return fmt.Errorf("proposal not found: %s", proposalID)
-	}
-
-	// Check if proposal already has a result
-	if proposal.Result != nil {
-		return fmt.Errorf("proposal already has a result: %s", proposalID)
-	}
-
-	// Check if voter has already voted
-	if _, hasVoted := proposal.Votes[voter]; hasVoted {
-		return fmt.Errorf("voter already voted: %s", voter.Hex())
-	}
-
-	// Check if voter is valid
-	if !vc.voters[voter] {
-		return fmt.Errorf("voter not in consensus: %s", voter.Hex())
-	}
-
-	// Record vote
-	proposal.Votes[voter] = vote
-
-	// Check if we have enough votes
-	vc.checkProposalResult(proposalID)
-
-	return nil
+// Stop stops the voting manager
+func (vm *VotingManager) Stop() {
+	vm.cancel()
+	consensusLogger().Infow("Voting manager stopped")
 }
 
-// checkProposalResult checks if a proposal has reached consensus
-func (vc *VotingConsensus) checkProposalResult(proposalID string) {
-	proposal, exists := vc.proposals[proposalID]
-	if !exists {
-		return
-	}
+// cleanupLoop periodically cleans up old pending votes
+func (vm *VotingManager) cleanupLoop() {
+	ticker := time.NewTicker(CleanupInterval)
+	defer ticker.Stop()
 
-	// Count votes
-	votesFor := 0
-	votesAgainst := 0
-	for _, vote := range proposal.Votes {
-		if vote {
-			votesFor++
-		} else {
-			votesAgainst++
+	for {
+		select {
+		case <-vm.ctx.Done():
+			return
+		case <-ticker.C:
+			vm.cleanup()
 		}
 	}
-
-	// Check if we have minimum votes
-	if len(proposal.Votes) < vc.minVotes {
-		return // Not enough votes yet
-	}
-
-	// Determine result (simple majority)
-	result := votesFor > votesAgainst
-	now := time.Now()
-	proposal.Result = &result
-	proposal.ResultTime = &now
-
-	// Broadcast result if mesh network is available
-	if vc.meshNetwork != nil {
-		vc.broadcastResult(proposalID, result, votesFor, votesAgainst)
-	}
 }
 
-// broadcastResult broadcasts the consensus result
-func (vc *VotingConsensus) broadcastResult(proposalID string, result bool, votesFor, votesAgainst int) {
-	vc.mu.RLock()
-	meshNet := vc.meshNetwork
-	vc.mu.RUnlock()
-	
-	// Use type assertion to call BroadcastMessage
-	if meshNet != nil {
-		if net, ok := meshNet.(interface {
-			BroadcastMessage(msg protocol.Message) error
-		}); ok {
-			resultMsg := &protocol.ConsensusResultMessage{
-				ProposalID:    proposalID,
-				Result:        result,
-				VotesFor:      votesFor,
-				VotesAgainst:  votesAgainst,
-				Timestamp:     time.Now().Unix(),
+// cleanup removes expired votes and rounds
+func (vm *VotingManager) cleanup() {
+	var (
+		timedOutKey  *RoundKey
+		timedOutHash common.Hash
+		onTimeout    func(RoundKey, common.Hash)
+	)
+
+	vm.mu.Lock()
+
+	// Check if current round is expired
+	if vm.currentRound != nil && vm.currentRound.IsExpired() {
+		key := RoundKey{
+			Height:     vm.currentRound.BlockHeight,
+			ViewID:     vm.currentRound.ViewID,
+			SequenceID: vm.currentRound.SequenceID,
+		}
+		consensusLogger().Warnw("Consensus round expired",
+			"blockHash", vm.currentRound.BlockHash,
+			"blockHeight", vm.currentRound.BlockHeight,
+			"viewID", vm.currentRound.ViewID,
+			"seqID", vm.currentRound.SequenceID,
+		)
+		timedOutKey = &key
+		timedOutHash = vm.currentRound.BlockHash
+		vm.currentRound = nil
+	}
+
+	// Limit pending votes (simple approach: drop arbitrary entries)
+	totalPending := len(vm.pendingPrepareVotes) + len(vm.pendingCommitVotes)
+	if totalPending > MaxPendingVotes {
+		for k := range vm.pendingPrepareVotes {
+			delete(vm.pendingPrepareVotes, k)
+			totalPending--
+			if totalPending <= MaxPendingVotes/2 {
+				break
 			}
-			_ = net.BroadcastMessage(resultMsg) // Ignore error for now
+		}
+		for k := range vm.pendingCommitVotes {
+			if totalPending <= MaxPendingVotes/2 {
+				break
+			}
+			delete(vm.pendingCommitVotes, k)
+			totalPending--
 		}
 	}
+
+	onTimeout = vm.onRoundTimeout
+	vm.mu.Unlock()
+
+	if timedOutKey != nil && onTimeout != nil {
+		go onTimeout(*timedOutKey, timedOutHash)
+	}
 }
 
-// GetProposal returns a proposal by ID
-func (vc *VotingConsensus) GetProposal(proposalID string) (*Proposal, bool) {
-	vc.mu.RLock()
-	defer vc.mu.RUnlock()
-	proposal, exists := vc.proposals[proposalID]
-	return proposal, exists
-}
+// StartRound starts a new voting round for a block
+func (vm *VotingManager) StartRound(b *block.Block, viewID, seqID int64) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
 
-// GetResult returns the result of a proposal
-func (vc *VotingConsensus) GetResult(proposalID string) (*bool, error) {
-	vc.mu.RLock()
-	defer vc.mu.RUnlock()
-
-	proposal, exists := vc.proposals[proposalID]
-	if !exists {
-		return nil, fmt.Errorf("proposal not found: %s", proposalID)
+	if vm.currentRound != nil && !vm.currentRound.IsExpired() {
+		return fmt.Errorf("consensus round already in progress")
 	}
 
-	return proposal.Result, nil
+	vm.currentRound = NewRoundState(b.Hash, b.Head.Height, viewID, seqID, VoteTimeout, vm.validatorSet.GetValidators())
+	vm.applyPendingVotesLocked(RoundKey{Height: b.Head.Height, ViewID: viewID, SequenceID: seqID})
+
+	validatorSnapshot := vm.validatorSet.GetValidators()
+	consensusLogger().Infow("[CONSENSUS] Started consensus round",
+		"blockHash", b.Hash,
+		"blockHeight", b.Head.Height,
+		"viewID", viewID,
+		"seqID", seqID,
+		"validatorCount", len(validatorSnapshot),
+		"quorum", vm.currentRound.Quorum,
+		"validators", validatorSnapshot,
+	)
+
+	// Send pre-prepare message
+	msg := NewVotingMessage(
+		message.MTPrePrepare,
+		b.Hash,
+		b.Head.Height,
+		viewID,
+		seqID,
+		vm.localPeerID,
+		VoteApprove,
+	)
+	msg.Block = b
+
+	if vm.broadcastVote != nil {
+		if err := vm.broadcastVote(msg); err != nil {
+			consensusLogger().Warnw("Failed to broadcast pre-prepare", "error", err)
+		}
+	}
+
+	return nil
 }
 
-// handleProposalTimeout handles proposal timeout
-func (vc *VotingConsensus) handleProposalTimeout(proposalID string) {
-	time.Sleep(vc.timeout)
+// HandlePrePrepare handles a pre-prepare message
+func (vm *VotingManager) HandlePrePrepare(msg *VotingMessage, from peer.ID) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
 
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
+	// Validate sender is a validator
+	if !vm.validatorSet.IsValidator(from) {
+		return fmt.Errorf("sender is not a validator")
+	}
 
-	proposal, exists := vc.proposals[proposalID]
-	if !exists {
+	// Ensure block availability: PrePrepare must include the block.
+	if msg.Block == nil {
+		return fmt.Errorf("pre-prepare missing block payload")
+	}
+
+	// Basic consistency checks.
+	if msg.Block.Hash != msg.BlockHash || msg.Block.Head == nil || msg.Block.Head.Height != msg.BlockHeight {
+		return fmt.Errorf("pre-prepare block mismatch")
+	}
+
+	key := RoundKey{Height: msg.BlockHeight, ViewID: msg.ViewID, SequenceID: msg.SequenceID}
+
+	// Create round if none / expired
+	if vm.currentRound == nil || vm.currentRound.IsExpired() {
+		vm.currentRound = NewRoundState(msg.BlockHash, msg.BlockHeight, msg.ViewID, msg.SequenceID, VoteTimeout, vm.validatorSet.GetValidators())
+		vm.applyPendingVotesLocked(key)
+	} else {
+		// Ignore pre-prepare for a different active round (prevents cross-round mixing).
+		if vm.currentRound.BlockHeight != msg.BlockHeight ||
+			vm.currentRound.ViewID != msg.ViewID ||
+			vm.currentRound.SequenceID != msg.SequenceID {
+			consensusLogger().Debugw("[CONSENSUS] Ignoring pre-prepare for non-current round",
+				"from", from,
+				"msgHeight", msg.BlockHeight,
+				"msgViewID", msg.ViewID,
+				"msgSeqID", msg.SequenceID,
+				"curHeight", vm.currentRound.BlockHeight,
+				"curViewID", vm.currentRound.ViewID,
+				"curSeqID", vm.currentRound.SequenceID,
+			)
+			return nil
+		}
+		// Conflicting block hash for same (height, view, seq) => ignore (equivocation).
+		if vm.currentRound.BlockHash != msg.BlockHash {
+			consensusLogger().Warnw("[CONSENSUS] Conflicting pre-prepare for same round (equivocation)",
+				"from", from,
+				"height", msg.BlockHeight,
+				"viewID", msg.ViewID,
+				"seqID", msg.SequenceID,
+				"currentHash", vm.currentRound.BlockHash,
+				"msgHash", msg.BlockHash,
+			)
+			return nil
+		}
+	}
+
+	// Move to prepare phase
+	vm.currentRound.SetState(StatePrepare)
+
+	// Send prepare vote
+	prepareMsg := NewVotingMessage(
+		message.MTPrepare,
+		msg.BlockHash,
+		msg.BlockHeight,
+		msg.ViewID,
+		msg.SequenceID,
+		vm.localPeerID,
+		VoteApprove,
+	)
+
+	if vm.broadcastVote != nil {
+		if err := vm.broadcastVote(prepareMsg); err != nil {
+			consensusLogger().Warnw("Failed to broadcast prepare", "error", err)
+		}
+	}
+
+	return nil
+}
+
+// HandlePrepare handles a prepare message
+func (vm *VotingManager) HandlePrepare(msg *VotingMessage, from peer.ID) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+
+	// Validate sender is a validator
+	if !vm.validatorSet.IsValidator(from) {
+		return fmt.Errorf("sender is not a validator")
+	}
+
+	key := RoundKey{Height: msg.BlockHeight, ViewID: msg.ViewID, SequenceID: msg.SequenceID}
+
+	// Check if we have a current round for this (height, view, seq)
+	if vm.currentRound == nil ||
+		vm.currentRound.BlockHeight != msg.BlockHeight ||
+		vm.currentRound.ViewID != msg.ViewID ||
+		vm.currentRound.SequenceID != msg.SequenceID {
+		// Store as pending prepare vote
+		vm.addPendingPrepareVote(key, &Vote{
+			BlockHash:   msg.BlockHash,
+			BlockHeight: msg.BlockHeight,
+			ViewID:      msg.ViewID,
+			SequenceID:  msg.SequenceID,
+			VoterID:     from,
+			VoteType:    msg.VoteType,
+			Signature:   msg.Signature,
+			Timestamp:   time.Now(),
+		})
+		return nil
+	}
+	if vm.currentRound.BlockHash != msg.BlockHash {
+		consensusLogger().Warnw("[CONSENSUS] Ignoring prepare for conflicting hash in current round",
+			"from", from,
+			"height", msg.BlockHeight,
+			"viewID", msg.ViewID,
+			"seqID", msg.SequenceID,
+			"currentHash", vm.currentRound.BlockHash,
+			"msgHash", msg.BlockHash,
+		)
+		return nil
+	}
+	// Enforce validator snapshot for the round (quorum stability).
+	if !vm.currentRound.IsValidatorInRound(from) {
+		return nil
+	}
+
+	// Add prepare vote
+	vote := &Vote{
+		BlockHash:   msg.BlockHash,
+		BlockHeight: msg.BlockHeight,
+		ViewID:      msg.ViewID,
+		SequenceID:  msg.SequenceID,
+		VoterID:     from,
+		VoteType:    msg.VoteType,
+		Signature:   msg.Signature,
+		Timestamp:   time.Now(),
+	}
+
+	vm.currentRound.AddPrepareVote(vote)
+
+	// Check for quorum
+	quorum := vm.currentRound.Quorum
+	prepareCount := vm.currentRound.GetPrepareVoteCount()
+	consensusLogger().Debugw("[CONSENSUS] Prepare vote received",
+		"from", from,
+		"blockHash", msg.BlockHash,
+		"height", msg.BlockHeight,
+		"prepareVotes", prepareCount,
+		"quorum", quorum,
+		"state", vm.currentRound.GetState(),
+	)
+
+	if vm.currentRound.HasPrepareQuorum() && vm.currentRound.GetState() == StatePrepare {
+		// Move to commit phase
+		vm.currentRound.SetState(StateCommit)
+
+		consensusLogger().Infow("[CONSENSUS] Prepare quorum reached - moving to commit phase",
+			"blockHash", msg.BlockHash,
+			"height", msg.BlockHeight,
+			"prepareVotes", prepareCount,
+			"quorum", quorum,
+		)
+
+		// Notify callback
+		if vm.onPrepareQuorum != nil {
+			go vm.onPrepareQuorum(msg.BlockHash, msg.BlockHeight)
+		}
+
+		// Send commit vote
+		commitMsg := NewVotingMessage(
+			message.MTCommit,
+			msg.BlockHash,
+			msg.BlockHeight,
+			msg.ViewID,
+			msg.SequenceID,
+			vm.localPeerID,
+			VoteApprove,
+		)
+
+		if vm.broadcastVote != nil {
+			if err := vm.broadcastVote(commitMsg); err != nil {
+				consensusLogger().Warnw("Failed to broadcast commit", "error", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// HandleCommit handles a commit message
+func (vm *VotingManager) HandleCommit(msg *VotingMessage, from peer.ID) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+
+	// Validate sender is a validator
+	if !vm.validatorSet.IsValidator(from) {
+		return fmt.Errorf("sender is not a validator")
+	}
+
+	key := RoundKey{Height: msg.BlockHeight, ViewID: msg.ViewID, SequenceID: msg.SequenceID}
+
+	// Check if we have a current round for this (height, view, seq)
+	if vm.currentRound == nil ||
+		vm.currentRound.BlockHeight != msg.BlockHeight ||
+		vm.currentRound.ViewID != msg.ViewID ||
+		vm.currentRound.SequenceID != msg.SequenceID {
+		// Store as pending commit vote (can arrive before we opened the round)
+		vm.addPendingCommitVote(key, &Vote{
+			BlockHash:   msg.BlockHash,
+			BlockHeight: msg.BlockHeight,
+			ViewID:      msg.ViewID,
+			SequenceID:  msg.SequenceID,
+			VoterID:     from,
+			VoteType:    msg.VoteType,
+			Signature:   msg.Signature,
+			Timestamp:   time.Now(),
+		})
+		return nil
+	}
+	if vm.currentRound.BlockHash != msg.BlockHash {
+		consensusLogger().Warnw("[CONSENSUS] Ignoring commit for conflicting hash in current round",
+			"from", from,
+			"height", msg.BlockHeight,
+			"viewID", msg.ViewID,
+			"seqID", msg.SequenceID,
+			"currentHash", vm.currentRound.BlockHash,
+			"msgHash", msg.BlockHash,
+		)
+		return nil
+	}
+	// Enforce validator snapshot for the round (quorum stability).
+	if !vm.currentRound.IsValidatorInRound(from) {
+		return nil
+	}
+
+	// Add commit vote
+	vote := &Vote{
+		BlockHash:   msg.BlockHash,
+		BlockHeight: msg.BlockHeight,
+		ViewID:      msg.ViewID,
+		SequenceID:  msg.SequenceID,
+		VoterID:     from,
+		VoteType:    msg.VoteType,
+		Signature:   msg.Signature,
+		Timestamp:   time.Now(),
+	}
+
+	vm.currentRound.AddCommitVote(vote)
+
+	// Check for quorum
+	quorum := vm.currentRound.Quorum
+	commitCount := vm.currentRound.GetCommitVoteCount()
+	consensusLogger().Debugw("[CONSENSUS] Commit vote received",
+		"from", from,
+		"blockHash", msg.BlockHash,
+		"height", msg.BlockHeight,
+		"commitVotes", commitCount,
+		"quorum", quorum,
+		"state", vm.currentRound.GetState(),
+	)
+
+	if vm.currentRound.HasCommitQuorum() && vm.currentRound.GetState() == StateCommit {
+		// Finalize
+		vm.currentRound.SetState(StateFinalized)
+
+		consensusLogger().Infow("[CONSENSUS] Commit quorum reached - block finalized",
+			"blockHash", msg.BlockHash,
+			"height", msg.BlockHeight,
+			"commitVotes", commitCount,
+			"quorum", quorum,
+		)
+
+		// Notify callback
+		if vm.onCommitQuorum != nil {
+			go vm.onCommitQuorum(msg.BlockHash, msg.BlockHeight)
+		}
+
+		// Clear current round
+		vm.currentRound = nil
+	}
+
+	return nil
+}
+
+func (vm *VotingManager) addPendingPrepareVote(key RoundKey, vote *Vote) {
+	vm.pendingPrepareVotes[key] = append(vm.pendingPrepareVotes[key], vote)
+}
+
+func (vm *VotingManager) addPendingCommitVote(key RoundKey, vote *Vote) {
+	vm.pendingCommitVotes[key] = append(vm.pendingCommitVotes[key], vote)
+}
+
+// applyPendingVotesLocked applies pending votes to the current round.
+// Caller must hold vm.mu (write).
+func (vm *VotingManager) applyPendingVotesLocked(key RoundKey) {
+	if vm.currentRound == nil ||
+		vm.currentRound.BlockHeight != key.Height ||
+		vm.currentRound.ViewID != key.ViewID ||
+		vm.currentRound.SequenceID != key.SequenceID {
 		return
 	}
 
-	// If no result yet, reject the proposal
-	if proposal.Result == nil {
-		result := false
-		now := time.Now()
-		proposal.Result = &result
-		proposal.ResultTime = &now
-	}
-}
-
-// ProcessProposalMessage processes a proposal message from the network
-func (vc *VotingConsensus) ProcessProposalMessage(msg *protocol.ProposalMessage) error {
-	proposalType := ProposalType(msg.ProposalType)
-	proposal, err := vc.Propose(proposalType, msg.Data, msg.Proposer)
-	if err != nil {
-		return err
-	}
-
-	// Auto-vote on our own proposals (if self address is set)
-	vc.mu.RLock()
-	selfAddr := vc.selfAddress
-	vc.mu.RUnlock()
-	if selfAddr != (types.Address{}) && proposal.Proposer == selfAddr {
-		return vc.Vote(proposal.ProposalID, proposal.Proposer, true)
-	}
-
-	return nil
-}
-
-// ProcessVoteMessage processes a vote message from the network
-func (vc *VotingConsensus) ProcessVoteMessage(msg *protocol.VoteMessage) error {
-	return vc.Vote(msg.ProposalID, msg.Voter, msg.Vote)
-}
-
-// ProcessConsensusResultMessage processes a consensus result message from the network
-func (vc *VotingConsensus) ProcessConsensusResultMessage(msg *protocol.ConsensusResultMessage) error {
-	vc.mu.Lock()
-	defer vc.mu.Unlock()
-
-	proposal, exists := vc.proposals[msg.ProposalID]
-	if !exists {
-		// Create proposal from result (it was proposed elsewhere)
-		proposal = &Proposal{
-			ProposalID: msg.ProposalID,
-			Votes:      make(map[types.Address]bool),
+	if votes, ok := vm.pendingPrepareVotes[key]; ok {
+		for _, v := range votes {
+			// Only apply if hash matches the round.
+			if v.BlockHash == vm.currentRound.BlockHash {
+				vm.currentRound.AddPrepareVote(v)
+			}
 		}
-		vc.proposals[msg.ProposalID] = proposal
+		delete(vm.pendingPrepareVotes, key)
 	}
 
-	// Update result if not set
-	if proposal.Result == nil {
-		proposal.Result = &msg.Result
-		now := time.Now()
-		proposal.ResultTime = &now
+	if votes, ok := vm.pendingCommitVotes[key]; ok {
+		for _, v := range votes {
+			if v.BlockHash == vm.currentRound.BlockHash {
+				vm.currentRound.AddCommitVote(v)
+			}
+		}
+		delete(vm.pendingCommitVotes, key)
 	}
-
-	return nil
 }
 
-// ProposeNonceChange proposes a nonce change
-func (vc *VotingConsensus) ProposeNonceChange(newNonce uint64, proposer types.Address) (string, error) {
-	data := fmt.Sprintf("%d", newNonce)
-	proposal, err := vc.Propose(ProposalTypeNonce, data, proposer)
-	if err != nil {
-		return "", err
-	}
-	return proposal.ProposalID, nil
+// GetCurrentRound returns the current round state
+func (vm *VotingManager) GetCurrentRound() *RoundState {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+	return vm.currentRound
+}
+
+// SetOnPrepareQuorum sets the callback for prepare quorum
+func (vm *VotingManager) SetOnPrepareQuorum(callback func(common.Hash, int)) {
+	vm.onPrepareQuorum = callback
+}
+
+// SetOnCommitQuorum sets the callback for commit quorum
+func (vm *VotingManager) SetOnCommitQuorum(callback func(common.Hash, int)) {
+	vm.onCommitQuorum = callback
+}
+
+// SetOnRoundTimeout sets the callback for round timeout events.
+func (vm *VotingManager) SetOnRoundTimeout(callback func(RoundKey, common.Hash)) {
+	vm.onRoundTimeout = callback
+}
+
+// SetBroadcastVote sets the broadcast function
+func (vm *VotingManager) SetBroadcastVote(broadcast func(*VotingMessage) error) {
+	vm.broadcastVote = broadcast
+}
+
+// GetValidatorSet returns the validator set
+func (vm *VotingManager) GetValidatorSet() *ValidatorSet {
+	return vm.validatorSet
 }

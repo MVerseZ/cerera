@@ -344,7 +344,35 @@ func (v *CoreValidator) ProposeBlock(b *block.Block) {
 			v.printConsensusStatus(blockHash)
 		}()
 	} else {
-		// Консенсус начался
+		// Консенсус начался - предлагаем блок для консенсуса
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					vlogger.Warnw("Failed to propose block for consensus", "error", r, "blockHash", blockHash)
+				}
+			}()
+			registry, err := service.GetRegistry()
+			if err != nil {
+				vlogger.Debugw("Registry not available for consensus proposal", "err", err)
+				return
+			}
+
+			iceService, ok := registry.GetService("ice")
+			if !ok {
+				iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+				if !ok {
+					vlogger.Debugw("Ice service not found for consensus proposal")
+					return
+				}
+			}
+
+			result := iceService.Exec("proposeBlock", []interface{}{b})
+			if err, ok := result.(error); ok && err != nil {
+				vlogger.Warnw("Failed to propose block for consensus", "err", err, "blockHash", blockHash, "height", header.Height)
+			} else {
+				vlogger.Infow("Block proposed for consensus", "blockHash", blockHash, "height", header.Height)
+			}
+		}()
 	}
 
 	if b.Transactions != nil {

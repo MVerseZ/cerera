@@ -1,80 +1,831 @@
 package consensus
 
 import (
-	"github.com/cerera/internal/cerera/types"
-	"github.com/cerera/internal/gigea"
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/cerera/message"
+	"github.com/cerera/internal/icenet/peers"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"go.uber.org/zap"
 )
 
-// Manager defines the interface for consensus operations
-type Manager interface {
-	// Voter management
-	AddVoter(addr types.Address)
-	GetVoters() []types.Address
-
-	// Node management
-	AddNode(address types.Address, networkAddr string)
-	GetNodes() map[string]*gigea.NodeInfo
-	UpdateNodeLastSeen(address types.Address)
-
-	// Nonce management
-	GetNonce() uint64
-	SetNonce(nonce uint64)
-
-	// Status management
-	SetStatus(status int)
-	GetConsensusInfo() map[string]interface{}
+func consensusLogger() *zap.SugaredLogger {
+	return logger.Named("consensus")
 }
 
-// GigeaManager is an adapter that implements Manager using gigea package
-type GigeaManager struct{}
-
-// NewGigeaManager creates a new GigeaManager instance
-func NewGigeaManager() *GigeaManager {
-	return &GigeaManager{}
+// BlockValidator validates blocks before consensus
+type BlockValidator interface {
+	ValidateBlock(b *block.Block) error
+	ValidateBlockPoW(b *block.Block) bool
 }
 
-// AddVoter adds a voter to the consensus
-func (g *GigeaManager) AddVoter(addr types.Address) {
-	gigea.AddVoter(addr)
+// Manager manages the hybrid consensus process
+type Manager struct {
+	host        host.Host
+	peerManager *peers.Manager
+	peerScorer  *peers.Scorer
+	voting      *VotingManager
+	validator   BlockValidator
+
+	chain      ChainProvider
+	heightLock HeightLockProvider
+
+	blocksMu sync.RWMutex
+	blocks   map[common.Hash]*block.Block
+
+	mu          sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	currentView int64
+	sequenceID  int64
+
+	// Callbacks
+	onBlockFinalized func(*block.Block)
+	broadcastMsg     func(int, []byte, []byte) error
 }
 
-// GetVoters returns a list of all voters
-func (g *GigeaManager) GetVoters() []types.Address {
-	return gigea.GetVoters()
+// ChainProvider provides minimal chain access for finalization.
+type ChainProvider interface {
+	AddBlock(b *block.Block) error
+	GetBlockByHash(hash common.Hash) *block.Block
 }
 
-// AddNode adds or updates a node in the network
-func (g *GigeaManager) AddNode(address types.Address, networkAddr string) {
-	gigea.AddNode(address, networkAddr)
+// HeightLockProvider prevents concurrent finalization on the same height.
+type HeightLockProvider interface {
+	TryLockHeight(height int) bool
 }
 
-// GetNodes returns a map of all known nodes
-func (g *GigeaManager) GetNodes() map[string]*gigea.NodeInfo {
-	return gigea.GetNodes()
+// NewManager creates a new consensus manager
+func NewManager(ctx context.Context, h host.Host, peerManager *peers.Manager, peerScorer *peers.Scorer, validator BlockValidator) *Manager {
+	ctx, cancel := context.WithCancel(ctx)
+
+	voting := NewVotingManager(ctx, h.ID())
+
+	m := &Manager{
+		host:        h,
+		peerManager: peerManager,
+		peerScorer:  peerScorer,
+		voting:      voting,
+		validator:   validator,
+		ctx:         ctx,
+		cancel:      cancel,
+		currentView: 0,
+		sequenceID:  0,
+		blocks:      make(map[common.Hash]*block.Block),
+	}
+
+	// Set voting callbacks
+	voting.SetOnPrepareQuorum(m.handlePrepareQuorum)
+	voting.SetOnCommitQuorum(m.handleCommitQuorum)
+	voting.SetOnRoundTimeout(m.handleRoundTimeout)
+	voting.SetBroadcastVote(m.broadcastVote)
+
+	return m
 }
 
-// UpdateNodeLastSeen updates the last seen timestamp for a node
-func (g *GigeaManager) UpdateNodeLastSeen(address types.Address) {
-	gigea.UpdateNodeLastSeen(address)
+// Start starts the consensus manager
+func (m *Manager) Start() {
+	m.voting.Start()
+	consensusLogger().Infow("Consensus manager started")
 }
 
-// GetNonce returns the current consensus nonce
-func (g *GigeaManager) GetNonce() uint64 {
-	return gigea.GetNonce()
+// Stop stops the consensus manager
+func (m *Manager) Stop() {
+	m.cancel()
+	m.voting.Stop()
+	consensusLogger().Infow("Consensus manager stopped")
 }
 
-// SetNonce sets the consensus nonce
-func (g *GigeaManager) SetNonce(nonce uint64) {
-	gigea.SetNonce(nonce)
+// ProposeBlock proposes a new block for consensus
+func (m *Manager) ProposeBlock(b *block.Block) error {
+	consensusLogger().Debugw("[CONSENSUS] ProposeBlock called",
+		"hash", b.Hash,
+		"height", b.Head.Height,
+		"validatorCount", m.voting.GetValidatorSet().Size(),
+		"quorum", m.voting.GetValidatorSet().Quorum(),
+	)
+
+	// First, validate PoW if validator is set
+	if m.validator != nil {
+		if !m.validator.ValidateBlockPoW(b) {
+			consensusLogger().Warnw("[CONSENSUS] Block failed PoW validation",
+				"hash", b.Hash,
+				"height", b.Head.Height,
+			)
+			return fmt.Errorf("block failed PoW validation")
+		}
+
+		if err := m.validator.ValidateBlock(b); err != nil {
+			consensusLogger().Warnw("[CONSENSUS] Block validation failed",
+				"hash", b.Hash,
+				"height", b.Head.Height,
+				"error", err,
+			)
+			return fmt.Errorf("block validation failed: %w", err)
+		}
+		consensusLogger().Debugw("[CONSENSUS] Block validation passed",
+			"hash", b.Hash,
+			"height", b.Head.Height,
+		)
+	}
+
+	// Cache proposed block for later finalization.
+	m.putBlock(b.Hash, b)
+
+	m.mu.Lock()
+	m.sequenceID++
+	seqID := m.sequenceID
+	viewID := m.currentView
+	m.mu.Unlock()
+
+	consensusLogger().Infow("[CONSENSUS] Starting consensus round",
+		"hash", b.Hash,
+		"height", b.Head.Height,
+		"viewID", viewID,
+		"seqID", seqID,
+		"validatorCount", m.voting.GetValidatorSet().Size(),
+		"quorum", m.voting.GetValidatorSet().Quorum(),
+	)
+
+	// Start consensus round
+	if err := m.voting.StartRound(b, viewID, seqID); err != nil {
+		consensusLogger().Errorw("[CONSENSUS] Failed to start consensus round",
+			"hash", b.Hash,
+			"height", b.Head.Height,
+			"error", err,
+		)
+		return fmt.Errorf("failed to start consensus round: %w", err)
+	}
+
+	consensusLogger().Infow("[CONSENSUS] Block proposed for consensus",
+		"hash", b.Hash,
+		"height", b.Head.Height,
+		"viewID", viewID,
+		"seqID", seqID,
+	)
+
+	return nil
 }
 
-// SetStatus sets the consensus status
-func (g *GigeaManager) SetStatus(status int) {
-	gigea.SetStatus(status)
+// HandleConsensusMessage handles incoming consensus messages
+func (m *Manager) HandleConsensusMessage(msgType int, data []byte, from peer.ID) error {
+	mType := message.MType(msgType)
+
+	switch mType {
+	case message.MTPrePrepare:
+		return m.handlePrePrepare(data, from)
+	case message.MTPrepare:
+		return m.handlePrepare(data, from)
+	case message.MTCommit:
+		return m.handleCommit(data, from)
+	case message.MTViewChange:
+		return m.handleViewChange(data, from)
+	default:
+		return fmt.Errorf("unknown consensus message type: %d", msgType)
+	}
 }
 
-// GetConsensusInfo returns consensus information
-func (g *GigeaManager) GetConsensusInfo() map[string]interface{} {
-	return gigea.GetConsensusInfo()
+// handlePrePrepare handles pre-prepare messages
+func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
+	msg, err := UnmarshalVotingMessage(data)
+	if err != nil {
+		consensusLogger().Warnw("[CONSENSUS] Failed to unmarshal pre-prepare",
+			"from", from,
+			"error", err,
+		)
+		return fmt.Errorf("failed to unmarshal pre-prepare: %w", err)
+	}
+
+	consensusLogger().Debugw("[CONSENSUS] Received PrePrepare",
+		"from", from,
+		"blockHash", msg.BlockHash,
+		"height", msg.BlockHeight,
+		"viewID", msg.ViewID,
+		"seqID", msg.SequenceID,
+		"voterID", msg.VoterID,
+	)
+
+	if err := m.verifyVotingMessage(msg, from); err != nil {
+		consensusLogger().Warnw("[CONSENSUS] PrePrepare signature verification failed",
+			"from", from,
+			"blockHash", msg.BlockHash,
+			"height", msg.BlockHeight,
+			"error", err,
+		)
+		if m.peerScorer != nil {
+			m.peerScorer.RecordMisbehavior(from)
+		}
+		return err
+	}
+
+	// Ensure block is present and valid before voting.
+	if msg.Block == nil {
+		consensusLogger().Warnw("[CONSENSUS] PrePrepare missing block payload",
+			"from", from,
+			"blockHash", msg.BlockHash,
+		)
+		if m.peerScorer != nil {
+			m.peerScorer.RecordMisbehavior(from)
+		}
+		return fmt.Errorf("pre-prepare missing block payload")
+	}
+	if msg.Block.Hash != msg.BlockHash || msg.Block.Head == nil || msg.Block.Head.Height != msg.BlockHeight {
+		consensusLogger().Warnw("[CONSENSUS] PrePrepare block mismatch",
+			"from", from,
+			"blockHash", msg.BlockHash,
+			"blockHeight", msg.BlockHeight,
+			"actualHash", msg.Block.Hash,
+			"actualHeight", func() int {
+				if msg.Block.Head != nil {
+					return msg.Block.Head.Height
+				}
+				return -1
+			}(),
+		)
+		if m.peerScorer != nil {
+			m.peerScorer.RecordMisbehavior(from)
+		}
+		return fmt.Errorf("pre-prepare block mismatch")
+	}
+	if m.validator != nil {
+		if !m.validator.ValidateBlockPoW(msg.Block) {
+			consensusLogger().Warnw("[CONSENSUS] PrePrepare block failed PoW",
+				"from", from,
+				"blockHash", msg.BlockHash,
+			)
+			if m.peerScorer != nil {
+				m.peerScorer.RecordMisbehavior(from)
+			}
+			return fmt.Errorf("pre-prepare block failed PoW validation")
+		}
+		if err := m.validator.ValidateBlock(msg.Block); err != nil {
+			consensusLogger().Warnw("[CONSENSUS] PrePrepare block validation failed",
+				"from", from,
+				"blockHash", msg.BlockHash,
+				"error", err,
+			)
+			if m.peerScorer != nil {
+				m.peerScorer.RecordMisbehavior(from)
+			}
+			return fmt.Errorf("pre-prepare block validation failed: %w", err)
+		}
+	}
+
+	// Cache the block for later finalization.
+	m.putBlock(msg.BlockHash, msg.Block)
+
+	// Record consensus participation for scoring
+	if m.peerScorer != nil {
+		m.peerScorer.RecordConsensusHelp(from)
+	}
+
+	consensusLogger().Infow("[CONSENSUS] Processing PrePrepare",
+		"from", from,
+		"blockHash", msg.BlockHash,
+		"height", msg.BlockHeight,
+		"viewID", msg.ViewID,
+		"seqID", msg.SequenceID,
+	)
+
+	return m.voting.HandlePrePrepare(msg, from)
 }
 
+// handlePrepare handles prepare messages
+func (m *Manager) handlePrepare(data []byte, from peer.ID) error {
+	msg, err := UnmarshalVotingMessage(data)
+	if err != nil {
+		consensusLogger().Warnw("[CONSENSUS] Failed to unmarshal prepare",
+			"from", from,
+			"error", err,
+		)
+		return fmt.Errorf("failed to unmarshal prepare: %w", err)
+	}
+
+	consensusLogger().Debugw("[CONSENSUS] Received Prepare",
+		"from", from,
+		"blockHash", msg.BlockHash,
+		"height", msg.BlockHeight,
+		"viewID", msg.ViewID,
+		"seqID", msg.SequenceID,
+		"voteType", msg.VoteType,
+	)
+
+	if err := m.verifyVotingMessage(msg, from); err != nil {
+		consensusLogger().Warnw("[CONSENSUS] Prepare signature verification failed",
+			"from", from,
+			"blockHash", msg.BlockHash,
+			"error", err,
+		)
+		if m.peerScorer != nil {
+			m.peerScorer.RecordMisbehavior(from)
+		}
+		return err
+	}
+
+	if m.peerScorer != nil {
+		m.peerScorer.RecordConsensusHelp(from)
+	}
+
+	return m.voting.HandlePrepare(msg, from)
+}
+
+// handleCommit handles commit messages
+func (m *Manager) handleCommit(data []byte, from peer.ID) error {
+	msg, err := UnmarshalVotingMessage(data)
+	if err != nil {
+		consensusLogger().Warnw("[CONSENSUS] Failed to unmarshal commit",
+			"from", from,
+			"error", err,
+		)
+		return fmt.Errorf("failed to unmarshal commit: %w", err)
+	}
+
+	consensusLogger().Debugw("[CONSENSUS] Received Commit",
+		"from", from,
+		"blockHash", msg.BlockHash,
+		"height", msg.BlockHeight,
+		"viewID", msg.ViewID,
+		"seqID", msg.SequenceID,
+		"voteType", msg.VoteType,
+	)
+
+	if err := m.verifyVotingMessage(msg, from); err != nil {
+		consensusLogger().Warnw("[CONSENSUS] Commit signature verification failed",
+			"from", from,
+			"blockHash", msg.BlockHash,
+			"error", err,
+		)
+		if m.peerScorer != nil {
+			m.peerScorer.RecordMisbehavior(from)
+		}
+		return err
+	}
+
+	if m.peerScorer != nil {
+		m.peerScorer.RecordConsensusHelp(from)
+	}
+
+	return m.voting.HandleCommit(msg, from)
+}
+
+// handleViewChange handles view change messages
+func (m *Manager) handleViewChange(data []byte, from peer.ID) error {
+	var vcMsg message.ViewChange
+	if err := json.Unmarshal(data, &vcMsg); err != nil {
+		return fmt.Errorf("failed to unmarshal view change: %w", err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Update view if the new view is higher
+	if vcMsg.NewViewID > m.currentView {
+		consensusLogger().Infow("View change",
+			"oldView", m.currentView,
+			"newView", vcMsg.NewViewID,
+			"from", from,
+		)
+		m.currentView = vcMsg.NewViewID
+	}
+
+	return nil
+}
+
+// handlePrepareQuorum is called when prepare quorum is reached
+func (m *Manager) handlePrepareQuorum(blockHash common.Hash, height int) {
+	round := m.voting.GetCurrentRound()
+	prepareCount := 0
+	if round != nil {
+		prepareCount = round.GetPrepareVoteCount()
+	}
+	consensusLogger().Infow("[CONSENSUS] Prepare quorum reached",
+		"blockHash", blockHash,
+		"height", height,
+		"prepareVotes", prepareCount,
+		"quorum", func() int {
+			if round != nil {
+				return round.Quorum
+			}
+			return m.voting.GetValidatorSet().Quorum()
+		}(),
+	)
+}
+
+// handleCommitQuorum is called when commit quorum is reached
+func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
+	round := m.voting.GetCurrentRound()
+	commitCount := 0
+	if round != nil {
+		commitCount = round.GetCommitVoteCount()
+	}
+	consensusLogger().Infow("[CONSENSUS] Commit quorum reached - finalizing block",
+		"blockHash", blockHash,
+		"height", height,
+		"commitVotes", commitCount,
+		"quorum", func() int {
+			if round != nil {
+				return round.Quorum
+			}
+			return m.voting.GetValidatorSet().Quorum()
+		}(),
+	)
+
+	// Prevent concurrent finalization for same height (best-effort).
+	if m.heightLock != nil && !m.heightLock.TryLockHeight(height) {
+		consensusLogger().Warnw("[CONSENSUS] Height already locked; skipping finalization",
+			"height", height,
+			"blockHash", blockHash,
+		)
+		return
+	}
+
+	// Retrieve block (prefer in-memory cache; fall back to chain lookup if present).
+	b := m.getBlock(blockHash)
+	if b == nil && m.chain != nil {
+		consensusLogger().Debugw("[CONSENSUS] Block not in cache, fetching from chain",
+			"blockHash", blockHash,
+		)
+		b = m.chain.GetBlockByHash(blockHash)
+	}
+	if b == nil {
+		consensusLogger().Warnw("[CONSENSUS] Finalized block not found locally",
+			"blockHash", blockHash,
+			"height", height,
+		)
+		return
+	}
+
+	consensusLogger().Debugw("[CONSENSUS] Validating finalized block",
+		"blockHash", blockHash,
+		"height", height,
+	)
+
+	// Validate again before adding.
+	if m.validator != nil {
+		if !m.validator.ValidateBlockPoW(b) {
+			consensusLogger().Warnw("[CONSENSUS] Finalized block failed PoW validation",
+				"blockHash", blockHash,
+				"height", height,
+			)
+			return
+		}
+		if err := m.validator.ValidateBlock(b); err != nil {
+			consensusLogger().Warnw("[CONSENSUS] Finalized block failed validation",
+				"error", err,
+				"blockHash", blockHash,
+				"height", height,
+			)
+			return
+		}
+	}
+
+	// Add to chain if available.
+	if m.chain != nil {
+		consensusLogger().Infow("[CONSENSUS] Adding finalized block to chain",
+			"blockHash", blockHash,
+			"height", height,
+		)
+		if err := m.chain.AddBlock(b); err != nil {
+			consensusLogger().Errorw("[CONSENSUS] Failed to add finalized block to chain",
+				"error", err,
+				"blockHash", blockHash,
+				"height", height,
+			)
+			return
+		}
+		consensusLogger().Infow("[CONSENSUS] Block successfully added to chain",
+			"blockHash", blockHash,
+			"height", height,
+		)
+	} else {
+		consensusLogger().Warnw("[CONSENSUS] Chain provider not set; cannot add block",
+			"blockHash", blockHash,
+			"height", height,
+		)
+	}
+
+	// Notify.
+	if m.onBlockFinalized != nil {
+		m.onBlockFinalized(b)
+	}
+
+	// Cleanup cache entry.
+	m.deleteBlock(blockHash)
+}
+
+func (m *Manager) handleRoundTimeout(key RoundKey, blockHash common.Hash) {
+	consensusLogger().Warnw("[CONSENSUS] Round timeout - initiating view change",
+		"blockHash", blockHash,
+		"height", key.Height,
+		"viewID", key.ViewID,
+		"seqID", key.SequenceID,
+		"currentView", m.GetCurrentView(),
+	)
+
+	// Minimal view-change: bump view and broadcast.
+	newView := m.GetCurrentView() + 1
+	consensusLogger().Infow("[CONSENSUS] Requesting view change",
+		"oldView", m.GetCurrentView(),
+		"newView", newView,
+	)
+	if err := m.RequestViewChange(newView); err != nil {
+		consensusLogger().Errorw("[CONSENSUS] Failed to request view change",
+			"error", err,
+			"newView", newView,
+		)
+	} else {
+		consensusLogger().Infow("[CONSENSUS] View change requested successfully",
+			"newView", newView,
+		)
+	}
+}
+
+// broadcastVote broadcasts a voting message
+func (m *Manager) broadcastVote(msg *VotingMessage) error {
+	// Ensure the message is signed before broadcasting.
+	if err := m.signVotingMessage(msg); err != nil {
+		return fmt.Errorf("failed to sign vote: %w", err)
+	}
+
+	data, err := msg.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal vote: %w", err)
+	}
+
+	if m.broadcastMsg != nil {
+		return m.broadcastMsg(int(msg.Type), data, nil)
+	}
+
+	return nil
+}
+
+func (m *Manager) signVotingMessage(msg *VotingMessage) error {
+	if msg == nil {
+		return fmt.Errorf("nil voting message")
+	}
+	// Force voter ID to self for outbound messages.
+	msg.VoterID = m.host.ID()
+
+	priv := m.host.Peerstore().PrivKey(m.host.ID())
+	if priv == nil {
+		return fmt.Errorf("missing private key for local peer")
+	}
+
+	payload, err := msg.SignBytes()
+	if err != nil {
+		return err
+	}
+
+	sig, err := priv.Sign(payload)
+	if err != nil {
+		return err
+	}
+	msg.Signature = sig
+	return nil
+}
+
+func (m *Manager) verifyVotingMessage(msg *VotingMessage, from peer.ID) error {
+	if msg == nil {
+		return fmt.Errorf("nil voting message")
+	}
+	if msg.VoterID != from {
+		return fmt.Errorf("voterID mismatch: msg=%s from=%s", msg.VoterID, from)
+	}
+	if len(msg.Signature) == 0 {
+		return fmt.Errorf("missing signature")
+	}
+
+	pub := m.host.Peerstore().PubKey(from)
+	if pub == nil {
+		// Attempt extraction for inline public keys.
+		if extracted, err := from.ExtractPublicKey(); err == nil && extracted != nil {
+			pub = extracted
+			m.host.Peerstore().AddPubKey(from, pub)
+		}
+	}
+	if pub == nil {
+		return fmt.Errorf("missing public key for peer %s", from)
+	}
+
+	payload, err := msg.SignBytes()
+	if err != nil {
+		return err
+	}
+	ok, err := pub.Verify(payload, msg.Signature)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("invalid signature")
+	}
+
+	// Best-effort: ensure peerstore has the pubkey cached for later.
+	m.host.Peerstore().AddPubKey(from, pub)
+
+	return nil
+}
+
+// AddValidator adds a validator to the set
+func (m *Manager) AddValidator(peerID peer.ID) {
+	m.voting.GetValidatorSet().AddValidator(peerID)
+	newCount := m.voting.GetValidatorSet().Size()
+	newQuorum := m.voting.GetValidatorSet().Quorum()
+	consensusLogger().Infow("[CONSENSUS] Validator added",
+		"peer", peerID,
+		"validatorCount", newCount,
+		"quorum", newQuorum,
+	)
+}
+
+// RemoveValidator removes a validator from the set
+func (m *Manager) RemoveValidator(peerID peer.ID) {
+	m.voting.GetValidatorSet().RemoveValidator(peerID)
+	newCount := m.voting.GetValidatorSet().Size()
+	newQuorum := m.voting.GetValidatorSet().Quorum()
+	consensusLogger().Infow("[CONSENSUS] Validator removed",
+		"peer", peerID,
+		"validatorCount", newCount,
+		"quorum", newQuorum,
+	)
+}
+
+// IsValidator checks if a peer is a validator
+func (m *Manager) IsValidator(peerID peer.ID) bool {
+	return m.voting.GetValidatorSet().IsValidator(peerID)
+}
+
+// GetValidatorCount returns the number of validators
+func (m *Manager) GetValidatorCount() int {
+	return m.voting.GetValidatorSet().Size()
+}
+
+// GetQuorum returns the required quorum size
+func (m *Manager) GetQuorum() int {
+	return m.voting.GetValidatorSet().Quorum()
+}
+
+// GetCurrentView returns the current view ID
+func (m *Manager) GetCurrentView() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.currentView
+}
+
+// GetSequenceID returns the current sequence ID
+func (m *Manager) GetSequenceID() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sequenceID
+}
+
+// SetOnBlockFinalized sets the callback for finalized blocks
+func (m *Manager) SetOnBlockFinalized(callback func(*block.Block)) {
+	m.onBlockFinalized = callback
+}
+
+// SetBlockValidator sets the validator used for consensus block validation.
+func (m *Manager) SetBlockValidator(validator BlockValidator) {
+	m.validator = validator
+}
+
+// SetChainProvider sets the chain provider used for finalization.
+func (m *Manager) SetChainProvider(chain ChainProvider) {
+	m.chain = chain
+}
+
+// SetHeightLockProvider sets the height lock provider used for fork prevention.
+func (m *Manager) SetHeightLockProvider(lock HeightLockProvider) {
+	m.heightLock = lock
+}
+
+// SetBroadcastFunc sets the function for broadcasting consensus messages
+func (m *Manager) SetBroadcastFunc(broadcast func(int, []byte, []byte) error) {
+	m.broadcastMsg = broadcast
+}
+
+// GetCurrentRound returns the current consensus round state
+func (m *Manager) GetCurrentRound() *RoundState {
+	return m.voting.GetCurrentRound()
+}
+
+// RequestViewChange initiates a view change
+func (m *Manager) RequestViewChange(newView int64) error {
+	m.mu.Lock()
+	if newView <= m.currentView {
+		m.mu.Unlock()
+		return fmt.Errorf("new view must be greater than current view")
+	}
+	m.mu.Unlock()
+
+	vcMsg := &message.ViewChange{
+		NewViewID: newView,
+		NodeID:    0, // Would need actual node ID
+		CMsg:      make(map[int64]*message.CheckPoint),
+		PMsg:      make(map[int64]*message.PTuple),
+	}
+
+	data, err := json.Marshal(vcMsg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal view change: %w", err)
+	}
+
+	if m.broadcastMsg != nil {
+		return m.broadcastMsg(int(message.MTViewChange), data, nil)
+	}
+
+	return nil
+}
+
+// Status returns the current consensus status
+type ConsensusStatus struct {
+	CurrentView    int64          `json:"currentView"`
+	SequenceID     int64          `json:"sequenceId"`
+	ValidatorCount int            `json:"validatorCount"`
+	Quorum         int            `json:"quorum"`
+	IsInRound      bool           `json:"isInRound"`
+	RoundState     ConsensusState `json:"roundState,omitempty"`
+	RoundBlockHash string         `json:"roundBlockHash,omitempty"`
+}
+
+// GetStatus returns the current consensus status
+func (m *Manager) GetStatus() ConsensusStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	status := ConsensusStatus{
+		CurrentView:    m.currentView,
+		SequenceID:     m.sequenceID,
+		ValidatorCount: m.voting.GetValidatorSet().Size(),
+		Quorum:         m.voting.GetValidatorSet().Quorum(),
+	}
+
+	round := m.voting.GetCurrentRound()
+	if round != nil {
+		status.IsInRound = true
+		status.RoundState = round.GetState()
+		status.RoundBlockHash = round.BlockHash.String()
+	}
+
+	return status
+}
+
+// AutoRegisterValidators automatically registers connected peers as validators
+func (m *Manager) AutoRegisterValidators() {
+	peers := m.peerManager.GetPeerIDs()
+	for _, peerID := range peers {
+		if !m.IsValidator(peerID) {
+			m.AddValidator(peerID)
+		}
+	}
+
+	// Also add self
+	if !m.IsValidator(m.host.ID()) {
+		m.AddValidator(m.host.ID())
+	}
+}
+
+// MonitorValidators monitors validator status
+func (m *Manager) MonitorValidators() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-ticker.C:
+			// Update validator set based on connected peers
+			m.AutoRegisterValidators()
+		}
+	}
+}
+
+func (m *Manager) putBlock(hash common.Hash, b *block.Block) {
+	if b == nil {
+		return
+	}
+	m.blocksMu.Lock()
+	m.blocks[hash] = b
+	m.blocksMu.Unlock()
+}
+
+func (m *Manager) getBlock(hash common.Hash) *block.Block {
+	m.blocksMu.RLock()
+	b := m.blocks[hash]
+	m.blocksMu.RUnlock()
+	return b
+}
+
+func (m *Manager) deleteBlock(hash common.Hash) {
+	m.blocksMu.Lock()
+	delete(m.blocks, hash)
+	m.blocksMu.Unlock()
+}

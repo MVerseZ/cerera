@@ -1,336 +1,195 @@
 package protocol
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
-// Encoder encodes messages to wire format
-type Encoder struct{}
+const (
+	// MaxMessageSize is the maximum size of a protocol message (16MB)
+	MaxMessageSize = 16 * 1024 * 1024
+
+	// MessageHeaderSize is the size of the message header (4 bytes for length + 1 byte for type)
+	MessageHeaderSize = 5
+)
+
+// Encoder handles encoding and writing protocol messages
+type Encoder struct {
+	writer *bufio.Writer
+}
 
 // NewEncoder creates a new message encoder
-func NewEncoder() *Encoder {
-	return &Encoder{}
+func NewEncoder(w io.Writer) *Encoder {
+	return &Encoder{
+		writer: bufio.NewWriter(w),
+	}
 }
 
-// Encode encodes a message to its wire format with length prefix
-// Format: [4-byte big-endian length][message data]\n
-func (e *Encoder) Encode(msg Message) ([]byte, error) {
-	if msg == nil {
-		return nil, fmt.Errorf("message cannot be nil")
+// Encode encodes and writes a message to the underlying writer
+func (e *Encoder) Encode(msg Message) error {
+	// Serialize the message to JSON
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	var data []byte
-	var err error
+	if len(data) > MaxMessageSize {
+		return fmt.Errorf("message too large: %d bytes (max %d)", len(data), MaxMessageSize)
+	}
 
-	switch m := msg.(type) {
-	case *ReadyRequestMessage:
-		data = e.encodeReadyRequest(m)
-	case *REQMessage:
-		data = e.encodeREQ(m)
-	case *NodeOkMessage:
-		data = e.encodeNodeOk(m)
-	case *WhoIsMessage:
-		data = e.encodeWhoIs(m)
-	case *WhoIsResponseMessage:
-		data = e.encodeWhoIsResponse(m)
-	case *ConsensusStatusMessage:
-		data = e.encodeConsensusStatus(m)
-	case *NodesMessage:
-		data = e.encodeNodes(m)
-	case *NodesCountMessage:
-		data = e.encodeNodesCount(m)
-	case *BlockMessage:
-		data, err = e.encodeBlock(m)
-		if err != nil {
-			return nil, err
-		}
-	case *PingMessage:
-		data = e.encodePing(m)
-	case *KeepAliveMessage:
-		data = e.encodeKeepAlive(m)
-	case *BroadcastNonceMessage:
-		data = e.encodeBroadcastNonce(m)
-	case *ProposalMessage:
-		data = e.encodeProposal(m)
-	case *VoteMessage:
-		data = e.encodeVote(m)
-	case *ConsensusResultMessage:
-		data = e.encodeConsensusResult(m)
-	case *PeerDiscoveryMessage:
-		data = e.encodePeerDiscovery(m)
+	// Write message length (4 bytes, big endian)
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)+1)) // +1 for message type
+	if _, err := e.writer.Write(lenBuf); err != nil {
+		return fmt.Errorf("failed to write message length: %w", err)
+	}
+
+	// Write message type (1 byte)
+	if err := e.writer.WriteByte(byte(msg.Type())); err != nil {
+		return fmt.Errorf("failed to write message type: %w", err)
+	}
+
+	// Write message data
+	if _, err := e.writer.Write(data); err != nil {
+		return fmt.Errorf("failed to write message data: %w", err)
+	}
+
+	return e.writer.Flush()
+}
+
+// Decoder handles reading and decoding protocol messages
+type Decoder struct {
+	reader *bufio.Reader
+}
+
+// NewDecoder creates a new message decoder
+func NewDecoder(r io.Reader) *Decoder {
+	return &Decoder{
+		reader: bufio.NewReader(r),
+	}
+}
+
+// Decode reads and decodes a message from the underlying reader
+func (d *Decoder) Decode() (Message, error) {
+	// Read message length (4 bytes)
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(d.reader, lenBuf); err != nil {
+		return nil, fmt.Errorf("failed to read message length: %w", err)
+	}
+
+	msgLen := binary.BigEndian.Uint32(lenBuf)
+	if msgLen > MaxMessageSize {
+		return nil, fmt.Errorf("message too large: %d bytes (max %d)", msgLen, MaxMessageSize)
+	}
+
+	if msgLen < 1 {
+		return nil, fmt.Errorf("message too small: %d bytes", msgLen)
+	}
+
+	// Read message type (1 byte)
+	msgType, err := d.reader.ReadByte()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read message type: %w", err)
+	}
+
+	// Read message data
+	data := make([]byte, msgLen-1)
+	if _, err := io.ReadFull(d.reader, data); err != nil {
+		return nil, fmt.Errorf("failed to read message data: %w", err)
+	}
+
+	// Decode based on message type
+	return decodeMessage(MessageType(msgType), data)
+}
+
+// decodeMessage decodes a message based on its type
+func decodeMessage(msgType MessageType, data []byte) (Message, error) {
+	var msg Message
+
+	switch msgType {
+	case MsgTypeStatusRequest:
+		msg = &StatusRequest{}
+	case MsgTypeStatusResponse:
+		msg = &StatusResponse{}
+	case MsgTypeGetBlocks:
+		msg = &GetBlocksRequest{}
+	case MsgTypeBlocks:
+		msg = &BlocksResponse{}
+	case MsgTypeNewBlock:
+		msg = &NewBlockMessage{}
+	case MsgTypeNewBlockHash:
+		msg = &NewBlockHashMessage{}
+	case MsgTypeNewTx:
+		msg = &NewTxMessage{}
+	case MsgTypeGetTxs:
+		msg = &GetTxsRequest{}
+	case MsgTypeTxs:
+		msg = &TxsResponse{}
+	case MsgTypeSyncRequest:
+		msg = &SyncRequest{}
+	case MsgTypeSyncResponse:
+		msg = &SyncResponse{}
+	case MsgTypePrePrepare, MsgTypePrepare, MsgTypeCommit, MsgTypeViewChange, MsgTypeNewView:
+		msg = &ConsensusMessage{}
+	case MsgTypeVote:
+		msg = &VoteMessage{}
+	case MsgTypePing:
+		msg = &PingMessage{}
+	case MsgTypePong:
+		msg = &PongMessage{}
 	default:
-		return nil, fmt.Errorf("unsupported message type: %T", msg)
+		return nil, fmt.Errorf("unknown message type: %d", msgType)
 	}
 
-	// Add newline if not present
-	if len(data) == 0 || data[len(data)-1] != '\n' {
-		data = append(data, '\n')
+	if err := json.Unmarshal(data, msg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
 	}
 
-	// Prepend 4-byte big-endian length
-	length := uint32(len(data))
-	framed := make([]byte, 4+len(data))
-	binary.BigEndian.PutUint32(framed[0:4], length)
-	copy(framed[4:], data)
-
-	return framed, nil
+	return msg, nil
 }
 
-func (e *Encoder) encodeReadyRequest(msg *ReadyRequestMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeReadyRequest))
-	buf.WriteByte('|')
-	buf.WriteString(msg.Address.Hex())
-	buf.WriteByte('|')
-	buf.WriteString(msg.NetworkAddr)
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeREQ(msg *REQMessage) []byte {
-	// Standardize REQ to pipe-delimited format: REQ|address|networkAddr|node1Addr#node1Network,node2Addr#node2Network|nonce
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeREQ))
-	buf.WriteByte('|')
-	buf.WriteString(msg.Address.Hex())
-	buf.WriteByte('|')
-	buf.WriteString(msg.NetworkAddr)
-
-	// Encode nodes as comma-separated address#network pairs
-	if len(msg.Nodes) > 0 {
-		buf.WriteByte('|')
-		for i, node := range msg.Nodes {
-			if i > 0 {
-				buf.WriteByte(',')
-			}
-			buf.WriteString(node.Address.Hex())
-			buf.WriteByte('#')
-			buf.WriteString(node.NetworkAddr)
-		}
+// EncodeToBytes encodes a message to bytes
+func EncodeToBytes(msg Message) ([]byte, error) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Nonce))
-
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeNodeOk(msg *NodeOkMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeNodeOk))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Count))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Nonce))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeWhoIs(msg *WhoIsMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeWhoIs))
-	buf.WriteByte('|')
-	buf.WriteString(msg.NodeAddress.Hex())
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeWhoIsResponse(msg *WhoIsResponseMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeWhoIsResponse))
-	buf.WriteByte('|')
-	buf.WriteString(msg.NodeAddress.Hex())
-	buf.WriteByte('|')
-	buf.WriteString(msg.NetworkAddr)
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeConsensusStatus(msg *ConsensusStatusMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeConsensusStatus))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Status))
-	buf.WriteByte('|')
-
-	// Write voters
-	for i, v := range msg.Voters {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteString(v.Hex())
+	if len(data) > MaxMessageSize {
+		return nil, fmt.Errorf("message too large: %d bytes (max %d)", len(data), MaxMessageSize)
 	}
 
-	buf.WriteByte('|')
+	// Allocate buffer for header + data
+	buf := make([]byte, MessageHeaderSize+len(data))
 
-	// Write nodes
-	for i, n := range msg.Nodes {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteString(n.Hex())
+	// Write message length
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(data)+1))
+
+	// Write message type
+	buf[4] = byte(msg.Type())
+
+	// Copy data
+	copy(buf[5:], data)
+
+	return buf, nil
+}
+
+// DecodeFromBytes decodes a message from bytes
+func DecodeFromBytes(data []byte) (Message, error) {
+	if len(data) < MessageHeaderSize {
+		return nil, fmt.Errorf("data too short: %d bytes", len(data))
 	}
 
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Nonce))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeNodes(msg *NodesMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeNodes))
-	buf.WriteByte('|')
-
-	for i, node := range msg.Nodes {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteString(node.Address.Hex())
-		buf.WriteByte('#')
-		buf.WriteString(node.NetworkAddr)
+	msgLen := binary.BigEndian.Uint32(data[:4])
+	if int(msgLen) > len(data)-4 {
+		return nil, fmt.Errorf("invalid message length: %d (data len: %d)", msgLen, len(data))
 	}
 
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
+	msgType := MessageType(data[4])
+	msgData := data[5 : 4+msgLen]
 
-func (e *Encoder) encodeNodesCount(msg *NodesCountMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeNodesCount))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Count))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeBlock(msg *BlockMessage) ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeBlock))
-	buf.WriteByte('|')
-
-	// Use json.Encoder for better performance
-	enc := json.NewEncoder(&buf)
-	if err := enc.Encode(msg.Block); err != nil {
-		return nil, fmt.Errorf("failed to marshal block: %w", err)
-	}
-
-	// json.Encoder adds newline, but we want to ensure it's there
-	if buf.Bytes()[buf.Len()-1] != '\n' {
-		buf.WriteByte('\n')
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (e *Encoder) encodePing(msg *PingMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypePing))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeKeepAlive(msg *KeepAliveMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeKeepAlive))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeProposal(msg *ProposalMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeProposal))
-	buf.WriteByte('|')
-	buf.WriteString(msg.ProposalID)
-	buf.WriteByte('|')
-	buf.WriteString(msg.ProposalType)
-	buf.WriteByte('|')
-	buf.WriteString(msg.Data)
-	buf.WriteByte('|')
-	buf.WriteString(msg.Proposer.Hex())
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Timestamp))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeVote(msg *VoteMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeVote))
-	buf.WriteByte('|')
-	buf.WriteString(msg.ProposalID)
-	buf.WriteByte('|')
-	buf.WriteString(msg.Voter.Hex())
-	buf.WriteByte('|')
-	if msg.Vote {
-		buf.WriteString("1")
-	} else {
-		buf.WriteString("0")
-	}
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Timestamp))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeConsensusResult(msg *ConsensusResultMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeConsensusResult))
-	buf.WriteByte('|')
-	buf.WriteString(msg.ProposalID)
-	buf.WriteByte('|')
-	if msg.Result {
-		buf.WriteString("1")
-	} else {
-		buf.WriteString("0")
-	}
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.VotesFor))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.VotesAgainst))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Timestamp))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodePeerDiscovery(msg *PeerDiscoveryMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypePeerDiscovery))
-	buf.WriteByte('|')
-	buf.WriteString(msg.Requester.Hex())
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.MaxPeers))
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-func (e *Encoder) encodeBroadcastNonce(msg *BroadcastNonceMessage) []byte {
-	var buf bytes.Buffer
-	buf.WriteString(string(MsgTypeBroadcastNonce))
-	buf.WriteByte('|')
-	buf.WriteString(fmt.Sprintf("%d", msg.Nonce))
-
-	if len(msg.NodeList) > 0 {
-		buf.WriteByte('|')
-		for i, node := range msg.NodeList {
-			if i > 0 {
-				buf.WriteByte(',')
-			}
-			buf.WriteString(node.Address.Hex())
-			buf.WriteByte('#')
-			buf.WriteString(node.NetworkAddr)
-		}
-	}
-
-	buf.WriteByte('\n')
-	return buf.Bytes()
-}
-
-// MessageEncoder interface for encoding messages
-type MessageEncoder interface {
-	Encode(msg Message) ([]byte, error)
+	return decodeMessage(msgType, msgData)
 }

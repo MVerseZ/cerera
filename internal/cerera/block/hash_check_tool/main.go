@@ -16,7 +16,7 @@ func main() {
 	difficulty := flag.Uint64("difficulty", 0, "Difficulty value (0 = use genesis default)")
 	nonce := flag.Uint64("nonce", 0, "Nonce value (0 = use genesis default)")
 	findValid := flag.Bool("find", false, "Find valid nonce for genesis block")
-	maxAttempts := flag.Uint64("max", 1000000, "Maximum attempts when searching for valid nonce")
+	maxAttempts := flag.Uint64("max", 10000000000, "Maximum attempts when searching for valid nonce")
 	flag.Parse()
 
 	fmt.Printf("=== Block Hash Calculator and Verifier v.%x===\r\n", time.Now().Unix())

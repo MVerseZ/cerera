@@ -1,4 +1,4 @@
-version: "3.8"
+# version: "3.8"
 
 services:
   node1:
@@ -15,7 +15,8 @@ services:
       - node1_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.11
 
   node2:
     build:
@@ -31,7 +32,8 @@ services:
       - node2_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.12
 
   node3:
     build:
@@ -47,7 +49,8 @@ services:
       - node3_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.13
 
   node4:
     build:
@@ -63,7 +66,8 @@ services:
       - node4_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.14
 
   node5:
     build:
@@ -79,7 +83,8 @@ services:
       - node5_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.15
 
   node6:
     build:
@@ -95,7 +100,8 @@ services:
       - node6_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.16
 
   node7:
     build:
@@ -111,7 +117,8 @@ services:
       - node7_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.17
 
   node8:
     build:
@@ -127,7 +134,8 @@ services:
       - node8_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.18
 
   node9:
     build:
@@ -143,7 +151,8 @@ services:
       - node9_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.19
 
   node10:
     build:
@@ -159,7 +168,8 @@ services:
       - node10_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.20
 
   node11:
     build:
@@ -175,7 +185,8 @@ services:
       - node11_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.21
 
   node12:
     build:
@@ -191,7 +202,8 @@ services:
       - node12_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.22
 
   node13:
     build:
@@ -207,7 +219,8 @@ services:
       - node13_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.23
 
   node14:
     build:
@@ -223,7 +236,8 @@ services:
       - node14_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.24
 
   node15:
     build:
@@ -239,7 +253,8 @@ services:
       - node15_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.25
 
 volumes:
   node1_data:
@@ -276,4 +291,8 @@ volumes:
 networks:
   cerera-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1
 

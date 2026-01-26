@@ -1,13 +1,14 @@
-version: "3.8"
+# version: "3.8"
 
 services:
-  # Cerera Node 1
   node1:
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node1
     command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102
     ports:
       - "1337:1337"
       - "31100:31100"
@@ -16,21 +17,17 @@ services:
       - node1_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:1337/metrics"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      cerera-network:
+        ipv4_address: 172.25.0.11
 
-  # Cerera Node 2
   node2:
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node2
     command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.13/tcp/31102
     ports:
       - "1338:1338"
       - "31101:31101"
@@ -39,21 +36,17 @@ services:
       - node2_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:1338/metrics"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      cerera-network:
+        ipv4_address: 172.25.0.12
 
-  # Cerera Node 3
   node3:
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node3
     command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101
     ports:
       - "1339:1339"
       - "31102:31102"
@@ -62,25 +55,13 @@ services:
       - node3_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:1339/metrics"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      cerera-network:
+        ipv4_address: 172.25.0.13
 
   # Prometheus для мониторинга всех трех нод
   prometheus:
     image: prom/prometheus:latest
     container_name: cerera-prometheus-3nodes
-    depends_on:
-      node1:
-        condition: service_healthy
-      node2:
-        condition: service_healthy
-      node3:
-        condition: service_healthy
     volumes:
       - ./prometheus-3nodes.yml:/etc/prometheus/prometheus.yml:ro
       - prom_data:/prometheus
@@ -94,20 +75,13 @@ services:
       - "9090:9090"
     restart: unless-stopped
     networks:
-      - cerera-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      cerera-network:
+        ipv4_address: 172.25.0.100
 
   # Grafana для визуализации метрик
   grafana:
     image: grafana/grafana:latest
     container_name: cerera-grafana-3nodes
-    depends_on:
-      prometheus:
-        condition: service_healthy
     ports:
       - "3100:3000"
     environment:
@@ -124,12 +98,8 @@ services:
       - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
     networks:
-      - cerera-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      cerera-network:
+        ipv4_address: 172.25.0.101
 
 volumes:
   node1_data:
@@ -144,4 +114,7 @@ volumes:
 networks:
   cerera-network:
     driver: bridge
-
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1

@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node1
     command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
     ports:
       - "1337:1337"
       - "31100:31100"
@@ -15,7 +17,8 @@ services:
       - node1_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.11
 
   node2:
     build:
@@ -23,6 +26,8 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node2
     command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
     ports:
       - "1338:1338"
       - "31101:31101"
@@ -31,7 +36,8 @@ services:
       - node2_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.12
 
   node3:
     build:
@@ -39,6 +45,8 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node3
     command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
     ports:
       - "1339:1339"
       - "31102:31102"
@@ -47,7 +55,8 @@ services:
       - node3_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.13
 
   node4:
     build:
@@ -55,6 +64,8 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node4
     command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.15/tcp/31104
     ports:
       - "1340:1340"
       - "31103:31103"
@@ -63,7 +74,8 @@ services:
       - node4_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.14
 
   node5:
     build:
@@ -71,6 +83,8 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node5
     command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
     ports:
       - "1341:1341"
       - "31104:31104"
@@ -79,7 +93,8 @@ services:
       - node5_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.15
 
 volumes:
   node1_data:
@@ -96,4 +111,8 @@ volumes:
 networks:
   cerera-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1
 

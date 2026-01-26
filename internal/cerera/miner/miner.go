@@ -18,6 +18,7 @@ import (
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/gigea"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/zap"
 )
 
 const MINER_ID = "CERERA_MINER:937"
@@ -31,7 +32,10 @@ var (
 	ErrBlockHeaderNil          = errors.New("block header is nil")
 )
 
-var minerLog = logger.Named("miner")
+// minerLogger returns the miner logger, ensuring it's initialized after global logger
+func minerLogger() *zap.SugaredLogger {
+	return logger.Named("miner")
+}
 
 var (
 	minerBlocksMinedTotal = prometheus.NewCounter(prometheus.CounterOpts{
@@ -130,13 +134,23 @@ type Miner interface {
 	Update(tx *types.GTransaction)
 }
 
+// HeightLockChecker interface for checking height locks from main package
+type HeightLockChecker interface {
+	TryLockHeight(height int) bool
+	IsHeightLocked(height int) bool
+	GetCancelChannel() <-chan struct{}
+	GetLockedHeight() int
+}
+
 type miner struct {
 	status byte
 	config *config.Config
 	// chain    *chain.Chain
-	pool     pool.TxPool
-	mining   bool
-	stopChan chan struct{}
+	pool            pool.TxPool
+	mining          bool
+	stopChan        chan struct{}
+	miningHeight    int  // Height currently being mined
+	miningCancelled bool // Flag to track if current mining was cancelled
 }
 
 func (m *miner) GetID() string {
@@ -149,18 +163,18 @@ func (m *miner) Start() error {
 	m.stopChan = make(chan struct{})
 	minerStatus.Set(1)
 
-	minerLog.Infow("Starting miner", "id", m.GetID())
+	minerLogger().Infow("Starting miner", "id", m.GetID())
 
 	// Получаем конфигурацию
 	m.config = config.GenerageConfig()
-	minerLog.Infow("Chain config loaded",
+	minerLogger().Infow("Chain config loaded",
 		"chain_id", m.config.Chain.ChainID,
 		"type", m.config.Chain.Type)
 
 	// Получаем доступ к сервисам через реестр
 	registry, err := service.GetRegistry()
 	if err != nil {
-		minerLog.Errorw("Failed to get service registry", "err", err)
+		minerLogger().Errorw("Failed to get service registry", "err", err)
 		m.status = 0x0
 		m.mining = false
 		return fmt.Errorf("%w: %v", ErrServiceRegistryNotFound, err)
@@ -169,35 +183,35 @@ func (m *miner) Start() error {
 	// Получаем цепочку
 	_, ok := registry.GetService("chain")
 	if !ok {
-		minerLog.Errorw("Chain service not found")
+		minerLogger().Errorw("Chain service not found")
 		m.status = 0x0
 		m.mining = false
 		return ErrChainServiceNotFound
 	}
-	minerLog.Info("Chain service connected")
+	minerLogger().Info("Chain service connected")
 
 	// Получаем пул транзакций
 	_, ok = registry.GetService("pool")
 	if !ok {
-		minerLog.Errorw("Pool service not found")
+		minerLogger().Errorw("Pool service not found")
 		m.status = 0x0
 		m.mining = false
 		return ErrPoolServiceNotFound
 	}
 	m.pool = pool.Get()
-	minerLog.Info("Pool service connected")
+	minerLogger().Info("Pool service connected")
 
 	// Получаем последний блок
 	lastBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
 	if lastBlockResult == nil {
-		minerLog.Errorw("Failed to get latest block: result is nil")
+		minerLogger().Errorw("Failed to get latest block: result is nil")
 		m.status = 0x0
 		m.mining = false
 		return ErrLatestBlockNotFound
 	}
 	lastBlock, ok := lastBlockResult.(*block.Block)
 	if !ok || lastBlock == nil || lastBlock.Head == nil {
-		minerLog.Errorw("Failed to get latest block: block is nil or invalid",
+		minerLogger().Errorw("Failed to get latest block: block is nil or invalid",
 			"ok", ok,
 			"block_nil", lastBlock == nil,
 			"head_nil", lastBlock != nil && lastBlock.Head == nil)
@@ -207,12 +221,12 @@ func (m *miner) Start() error {
 	}
 	header := lastBlock.Header()
 	if header == nil {
-		minerLog.Errorw("Failed to get latest block: header is nil")
+		minerLogger().Errorw("Failed to get latest block: header is nil")
 		m.status = 0x0
 		m.mining = false
 		return ErrBlockHeaderNil
 	}
-	minerLog.Infow("Last block retrieved",
+	minerLogger().Infow("Last block retrieved",
 		"height", header.Height,
 		"hash", lastBlock.GetHash())
 
@@ -228,7 +242,7 @@ func (m *miner) Stop() {
 	if m.stopChan != nil {
 		close(m.stopChan)
 	}
-	minerLog.Info("Miner stopped")
+	minerLogger().Info("Miner stopped")
 }
 
 func (m *miner) miningLoop() {
@@ -244,12 +258,12 @@ func (m *miner) miningLoop() {
 				// Валидатор проверит консенсус перед добавлением блока в цепочку
 				if !m.isConsensusStarted() {
 					m.printConsensusStatus()
-					minerLog.Warnw("Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
+					minerLogger().Warnw("Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
 				}
 				m.mineBlock()
 			}
 		case <-m.stopChan:
-			minerLog.Info("Mining loop stopped")
+			minerLogger().Info("Mining loop stopped")
 			return
 		}
 	}
@@ -281,7 +295,7 @@ func (m *miner) isConsensusStarted() bool {
 // printConsensusStatus выводит текущий статус консенсуса
 func (m *miner) printConsensusStatus() {
 	consensusInfo := gigea.GetConsensusInfo()
-	minerLog.Debugw("Consensus not started, skipping block creation",
+	minerLogger().Debugw("Consensus not started, skipping block creation",
 		"status", consensusInfo["status"],
 		"voters", consensusInfo["voters"],
 		"nodes", consensusInfo["nodes"],
@@ -289,20 +303,44 @@ func (m *miner) printConsensusStatus() {
 		"address", consensusInfo["address"])
 }
 
+// getHeightLockChecker retrieves the HeightLockChecker from the service registry
+func (m *miner) getHeightLockChecker() HeightLockChecker {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		return nil
+	}
+
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			return nil
+		}
+	}
+
+	result := iceService.Exec("getHeightLock", nil)
+	if checker, ok := result.(HeightLockChecker); ok {
+		return checker
+	}
+
+	return nil
+}
+
 func (m *miner) mineBlock() {
 	startTime := time.Now()
 	minerMiningAttemptsTotal.Inc()
+	m.miningCancelled = false
 
 	// Получаем последний блок
 	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
 	if latestBlockResult == nil {
-		minerLog.Warnw("No last block found, skipping mining cycle")
+		minerLogger().Warnw("No last block found, skipping mining cycle")
 		minerMiningErrorsTotal.Inc()
 		return
 	}
 	latestBlock, ok := latestBlockResult.(*block.Block)
 	if !ok || latestBlock == nil || latestBlock.Head == nil {
-		minerLog.Warnw("Invalid last block, skipping mining cycle",
+		minerLogger().Warnw("Invalid last block, skipping mining cycle",
 			"ok", ok,
 			"block_nil", latestBlock == nil,
 			"head_nil", latestBlock != nil && latestBlock.Head == nil)
@@ -311,28 +349,63 @@ func (m *miner) mineBlock() {
 	}
 	header := latestBlock.Header()
 	if header == nil {
-		minerLog.Warnw("Last block header is nil, skipping mining cycle")
+		minerLogger().Warnw("Last block header is nil, skipping mining cycle")
 		minerMiningErrorsTotal.Inc()
 		return
+	}
+
+	// Determine the height we're mining for
+	targetHeight := header.Height + 1
+	m.miningHeight = targetHeight
+
+	// Check if this height is already locked (another node has already mined a block)
+	heightLock := m.getHeightLockChecker()
+	if heightLock != nil {
+		if heightLock.IsHeightLocked(targetHeight) {
+			minerLogger().Infow("Height already locked by another node, skipping mining",
+				"targetHeight", targetHeight,
+				"lockedHeight", heightLock.GetLockedHeight())
+			return
+		}
 	}
 
 	// Получаем транзакции из пула
 	pendingTxs := m.pool.GetPendingTransactions()
 	minerPendingTxsInBlock.Set(float64(len(pendingTxs)))
-	minerLog.Debugw("Mining block", "pending_txs", len(pendingTxs), "height", header.Height+1)
+	minerLogger().Debugw("Mining block", "pending_txs", len(pendingTxs), "height", targetHeight)
 
 	// Создаем новый блок
 	newBlock := m.createNewBlock(latestBlock, pendingTxs)
 	if newBlock == nil {
-		minerLog.Errorw("Failed to create new block")
+		minerLogger().Errorw("Failed to create new block")
 		minerMiningErrorsTotal.Inc()
 		return
 	}
 
 	// Выполняем майнинг (поиск nonce)
 	if err := m.performMining(newBlock); err != nil {
-		minerLog.Errorw("Mining failed", "err", err)
+		if m.miningCancelled {
+			minerLogger().Infow("Mining cancelled - received block from network",
+				"height", targetHeight)
+			return
+		}
+		minerLogger().Errorw("Mining failed", "err", err)
 		minerMiningErrorsTotal.Inc()
+		return
+	}
+
+	// Check if mining was cancelled while we were mining
+	if m.miningCancelled {
+		minerLogger().Infow("Mining cancelled after nonce found - block already received from network",
+			"height", targetHeight)
+		return
+	}
+
+	// Final check: make sure height is still not locked before proposing
+	if heightLock != nil && heightLock.IsHeightLocked(targetHeight) {
+		minerLogger().Infow("Height locked during mining, discarding mined block",
+			"height", targetHeight,
+			"lockedHeight", heightLock.GetLockedHeight())
 		return
 	}
 
@@ -342,11 +415,14 @@ func (m *miner) mineBlock() {
 	minerBlocksMinedTotal.Inc()
 	duration := time.Since(startTime).Seconds()
 	minerMiningDurationSeconds.Observe(duration)
-	minerLog.Infow("Block mined and proposed",
+	minerLogger().Infow("Block mined and proposed",
 		"height", newBlock.Header().Height,
 		"hash", newBlock.GetHash(),
 		"txs", len(newBlock.Transactions),
 		"duration_seconds", duration)
+
+	// Broadcast the block to other nodes
+	m.broadcastBlock(newBlock)
 
 	// Очищаем пул от обработанных транзакций
 	m.clearProcessedTransactions(newBlock.Transactions)
@@ -354,13 +430,13 @@ func (m *miner) mineBlock() {
 
 func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
 	if lastBlock == nil || lastBlock.Head == nil {
-		minerLog.Errorw("createNewBlock: lastBlock is nil or invalid")
+		minerLogger().Errorw("createNewBlock: lastBlock is nil or invalid")
 		return nil
 	}
 
 	lastHeader := lastBlock.Header()
 	if lastHeader == nil {
-		minerLog.Errorw("createNewBlock: lastBlock header is nil")
+		minerLogger().Errorw("createNewBlock: lastBlock header is nil")
 		return nil
 	}
 
@@ -407,7 +483,7 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 			totalGasUsed += txGas
 		} else {
 			// Транзакция не помещается в блок по лимиту газа
-			minerLog.Debugw("Transaction exceeds gas limit, skipping",
+			minerLogger().Debugw("Transaction exceeds gas limit, skipping",
 				"tx_hash", tx.Hash(),
 				"tx_gas", txGas,
 				"current_gas_used", totalGasUsed,
@@ -430,7 +506,7 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 	// Устанавливаем использованный газ (только для обычных транзакций, без coinbase и faucet)
 	newBlock.Head.GasUsed = uint64(totalGasUsed)
 
-	minerLog.Debugw("Block created",
+	minerLogger().Debugw("Block created",
 		"height", newHeader.Height,
 		"gas_used", totalGasUsed,
 		"gas_limit", newHeader.GasLimit,
@@ -441,7 +517,12 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 }
 
 func (m *miner) performMining(block *block.Block) error {
-	// Простой майнинг - просто устанавливаем случайный nonce
+	// Get cancel channel for this mining operation
+	var cancelChan <-chan struct{}
+	heightLock := m.getHeightLockChecker()
+	if heightLock != nil {
+		cancelChan = heightLock.GetCancelChannel()
+	}
 
 	// Обновляем метрику difficulty
 	minerCurrentDifficulty.Set(float64(block.Header().Difficulty))
@@ -449,12 +530,9 @@ func (m *miner) performMining(block *block.Block) error {
 	// Рассчитываем хеш блока
 	blockHash, err := block.CalculateHash()
 	if err != nil {
-		minerLog.Errorw("Error calculating block hash", "err", err, "height", block.Header().Height)
+		minerLogger().Errorw("Error calculating block hash", "err", err, "height", block.Header().Height)
 		return fmt.Errorf("failed to calculate block hash: %w", err)
 	}
-	// fmt.Printf(">>>>>>>>>>Current block height: %d\r\n", block.Header().Height)
-	// fmt.Printf(">>>>>>>>>>Difficulty: %d\r\n", block.Header().Difficulty)
-	// fmt.Printf(">>>>>>>>>>Nonce: %d\r\n", block.Header().Nonce)
 
 	// Защита от деления на ноль
 	if block.Header().Difficulty == 0 {
@@ -463,15 +541,13 @@ func (m *miner) performMining(block *block.Block) error {
 	target := new(big.Int).Div(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(int64(block.Header().Difficulty)))
 
 	// Обновляем метрику target (используем логарифм для больших чисел)
-	// target = 2^256 / difficulty, поэтому log(target) = 256*log(2) - log(difficulty)
 	targetLog := 256*math.Log2(2) - math.Log2(float64(block.Header().Difficulty))
 	minerCurrentTarget.Set(targetLog)
 
 	block.Hash = common.BytesToHash(blockHash)
 	blockHashInt := new(big.Int).SetBytes(blockHash)
 
-	// Вычисляем отношение хэша к target для мониторинга (используем логарифм через big.Float)
-	// Для больших чисел используем приближение: log2(hash) ≈ bitLen(hash)
+	// Вычисляем отношение хэша к target для мониторинга
 	hashBitLen := blockHashInt.BitLen()
 	hashLog := float64(hashBitLen)
 	ratio := hashLog - targetLog
@@ -485,25 +561,43 @@ func (m *miner) performMining(block *block.Block) error {
 		minerHashInvalidTotal.Inc()
 	}
 
-	// fmt.Printf(">>>>>>>>>>[BLKINT]: %d\r\n", blockHashInt)
-	// fmt.Printf(">>>>>>>>>>[TRGINT]: %d\r\n", target)
-	// fmt.Printf(">>>>>>>>>>[BLKINTCMP]: %d\r\n", blockHashInt.Cmp(target))
-
 	// Начинаем отслеживание поиска nonce
 	nonceSearchStartTime := time.Now()
 	nonceSearchAttempts := uint64(0)
+	checkCancelInterval := uint64(100) // Check cancel channel every 100 iterations
 
 	// Цикл поиска валидного nonce: продолжаем пока хеш >= target (невалидный)
 	for blockHashInt.Cmp(target) >= 0 {
+		// Check for cancellation periodically
+		if cancelChan != nil && nonceSearchAttempts%checkCancelInterval == 0 {
+			select {
+			case <-cancelChan:
+				m.miningCancelled = true
+				minerLogger().Infow("Mining cancelled by external block",
+					"height", block.Header().Height,
+					"attempts", nonceSearchAttempts)
+				return fmt.Errorf("mining cancelled: received block from network")
+			default:
+				// Continue mining
+			}
+		}
+
+		// Also check if height is now locked
+		if heightLock != nil && nonceSearchAttempts%checkCancelInterval == 0 {
+			if heightLock.IsHeightLocked(block.Header().Height) {
+				m.miningCancelled = true
+				minerLogger().Infow("Mining cancelled - height now locked",
+					"height", block.Header().Height,
+					"lockedHeight", heightLock.GetLockedHeight())
+				return fmt.Errorf("mining cancelled: height locked")
+			}
+		}
+
 		newHeader := block.Header()
 		newHeader.Nonce += 1
 		block.Head = newHeader
 		block.UpdateNonce()
 		newBlockHash, _ := block.CalculateHash()
-		// if err != nil {
-		// 	minerLog.Errorw("Error calculating block hash in mining loop", "err", err, "height", block.Header().Height, "nonce", newHeader.Nonce)
-		// 	return fmt.Errorf("failed to calculate block hash in mining loop: %w", err)
-		// }
 		blockHash = newBlockHash
 		blockHashInt = new(big.Int).SetBytes(newBlockHash)
 
@@ -518,19 +612,22 @@ func (m *miner) performMining(block *block.Block) error {
 		minerHashToTargetRatio.Set(ratio)
 
 		// Проверяем хэш на каждой итерации
-		minerHashValidationTotal.Inc() // WARN TODO ALARM LABEL CRTUTICAL
+		minerHashValidationTotal.Inc()
 		if blockHashInt.Cmp(target) < 0 {
 			minerHashValidTotal.Inc()
 		} else {
 			minerHashInvalidTotal.Inc()
 		}
+	}
 
-		// fmt.Printf(">>>>>>>>>>Current block height: %d\r\n", block.Header().Height)
-		// fmt.Printf(">>>>>>>>>>Difficulty: %d\r\n", block.Header().Difficulty)
-		// fmt.Printf(">>>>>>>>>>Nonce: %d\r\n", newHeader.Nonce)
-		// fmt.Printf(">>>>>>>>>>[BLKINT]: %d\r\n", blockHashInt)
-		// fmt.Printf(">>>>>>>>>>[TRGINT]: %d\r\n", target)
-		// fmt.Printf(">>>>>>>>>>[BLKINTCMP]: %d\r\n", blockHashInt.Cmp(target))
+	// Final cancellation check before returning success
+	if cancelChan != nil {
+		select {
+		case <-cancelChan:
+			m.miningCancelled = true
+			return fmt.Errorf("mining cancelled at completion")
+		default:
+		}
 	}
 
 	// Обновляем метрики после нахождения валидного nonce
@@ -541,19 +638,37 @@ func (m *miner) performMining(block *block.Block) error {
 	// Обновляем block.Hash после нахождения валидного хеша
 	block.Hash = common.BytesToHash(blockHash)
 
-	// if blockHashInt.Cmp(target) >= 0 {
-	// 	fmt.Printf("Target is less than block hash\r\n")
-	// 	return fmt.Errorf("block hash does not meet difficulty requirement")
-	// }
-	// Используем обновленный blockHash после цикла майнинга
-	// fmt.Printf(">>>>>>>>>>Block mined: %x\r\n", blockHash)
-	// fmt.Printf(">>>>>>>>>>Height: %d\r\n", block.Header().Height)
-	minerLog.Infow("Block mined",
+	minerLogger().Infow("Block mined",
 		"height", block.Header().Height,
 		"nonce", block.Header().Nonce,
 		"hash", fmt.Sprintf("%x", blockHash))
 
 	return nil
+}
+
+// broadcastBlock sends the mined block to other nodes via Ice
+func (m *miner) broadcastBlock(newBlock *block.Block) {
+	registry, err := service.GetRegistry()
+	if err != nil {
+		minerLogger().Warnw("Failed to get registry for broadcast", "err", err)
+		return
+	}
+
+	iceService, ok := registry.GetService("ice")
+	if !ok {
+		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+		if !ok {
+			minerLogger().Warnw("Ice service not found for block broadcast")
+			return
+		}
+	}
+
+	result := iceService.Exec("broadcastBlock", []interface{}{newBlock})
+	if err, ok := result.(error); ok && err != nil {
+		minerLogger().Warnw("Failed to broadcast block", "err", err, "height", newBlock.Header().Height)
+	} else {
+		minerLogger().Infow("Block broadcasted to network", "height", newBlock.Header().Height, "hash", newBlock.GetHash())
+	}
 }
 
 func (m *miner) clearProcessedTransactions(processedTxs []types.GTransaction) {
@@ -563,7 +678,7 @@ func (m *miner) clearProcessedTransactions(processedTxs []types.GTransaction) {
 		}
 		err := m.pool.RemoveFromPool(tx.Hash())
 		if err != nil {
-			minerLog.Warnw("Error removing transaction from pool",
+			minerLogger().Warnw("Error removing transaction from pool",
 				"tx_hash", tx.Hash(),
 				"err", err)
 		}
@@ -576,14 +691,14 @@ func (m *miner) Status() byte {
 
 func (m *miner) Update(tx *types.GTransaction) {
 	if m.status != 0x1 || !m.mining {
-		minerLog.Debugw("Miner not active, ignoring transaction update",
+		minerLogger().Debugw("Miner not active, ignoring transaction update",
 			"status", m.status,
 			"mining", m.mining,
 			"tx_hash", tx.Hash())
 		return
 	}
 
-	minerLog.Debugw("Received transaction update, will be included in next mining cycle",
+	minerLogger().Debugw("Received transaction update, will be included in next mining cycle",
 		"tx_hash", tx.Hash())
 	// Транзакция будет включена в следующий блок при следующем майнинге
 }
