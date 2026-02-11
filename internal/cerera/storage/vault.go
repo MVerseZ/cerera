@@ -213,6 +213,8 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vltlogger().Infow("Vault recovery password generated", "password", "NODE_PASS")
 	vltlogger().Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
 	vltlogger().Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
+
+	SetKeys(masterKey, publicKey)
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &types.StateAccount{

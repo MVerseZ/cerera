@@ -28,8 +28,12 @@ type HostConfig struct {
 	MaxPeers       int
 }
 
+type CereraHost interface {
+	host.Host
+}
+
 // NewHost creates and configures a new libp2p host
-func NewHost(ctx context.Context, cfg *config.Config, port string) (host.Host, error) {
+func NewHost(ctx context.Context, cfg *config.Config, port string) (CereraHost, error) {
 	iceLogger().Infow("Creating libp2p host", "port", port)
 
 	// Convert ECDSA private key to libp2p format
@@ -134,7 +138,7 @@ func GetHostPeerID(h host.Host) peer.ID {
 // GetFullAddresses returns full multiaddresses including peer ID
 func GetFullAddresses(h host.Host) []string {
 	hostAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/p2p/%s", h.ID().String()))
-	
+
 	addrs := make([]string, 0, len(h.Addrs()))
 	for _, addr := range h.Addrs() {
 		fullAddr := addr.Encapsulate(hostAddr)

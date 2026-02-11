@@ -36,6 +36,7 @@ type NetworkConfig struct {
 	BootstrapNodes []string // libp2p bootstrap nodes в формате multiaddr (например: "/ip4/192.168.1.6/tcp/31100/p2p/QmPeerID"). Если пусто, используется SeedNodes
 	RelayNodes     []string // libp2p relay nodes в формате multiaddr для NAT traversal (опционально)
 	DHTServerMode  bool     // включить DHT server mode для bootstrap узлов (по умолчанию: false, auto mode)
+	EnableMDNS     bool     // включить mDNS discovery для локальной сети (по умолчанию: true)
 }
 type VaultConfig struct {
 	MEM  bool
@@ -78,7 +79,7 @@ func GenerageConfig() *Config {
 			"/ip4/172.25.0.12/tcp/31101",
 			"/ip4/192.168.1.6/tcp/31100",
 		}
-		
+
 		// Check for SEED_NODES environment variable (comma-separated list)
 		// Format: "/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101"
 		if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
@@ -96,7 +97,7 @@ func GenerageConfig() *Config {
 		} else {
 			fmt.Printf("[CONFIG] Using default seed nodes: %v\n", defaultSeedNodes)
 		}
-		
+
 		cfg = &Config{
 			TlsFlag: false,
 			POOL: PoolConfig{
@@ -117,8 +118,9 @@ func GenerageConfig() *Config {
 				BootstrapIP:   "192.168.1.6",
 				BootstrapPort: "31100",
 				// Seed nodes in multiaddr format for libp2p
-				SeedNodes:     defaultSeedNodes,
+				SeedNodes:      defaultSeedNodes,
 				BootstrapNodes: defaultSeedNodes,
+				EnableMDNS:     true, // Disabled by default to avoid multicast interface warnings on Windows
 			},
 			Chain: ChainConfig{
 				ChainID: 11,
@@ -136,7 +138,7 @@ func GenerageConfig() *Config {
 		if err != nil {
 			panic(err)
 		}
-		
+
 		// Override seed nodes from environment variable if set
 		if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
 			seedNodesList := []string{}
@@ -265,10 +267,10 @@ func ReadConfig(filePath string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
 	}
-	
+
 	// Convert old format seed nodes to multiaddr format if needed
 	cfg.convertSeedNodesToMultiaddr()
-	
+
 	return &cfg, nil
 }
 
@@ -278,7 +280,7 @@ func (cfg *Config) convertSeedNodesToMultiaddr() {
 	if len(cfg.NetCfg.BootstrapNodes) == 0 && len(cfg.NetCfg.SeedNodes) > 0 {
 		converted := false
 		newSeedNodes := make([]string, 0, len(cfg.NetCfg.SeedNodes))
-		
+
 		for _, seed := range cfg.NetCfg.SeedNodes {
 			// Check if already in multiaddr format
 			if len(seed) > 0 && seed[0] == '/' {
@@ -295,18 +297,18 @@ func (cfg *Config) convertSeedNodesToMultiaddr() {
 						break
 					}
 				}
-				
+
 				if ip == "" {
 					ip = seed
 					port = "31100" // default port
 				}
-				
+
 				multiaddrStr := fmt.Sprintf("/ip4/%s/tcp/%s", ip, port)
 				newSeedNodes = append(newSeedNodes, multiaddrStr)
 				converted = true
 			}
 		}
-		
+
 		if converted {
 			cfg.NetCfg.SeedNodes = newSeedNodes
 			cfg.NetCfg.BootstrapNodes = newSeedNodes

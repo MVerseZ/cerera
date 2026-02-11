@@ -8,6 +8,7 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/message"
+	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -57,7 +58,7 @@ func TestConsensusFlow_PrepareCommitQuorum(t *testing.T) {
 	defer cancel()
 
 	local := peer.ID("local")
-	vm := NewVotingManager(ctx, local)
+	vm := NewVotingManager(ctx, local, types.Address{})
 
 	// 4 validators => quorum = 3 (2f+1 with f=1).
 	vals := []peer.ID{"v1", "v2", "v3", "v4", local}
@@ -76,7 +77,7 @@ func TestConsensusFlow_PrepareCommitQuorum(t *testing.T) {
 	})
 
 	b := testBlock(1, "block-1")
-	preprepare := NewVotingMessage(message.MTPrePrepare, b.Hash, b.Head.Height, 0, 1, peer.ID("v1"), VoteApprove)
+	preprepare := NewVotingMessage(message.MTPrePrepare, b.Hash, b.Head.Height, 0, 1, peer.ID("v1"), types.Address{}, VoteApprove)
 	preprepare.Block = b
 
 	if err := vm.HandlePrePrepare(preprepare, peer.ID("v1")); err != nil {
@@ -85,7 +86,7 @@ func TestConsensusFlow_PrepareCommitQuorum(t *testing.T) {
 
 	// Prepare votes (3 approvals).
 	for _, v := range []peer.ID{"v1", "v2", "v3"} {
-		p := NewVotingMessage(message.MTPrepare, b.Hash, b.Head.Height, 0, 1, v, VoteApprove)
+		p := NewVotingMessage(message.MTPrepare, b.Hash, b.Head.Height, 0, 1, v, types.Address{}, VoteApprove)
 		if err := vm.HandlePrepare(p, v); err != nil {
 			t.Fatalf("HandlePrepare(%s): %v", v, err)
 		}
@@ -99,7 +100,7 @@ func TestConsensusFlow_PrepareCommitQuorum(t *testing.T) {
 
 	// Commit votes (3 approvals).
 	for _, v := range []peer.ID{"v1", "v2", "v3"} {
-		c := NewVotingMessage(message.MTCommit, b.Hash, b.Head.Height, 0, 1, v, VoteApprove)
+		c := NewVotingMessage(message.MTCommit, b.Hash, b.Head.Height, 0, 1, v, types.Address{}, VoteApprove)
 		if err := vm.HandleCommit(c, v); err != nil {
 			t.Fatalf("HandleCommit(%s): %v", v, err)
 		}
@@ -120,7 +121,7 @@ func TestRoundTimeout_EmitsCallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	vm := NewVotingManager(ctx, peer.ID("local"))
+	vm := NewVotingManager(ctx, peer.ID("local"), types.Address{})
 	for _, v := range []peer.ID{"v1", "v2", "v3", "v4"} {
 		vm.GetValidatorSet().AddValidator(v)
 	}
@@ -131,7 +132,7 @@ func TestRoundTimeout_EmitsCallback(t *testing.T) {
 	})
 
 	b := testBlock(1, "block-timeout")
-	preprepare := NewVotingMessage(message.MTPrePrepare, b.Hash, b.Head.Height, 3, 42, peer.ID("v1"), VoteApprove)
+	preprepare := NewVotingMessage(message.MTPrePrepare, b.Hash, b.Head.Height, 3, 42, peer.ID("v1"), types.Address{}, VoteApprove)
 	preprepare.Block = b
 	if err := vm.HandlePrePrepare(preprepare, peer.ID("v1")); err != nil {
 		t.Fatalf("HandlePrePrepare: %v", err)

@@ -1,0 +1,993 @@
+{
+  "uid": "cerera-overview",
+  "title": "Cerera Overview",
+  "tags": ["cerera"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "panels": [
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Chain",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Chain Blocks / TXs",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "increase(chain_blocks_total[1h])", 
+          "legendFormat": "blocks (1h)",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(chain_txs_total[1h])", 
+          "legendFormat": "txs (1h)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Chain Avg Block Time / Difficulty",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "chain_avg_block_time_seconds", 
+          "legendFormat": "avg block time",
+          "refId": "A"
+        },
+        { 
+          "expr": "chain_difficulty", 
+          "legendFormat": "difficulty",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Chain Height & Block Size",
+      "gridPos": { "x": 0, "y": 9, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "chain_height", 
+          "legendFormat": "height",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.95, rate(chain_block_size_bytes_bucket[5m]))", 
+          "legendFormat": "p95 block size",
+          "refId": "B"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(chain_block_size_bytes_bucket[5m]))", 
+          "legendFormat": "p50 block size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Chain Block Gas Used",
+      "gridPos": { "x": 12, "y": 9, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(chain_block_gas_used_bucket[5m]))", 
+          "legendFormat": "p95 gas used",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(chain_block_gas_used_bucket[5m]))", 
+          "legendFormat": "p50 gas used",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(chain_gas_total[5m])", 
+          "legendFormat": "total gas rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Consensus",
+      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Consensus State & Nonce",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "consensus_state", 
+          "legendFormat": "state (0=Follower, 1=Candidate, 2=Leader, 3=Validator, 4=Miner)",
+          "refId": "A"
+        },
+        { 
+          "expr": "consensus_nonce", 
+          "legendFormat": "nonce",
+          "refId": "B"
+        },
+        { 
+          "expr": "consensus_status", 
+          "legendFormat": "status",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Consensus Voters & Nodes",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "consensus_voters_total", 
+          "legendFormat": "voters",
+          "refId": "A"
+        },
+        { 
+          "expr": "consensus_nodes_total", 
+          "legendFormat": "nodes",
+          "refId": "B"
+        },
+        { 
+          "expr": "increase(consensus_period_advances_total[1h])", 
+          "legendFormat": "period advances (1h)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "row",
+      "title": "Icenet Network",
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "Icenet Blocks (received/processed/rejected/broadcast)",
+      "gridPos": { "x": 0, "y": 27, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "rate(icenet_blocks_received_total[5m])", 
+          "legendFormat": "received rate",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(icenet_blocks_processed_total[5m])", 
+          "legendFormat": "processed rate",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(icenet_blocks_rejected_total[5m])", 
+          "legendFormat": "rejected rate",
+          "refId": "C"
+        },
+        { 
+          "expr": "rate(icenet_blocks_broadcast_total[5m])", 
+          "legendFormat": "broadcast rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "timeseries",
+      "title": "Icenet Block Sync Errors",
+      "gridPos": { "x": 12, "y": 27, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "sum(rate(icenet_block_sync_errors_total[5m])) by (error_type)", 
+          "legendFormat": "{{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 36,
+      "type": "timeseries",
+      "title": "Icenet Connections (active/total/errors)",
+      "gridPos": { "x": 0, "y": 35, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "icenet_connections_active", 
+          "legendFormat": "active",
+          "refId": "A"
+        },
+        { 
+          "expr": "sum(rate(icenet_connections_total[5m])) by (type, status)", 
+          "legendFormat": "{{type}} - {{status}}",
+          "refId": "B"
+        },
+        { 
+          "expr": "sum(rate(icenet_connections_errors_total[5m])) by (error_type)", 
+          "legendFormat": "errors - {{error_type}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "timeseries",
+      "title": "Icenet Connection Latency",
+      "gridPos": { "x": 12, "y": 35, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(icenet_connection_latency_seconds_bucket[5m]))", 
+          "legendFormat": "p95 latency",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(icenet_connection_latency_seconds_bucket[5m]))", 
+          "legendFormat": "p50 latency",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(icenet_connection_latency_seconds_sum[5m]) / rate(icenet_connection_latency_seconds_count[5m])", 
+          "legendFormat": "avg latency",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 38,
+      "type": "timeseries",
+      "title": "Icenet Messages (received/sent/errors)",
+      "gridPos": { "x": 0, "y": 43, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "sum(rate(icenet_messages_received_total[5m])) by (message_type)", 
+          "legendFormat": "received - {{message_type}}",
+          "refId": "A"
+        },
+        { 
+          "expr": "sum(rate(icenet_messages_sent_total[5m])) by (message_type)", 
+          "legendFormat": "sent - {{message_type}}",
+          "refId": "B"
+        },
+        { 
+          "expr": "sum(rate(icenet_message_errors_total[5m])) by (message_type, error_type)", 
+          "legendFormat": "errors - {{message_type}} - {{error_type}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 39,
+      "type": "timeseries",
+      "title": "Icenet Message Size & Processing Time",
+      "gridPos": { "x": 12, "y": 43, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, sum(rate(icenet_message_size_bytes_bucket[5m])) by (le, message_type)))", 
+          "legendFormat": "p95 size",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, sum(rate(icenet_message_size_bytes_bucket[5m])) by (le, message_type)))", 
+          "legendFormat": "p50 size",
+          "refId": "B"
+        },
+        { 
+          "expr": "histogram_quantile(0.95, sum(rate(icenet_message_processing_time_seconds_bucket[5m])) by (le, message_type))", 
+          "legendFormat": "p95 processing time",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 40,
+      "type": "timeseries",
+      "title": "Icenet Consensus (status/nodes/voters/nonce)",
+      "gridPos": { "x": 0, "y": 51, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "icenet_consensus_status", 
+          "legendFormat": "status (0=stopped, 1=started)",
+          "refId": "A"
+        },
+        { 
+          "expr": "icenet_consensus_nodes_total", 
+          "legendFormat": "nodes",
+          "refId": "B"
+        },
+        { 
+          "expr": "icenet_consensus_voters_total", 
+          "legendFormat": "voters",
+          "refId": "C"
+        },
+        { 
+          "expr": "icenet_consensus_nonce", 
+          "legendFormat": "nonce",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "Icenet Consensus Errors",
+      "gridPos": { "x": 12, "y": 51, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "sum(rate(icenet_consensus_errors_total[5m])) by (error_type)", 
+          "legendFormat": "{{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Icenet Network (latency/throughput/topology)",
+      "gridPos": { "x": 0, "y": 59, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(icenet_network_latency_seconds_bucket[5m]))", 
+          "legendFormat": "p95 latency",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(icenet_network_throughput_bytes[5m])", 
+          "legendFormat": "throughput - {{direction}}",
+          "refId": "B"
+        },
+        { 
+          "expr": "icenet_network_topology_nodes", 
+          "legendFormat": "topology nodes",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "stat",
+      "title": "Icenet Network Summary",
+      "gridPos": { "x": 12, "y": 59, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "icenet_connections_active", 
+          "legendFormat": "Active Connections",
+          "refId": "A"
+        },
+        { 
+          "expr": "icenet_consensus_nodes_total", 
+          "legendFormat": "Consensus Nodes",
+          "refId": "B"
+        },
+        { 
+          "expr": "icenet_network_topology_nodes", 
+          "legendFormat": "Topology Nodes",
+          "refId": "C"
+        },
+        { 
+          "expr": "icenet_consensus_status", 
+          "legendFormat": "Consensus Status",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Miner",
+      "gridPos": { "x": 0, "y": 67, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Miner Status & Blocks Mined",
+      "gridPos": { "x": 0, "y": 68, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "miner_status", 
+          "legendFormat": "status (0=stopped, 1=active)",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(miner_blocks_mined_total[15m])", 
+          "legendFormat": "blocks mined (15m)",
+          "refId": "B"
+        },
+        { 
+          "expr": "increase(miner_mining_errors_total[15m])", 
+          "legendFormat": "errors (15m)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Miner Mining Duration & Pending TXs",
+      "gridPos": { "x": 12, "y": 68, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(miner_mining_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(miner_mining_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p50 duration",
+          "refId": "B"
+        },
+        { 
+          "expr": "miner_pending_txs_in_block", 
+          "legendFormat": "pending txs",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Miner Hash Validation",
+      "gridPos": { "x": 0, "y": 76, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "rate(miner_hash_validation_total[5m])", 
+          "legendFormat": "validation rate",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(miner_hash_valid_total[5m])", 
+          "legendFormat": "valid rate",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(miner_hash_invalid_total[5m])", 
+          "legendFormat": "invalid rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Miner Nonce Search",
+      "gridPos": { "x": 12, "y": 76, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "rate(miner_nonce_search_attempts_total[5m])", 
+          "legendFormat": "attempts rate",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.95, rate(miner_nonce_search_attempts_bucket[5m]))", 
+          "legendFormat": "p95 attempts",
+          "refId": "B"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(miner_nonce_search_attempts_bucket[5m]))", 
+          "legendFormat": "p50 attempts",
+          "refId": "C"
+        },
+        { 
+          "expr": "histogram_quantile(0.95, rate(miner_nonce_search_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p95 duration",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Miner Difficulty & Target (log scale)",
+      "gridPos": { "x": 0, "y": 84, "w": 24, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "miner_current_difficulty", 
+          "legendFormat": "difficulty",
+          "refId": "A"
+        },
+        { 
+          "expr": "miner_current_target", 
+          "legendFormat": "target (log2)",
+          "refId": "B"
+        },
+        { 
+          "expr": "miner_hash_to_target_ratio", 
+          "legendFormat": "hash/target ratio (log2 diff)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Pool",
+      "gridPos": { "x": 0, "y": 92, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Pool Size & Bytes",
+      "gridPos": { "x": 0, "y": 93, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "pool_size", 
+          "legendFormat": "size",
+          "refId": "A"
+        },
+        { 
+          "expr": "pool_bytes", 
+          "legendFormat": "bytes",
+          "refId": "B"
+        },
+        { 
+          "expr": "pool_max_size", 
+          "legendFormat": "max size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Pool Transactions (added/removed/rejected)",
+      "gridPos": { "x": 12, "y": 93, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "rate(pool_tx_added_total[5m])", 
+          "legendFormat": "added rate",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(pool_tx_removed_total[5m])", 
+          "legendFormat": "removed rate",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(pool_tx_rejected_total[5m])", 
+          "legendFormat": "rejected rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Pool GetPendingTransactions Duration",
+      "gridPos": { "x": 0, "y": 101, "w": 24, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, rate(pool_get_pending_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        { 
+          "expr": "histogram_quantile(0.50, rate(pool_get_pending_duration_seconds_bucket[5m]))", 
+          "legendFormat": "p50 duration",
+          "refId": "B"
+        },
+        { 
+          "expr": "rate(pool_get_pending_duration_seconds_sum[5m]) / rate(pool_get_pending_duration_seconds_count[5m])", 
+          "legendFormat": "avg duration",
+          "refId": "C"
+        },
+        { 
+          "expr": "rate(pool_get_pending_duration_seconds_count[5m])", 
+          "legendFormat": "calls rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "row",
+      "title": "RPC",
+      "gridPos": { "x": 0, "y": 109, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "RPC Requests Rate by Method",
+      "gridPos": { "x": 0, "y": 110, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "sum(rate(rpc_requests_total[5m])) by (method)", 
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "RPC Request Duration & Errors",
+      "gridPos": { "x": 12, "y": 110, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "histogram_quantile(0.95, sum(rate(rpc_requests_duration_seconds_bucket[5m])) by (le, method))", 
+          "legendFormat": "p95 duration - {{method}}",
+          "refId": "A"
+        },
+        { 
+          "expr": "sum(rate(rpc_requests_errors_total[5m])) by (method)", 
+          "legendFormat": "errors - {{method}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Validator",
+      "gridPos": { "x": 0, "y": 118, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Validator TXs (created/validated/rejected)",
+      "gridPos": { "x": 0, "y": 119, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "increase(validator_tx_created_total[15m])", 
+          "legendFormat": "created",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(validator_tx_validated_total[15m])", 
+          "legendFormat": "validated",
+          "refId": "B"
+        },
+        { 
+          "expr": "increase(validator_tx_rejected_total[15m])", 
+          "legendFormat": "rejected",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Validator Signing (success/error)",
+      "gridPos": { "x": 12, "y": 119, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "increase(validator_sign_success_total[15m])", 
+          "legendFormat": "sign success",
+          "refId": "A"
+        },
+        { 
+          "expr": "increase(validator_sign_error_total[15m])", 
+          "legendFormat": "sign error",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "Vault",
+      "gridPos": { "x": 0, "y": 127, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
+      "title": "Vault Accounts & Circulating Supply",
+      "gridPos": { "x": 0, "y": 128, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "vault_accounts_total", 
+          "legendFormat": "accounts",
+          "refId": "A"
+        },
+        { 
+          "expr": "vault_circulating_supply", 
+          "legendFormat": "circulating",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "Vault Faucet / Transfers",
+      "gridPos": { "x": 12, "y": 128, "w": 12, "h": 8 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        { 
+          "expr": "increase(vault_faucet_amount_total[1h])", 
+          "legendFormat": "faucet (1h)",
+          "refId": "A"
+        },
+        { 
+          "expr": "rate(vault_transfers_total[5m])", 
+          "legendFormat": "transfers rate",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

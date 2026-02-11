@@ -51,11 +51,11 @@ type Manager struct {
 	peerTracker *PeerSyncTracker
 	fetcher     *Fetcher
 
-	mu         sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
-	isSyncing  bool
-	syncPeer   peer.ID
+	mu        sync.RWMutex
+	ctx       context.Context
+	cancel    context.CancelFunc
+	isSyncing bool
+	syncPeer  peer.ID
 
 	// Callbacks
 	onSyncComplete func()
@@ -304,10 +304,11 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.BestHash.String(), status.NodeVersion, status.NodeAddress)
 	m.peerTracker.UpdatePeer(peerID, status.Height, status.BestHash)
 
-	syncLogger().Infow("Peer status received",
+	syncLogger().Infow("[SYNC] Peer status received",
 		"peer", peerID,
 		"height", status.Height,
 		"version", status.NodeVersion,
+		"address", status.NodeAddress,
 	)
 
 	// Check if we need to sync

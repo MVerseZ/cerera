@@ -10,6 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/consensus"
 	"github.com/cerera/internal/icenet/metrics"
@@ -32,10 +33,10 @@ const (
 
 // IceAddress contains network address information
 type IceAddress struct {
-	IP      string
-	Port    string
-	Address types.Address
-	PeerID  peer.ID
+	IP       string
+	Port     string
+	CAddress types.Address
+	PeerID   peer.ID
 }
 
 // ChainProvider provides access to blockchain data for Ice
@@ -102,6 +103,13 @@ type Ice struct {
 func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	iceLogger().Infow("Starting Ice P2P network...", "version", IceVersion, "port", port)
 
+	iceLogger().Infow("Retrieving keys from vault...")
+	priv, pub, err := storage.GetKeys()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve keys from vault: %w", err)
+	}
+	iceLogger().Infow("Keys retrieved from vault", "keys", priv, pub)
+
 	ctx, cancel := context.WithCancel(ctx)
 
 	ice := &Ice{
@@ -121,9 +129,9 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 
 	// Set address info
 	ice.Address = IceAddress{
-		Port:    port,
-		Address: cfg.NetCfg.ADDR,
-		PeerID:  h.ID(),
+		Port:     port,
+		CAddress: cfg.NetCfg.ADDR,
+		PeerID:   h.ID(),
 	}
 	if len(h.Addrs()) > 0 {
 		ice.Address.IP = h.Addrs()[0].String()
@@ -176,7 +184,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	}
 
 	// Create consensus manager
-	ice.Consensus = consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, nil)
+	ice.Consensus = consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, nil, cfg.NetCfg.ADDR)
 	ice.Consensus.SetOnBlockFinalized(func(b *block.Block) {
 		if b != nil && b.Head != nil {
 			metrics.SetBlockHeight(b.Head.Height)
@@ -204,6 +212,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	iceLogger().Infow("Ice P2P network started",
 		"peerID", h.ID().String(),
 		"addresses", GetFullAddresses(h),
+		"cAddr", ice.Address.CAddress.String(),
 		"version", IceVersion,
 	)
 
@@ -341,7 +350,7 @@ func (ice *Ice) onPubSubBlock(b *block.Block, from peer.ID) {
 			metrics.RecordBlockRejected()
 			ice.PeerScorer.RecordInvalidBlock(from)
 		} else {
-			iceLogger().Infow("Block from PubSub added to chain", "height", b.Head.Height, "hash", b.Hash.Hex(), "from", from)
+			iceLogger().Infow("[ICE] [CONSENSUS] Block from PubSub added to chain", "height", b.Head.Height, "hash", b.Hash.Hex(), "from", from)
 			metrics.RecordBlockValidated()
 			ice.PeerScorer.RecordValidBlock(from)
 		}

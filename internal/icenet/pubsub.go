@@ -410,7 +410,7 @@ func (psm *PubSubManager) BroadcastBlock(b *block.Block) error {
 		return fmt.Errorf("failed to publish block: %w", err)
 	}
 
-	iceLogger().Debugw("Block broadcast", "hash", b.Hash, "height", b.Head.Height)
+	iceLogger().Infow("Block broadcast", "hash", b.Hash, "height", b.Head.Height)
 	return nil
 }
 

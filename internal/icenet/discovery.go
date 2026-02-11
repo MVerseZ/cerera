@@ -162,9 +162,14 @@ func (d *Discovery) initDHT() error {
 
 // Start begins the discovery process
 func (d *Discovery) Start() error {
-	// Start mDNS discovery for local network
-	if err := d.startMDNS(); err != nil {
-		iceLogger().Warnw("Failed to start mDNS discovery", "error", err)
+	// Start mDNS discovery for local network (if enabled)
+	// mDNS is disabled by default on Windows due to multicast interface issues
+	if d.cfg.NetCfg.EnableMDNS {
+		if err := d.startMDNS(); err != nil {
+			iceLogger().Warnw("Failed to start mDNS discovery", "error", err)
+		}
+	} else {
+		iceLogger().Debugw("mDNS discovery disabled")
 	}
 
 	// Connect to bootstrap peers
@@ -179,7 +184,7 @@ func (d *Discovery) Start() error {
 			d.mu.Lock()
 			d.connected[conn.RemotePeer()] = true
 			d.mu.Unlock()
-			iceLogger().Debugw("Peer connected",
+			iceLogger().Debugw("[NETWORK DISCOVERY] Peer connected",
 				"peer", conn.RemotePeer(),
 				"addr", conn.RemoteMultiaddr(),
 				"direction", conn.Stat().Direction,
@@ -189,7 +194,7 @@ func (d *Discovery) Start() error {
 			d.mu.Lock()
 			delete(d.connected, conn.RemotePeer())
 			d.mu.Unlock()
-			iceLogger().Infow("Peer disconnected", "peer", conn.RemotePeer())
+			iceLogger().Infow("[NETWORK DISCOVERY] Peer disconnected", "peer", conn.RemotePeer())
 		},
 	})
 
@@ -234,12 +239,12 @@ func (d *Discovery) connectToBootstrapPeers() {
 				return
 			}
 
-			iceLogger().Infow("Connected to bootstrap peer", "peer", pi.ID)
+			iceLogger().Infow("[NETWORK DISCOVERY] Connected to bootstrap peer", "peer", pi.ID)
 		}(peerInfo)
 	}
 
 	wg.Wait()
-	iceLogger().Infow("Bootstrap connection phase complete",
+	iceLogger().Infow("[NETWORK DISCOVERY] Bootstrap connection phase complete",
 		"connected", len(d.host.Network().Peers()),
 	)
 }
@@ -250,7 +255,7 @@ func (d *Discovery) discoverPeers() {
 
 	// Advertise ourselves
 	util.Advertise(d.ctx, routingDiscovery, DiscoveryNamespace)
-	iceLogger().Infow("Advertising on DHT", "namespace", DiscoveryNamespace)
+	iceLogger().Infow("[NETWORK DISCOVERY] Advertising on DHT", "namespace", DiscoveryNamespace)
 
 	ticker := time.NewTicker(DiscoveryInterval)
 	defer ticker.Stop()

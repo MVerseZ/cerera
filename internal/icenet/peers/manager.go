@@ -45,14 +45,15 @@ type PeerInfo struct {
 
 // Manager manages peer connections and information
 type Manager struct {
-	host     host.Host
-	mu       sync.RWMutex
-	peers    map[peer.ID]*PeerInfo
-	banned   map[peer.ID]time.Time
-	ctx      context.Context
-	cancel   context.CancelFunc
-	maxPeers int
-	minPeers int
+	host           host.Host
+	mu             sync.RWMutex
+	peers          map[peer.ID]*PeerInfo
+	confirmedPeers map[types.Address]*PeerInfo // extends network communication => same as DNS, ip <-> libp2p_addr <-> Cerera address
+	banned         map[peer.ID]time.Time
+	ctx            context.Context
+	cancel         context.CancelFunc
+	maxPeers       int
+	minPeers       int
 
 	// Callbacks
 	onPeerConnected    func(peer.ID)
@@ -68,13 +69,14 @@ func NewManager(ctx context.Context, h host.Host, maxPeers int) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
 
 	m := &Manager{
-		host:     h,
-		peers:    make(map[peer.ID]*PeerInfo),
-		banned:   make(map[peer.ID]time.Time),
-		ctx:      ctx,
-		cancel:   cancel,
-		maxPeers: maxPeers,
-		minPeers: DefaultMinPeers,
+		host:           h,
+		peers:          make(map[peer.ID]*PeerInfo),
+		confirmedPeers: make(map[types.Address]*PeerInfo),
+		banned:         make(map[peer.ID]time.Time),
+		ctx:            ctx,
+		cancel:         cancel,
+		maxPeers:       maxPeers,
+		minPeers:       DefaultMinPeers,
 	}
 
 	// Setup connection notifier
@@ -149,7 +151,7 @@ func (m *Manager) handleConnect(n network.Network, conn network.Conn) {
 	}
 	m.mu.Unlock()
 
-	peersLogger().Infow("Peer connected",
+	peersLogger().Infow("[PEERS MANAGER] Peer connected",
 		"peer", peerID,
 		"direction", direction,
 		"totalPeers", m.GetPeerCount(),
@@ -169,7 +171,7 @@ func (m *Manager) handleDisconnect(n network.Network, conn network.Conn) {
 	delete(m.peers, peerID)
 	m.mu.Unlock()
 
-	peersLogger().Infow("Peer disconnected",
+	peersLogger().Infow("[PEERSMANAGER] Peer disconnected",
 		"peer", peerID,
 		"totalPeers", m.GetPeerCount(),
 	)

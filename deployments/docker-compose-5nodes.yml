@@ -96,6 +96,18 @@ services:
       cerera-network:
         ipv4_address: 172.25.0.15
 
+  # Block Observer — веб-страница для просмотра блоков с нод (открыть в браузере)
+  observer:
+    image: nginx:alpine
+    container_name: cerera-observer
+    volumes:
+      - ../tests/observer:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    networks:
+      cerera-network:
+
 volumes:
   node1_data:
   node1_config:

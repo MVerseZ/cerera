@@ -10,6 +10,7 @@ import (
 	"github.com/cerera/internal/cerera/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/message"
+	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -31,6 +32,7 @@ type VotingMessage struct {
 	SequenceID  int64         `json:"sequenceId"`
 	VoterID     peer.ID       `json:"voterId"`
 	VoteType    VoteType      `json:"voteType"`
+	VoterAddr   types.Address `json:"voterAddr"`
 	// Block is included only in PrePrepare to ensure availability.
 	Block     *block.Block `json:"block,omitempty"`
 	Signature []byte       `json:"signature"`
@@ -38,7 +40,7 @@ type VotingMessage struct {
 }
 
 // NewVotingMessage creates a new voting message
-func NewVotingMessage(msgType message.MType, blockHash common.Hash, height int, viewID, seqID int64, voterID peer.ID, voteType VoteType) *VotingMessage {
+func NewVotingMessage(msgType message.MType, blockHash common.Hash, height int, viewID, seqID int64, voterID peer.ID, voterAddr types.Address, voteType VoteType) *VotingMessage {
 	return &VotingMessage{
 		Type:        msgType,
 		BlockHash:   blockHash,
@@ -47,6 +49,7 @@ func NewVotingMessage(msgType message.MType, blockHash common.Hash, height int, 
 		SequenceID:  seqID,
 		VoterID:     voterID,
 		VoteType:    voteType,
+		VoterAddr:   voterAddr,
 		Timestamp:   time.Now().UnixNano(),
 	}
 }
@@ -90,6 +93,7 @@ type VotingManager struct {
 	pendingPrepareVotes map[RoundKey][]*Vote
 	pendingCommitVotes  map[RoundKey][]*Vote
 	localPeerID         peer.ID
+	localPeerAddr       types.Address
 
 	// Callbacks
 	onPrepareQuorum func(common.Hash, int)
@@ -99,7 +103,7 @@ type VotingManager struct {
 }
 
 // NewVotingManager creates a new voting manager
-func NewVotingManager(ctx context.Context, localPeerID peer.ID) *VotingManager {
+func NewVotingManager(ctx context.Context, localPeerID peer.ID, localPeerAddr types.Address) *VotingManager {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &VotingManager{
@@ -109,6 +113,7 @@ func NewVotingManager(ctx context.Context, localPeerID peer.ID) *VotingManager {
 		pendingPrepareVotes: make(map[RoundKey][]*Vote),
 		pendingCommitVotes:  make(map[RoundKey][]*Vote),
 		localPeerID:         localPeerID,
+		localPeerAddr:       localPeerAddr,
 	}
 }
 
@@ -225,6 +230,7 @@ func (vm *VotingManager) StartRound(b *block.Block, viewID, seqID int64) error {
 		viewID,
 		seqID,
 		vm.localPeerID,
+		vm.localPeerAddr,
 		VoteApprove,
 	)
 	msg.Block = b
@@ -305,6 +311,7 @@ func (vm *VotingManager) HandlePrePrepare(msg *VotingMessage, from peer.ID) erro
 		msg.ViewID,
 		msg.SequenceID,
 		vm.localPeerID,
+		vm.localPeerAddr,
 		VoteApprove,
 	)
 
@@ -413,6 +420,7 @@ func (vm *VotingManager) HandlePrepare(msg *VotingMessage, from peer.ID) error {
 			msg.ViewID,
 			msg.SequenceID,
 			vm.localPeerID,
+			vm.localPeerAddr,
 			VoteApprove,
 		)
 

@@ -11,6 +11,8 @@ import (
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/message"
+	"github.com/cerera/internal/cerera/storage"
+	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/peers"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -64,11 +66,10 @@ type HeightLockProvider interface {
 }
 
 // NewManager creates a new consensus manager
-func NewManager(ctx context.Context, h host.Host, peerManager *peers.Manager, peerScorer *peers.Scorer, validator BlockValidator) *Manager {
+func NewManager(ctx context.Context, h host.Host, peerManager *peers.Manager, peerScorer *peers.Scorer, validator BlockValidator, localPeerAddr types.Address) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
 
-	voting := NewVotingManager(ctx, h.ID())
-
+	voting := NewVotingManager(ctx, h.ID(), localPeerAddr)
 	m := &Manager{
 		host:        h,
 		peerManager: peerManager,
@@ -589,6 +590,17 @@ func (m *Manager) signVotingMessage(msg *VotingMessage) error {
 		return err
 	}
 	msg.Signature = sig
+
+	if privKey, pubKey, err := storage.GetKeys(); err == nil && privKey != nil && pubKey != nil {
+		fmt.Printf("Get keys: \t%s\r\n\t%s\r\n", privKey.B58Serialize(), pubKey.B58Serialize())
+	}
+	if msg.Type == message.MTPrePrepare {
+		fmt.Printf("Block header: Node: \t%+s\r\n", msg.Block.Head.Node)
+	}
+	fmt.Printf("Voter ID: \t%s\r\n", msg.VoterID)
+	fmt.Printf("Voter Address: \t%s\r\n", msg.VoterAddr)
+	fmt.Printf("Message signature: \t%x\r\n", msg.Signature)
+	// fmt.Printf("Block header: Node: \t%+s\r\n", msg.Block.Head.Node)
 	return nil
 }
 

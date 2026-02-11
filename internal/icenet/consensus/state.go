@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -198,8 +199,14 @@ func quorumForN(n int) int {
 // SetState sets the consensus state
 func (rs *RoundState) SetState(state ConsensusState) {
 	rs.mu.Lock()
-	defer rs.mu.Unlock()
+	prev := rs.State
 	rs.State = state
+	height := rs.BlockHeight
+	rs.mu.Unlock()
+	if prev != state {
+		fmt.Printf("[CONSENSUS] status %d -> %d (%s -> %s) height=%d\n",
+			prev, state, prev.String(), state.String(), height)
+	}
 }
 
 // GetState returns the current consensus state
