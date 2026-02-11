@@ -74,19 +74,19 @@ type RoundKey struct {
 
 // RoundState tracks the state of a single consensus round
 type RoundState struct {
-	mu           sync.RWMutex
-	BlockHash    common.Hash       `json:"blockHash"`
-	BlockHeight  int               `json:"blockHeight"`
-	State        ConsensusState    `json:"state"`
-	ViewID       int64             `json:"viewId"`
-	SequenceID   int64             `json:"sequenceId"`
-	ValidatorCount int             `json:"validatorCount"`
-	Quorum         int             `json:"quorum"`
+	mu             sync.RWMutex
+	BlockHash      common.Hash    `json:"blockHash"`
+	BlockHeight    int            `json:"blockHeight"`
+	State          ConsensusState `json:"state"`
+	ViewID         int64          `json:"viewId"`
+	SequenceID     int64          `json:"sequenceId"`
+	ValidatorCount int            `json:"validatorCount"`
+	Quorum         int            `json:"quorum"`
 	validators     map[peer.ID]bool
-	PrepareVotes map[peer.ID]*Vote `json:"prepareVotes"`
-	CommitVotes  map[peer.ID]*Vote `json:"commitVotes"`
-	StartTime    time.Time         `json:"startTime"`
-	Deadline     time.Time         `json:"deadline"`
+	PrepareVotes   map[peer.ID]*Vote `json:"prepareVotes"`
+	CommitVotes    map[peer.ID]*Vote `json:"commitVotes"`
+	StartTime      time.Time         `json:"startTime"`
+	Deadline       time.Time         `json:"deadline"`
 }
 
 // NewRoundState creates a new consensus round state
@@ -98,18 +98,18 @@ func NewRoundState(blockHash common.Hash, blockHeight int, viewID, seqID int64, 
 	validatorCount := len(validatorSnapshot)
 
 	return &RoundState{
-		BlockHash:    blockHash,
-		BlockHeight:  blockHeight,
-		State:        StatePrePrepare,
-		ViewID:       viewID,
-		SequenceID:   seqID,
+		BlockHash:      blockHash,
+		BlockHeight:    blockHeight,
+		State:          StatePrePrepare,
+		ViewID:         viewID,
+		SequenceID:     seqID,
 		ValidatorCount: validatorCount,
 		Quorum:         quorumForN(validatorCount),
 		validators:     validators,
-		PrepareVotes: make(map[peer.ID]*Vote),
-		CommitVotes:  make(map[peer.ID]*Vote),
-		StartTime:    time.Now(),
-		Deadline:     time.Now().Add(timeout),
+		PrepareVotes:   make(map[peer.ID]*Vote),
+		CommitVotes:    make(map[peer.ID]*Vote),
+		StartTime:      time.Now(),
+		Deadline:       time.Now().Add(timeout),
 	}
 }
 
@@ -278,10 +278,11 @@ func (vs *ValidatorSet) Size() int {
 
 // Quorum returns the quorum size (2f + 1 where f = (n-1)/3)
 func (vs *ValidatorSet) Quorum() int {
-	n := vs.Size()
-	if n == 0 {
-		return 0
-	}
-	f := (n - 1) / 3
-	return 2*f + 1
+	return vs.Size() - 1
+	// n := vs.Size()
+	// if n == 0 {
+	// 	return 0
+	// }
+	// f := (n - 1) / 3
+	// return 2*f + 1
 }

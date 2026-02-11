@@ -13,6 +13,7 @@ import (
 	"github.com/cerera/internal/cerera/message"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/internal/icenet/metrics"
 	"github.com/cerera/internal/icenet/peers"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -95,6 +96,8 @@ func NewManager(ctx context.Context, h host.Host, peerManager *peers.Manager, pe
 // Start starts the consensus manager
 func (m *Manager) Start() {
 	m.voting.Start()
+	metrics.SetConsensusStatus(1)
+	m.startConsensusMetricsUpdater()
 	consensusLogger().Infow("Consensus manager started")
 }
 
@@ -102,7 +105,36 @@ func (m *Manager) Start() {
 func (m *Manager) Stop() {
 	m.cancel()
 	m.voting.Stop()
+	metrics.SetConsensusStatus(0)
+	metrics.SetConsensusNodesTotal(0)
+	metrics.SetConsensusVotersTotal(0)
+	metrics.SetConsensusNonce(0)
 	consensusLogger().Infow("Consensus manager stopped")
+}
+
+// startConsensusMetricsUpdater runs a goroutine that periodically updates
+// icenet_consensus_* metrics for Grafana (status, nodes_total, voters_total, nonce).
+func (m *Manager) startConsensusMetricsUpdater() {
+	update := func() {
+		st := m.GetStatus()
+		metrics.SetConsensusNodesTotal(st.ValidatorCount)
+		metrics.SetConsensusVotersTotal(st.ValidatorCount)
+		metrics.SetConsensusNonce(st.SequenceID)
+		metrics.SetValidatorCount(st.ValidatorCount)
+	}
+	update() // initial update
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-ticker.C:
+				update()
+			}
+		}
+	}()
 }
 
 // ProposeBlock proposes a new block for consensus
@@ -158,6 +190,7 @@ func (m *Manager) ProposeBlock(b *block.Block) error {
 
 	// Start consensus round
 	if err := m.voting.StartRound(b, viewID, seqID); err != nil {
+		metrics.RecordConsensusRoundFailed()
 		consensusLogger().Errorw("[CONSENSUS] Failed to start consensus round",
 			"hash", b.Hash,
 			"height", b.Head.Height,
@@ -166,6 +199,7 @@ func (m *Manager) ProposeBlock(b *block.Block) error {
 		return fmt.Errorf("failed to start consensus round: %w", err)
 	}
 
+	metrics.RecordConsensusRoundStarted()
 	consensusLogger().Infow("[CONSENSUS] Block proposed for consensus",
 		"hash", b.Hash,
 		"height", b.Head.Height,
@@ -288,6 +322,11 @@ func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
+	// Ensure voter address exists in vault (with 0 balance) so /account shows all nodes
+	if v := storage.GetVault(); v != nil {
+		v.EnsureAccount(msg.VoterAddr)
+	}
+
 	consensusLogger().Infow("[CONSENSUS] Processing PrePrepare",
 		"from", from,
 		"blockHash", msg.BlockHash,
@@ -296,7 +335,8 @@ func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
 		"seqID", msg.SequenceID,
 	)
 
-	return m.voting.HandlePrePrepare(msg, from)
+	// Use the logical voter ID (origin) for consensus semantics.
+	return m.voting.HandlePrePrepare(msg, msg.VoterID)
 }
 
 // handlePrepare handles prepare messages
@@ -335,7 +375,12 @@ func (m *Manager) handlePrepare(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
-	return m.voting.HandlePrepare(msg, from)
+	if v := storage.GetVault(); v != nil {
+		v.EnsureAccount(msg.VoterAddr)
+	}
+
+	// Use the logical voter ID (origin) for consensus semantics.
+	return m.voting.HandlePrepare(msg, msg.VoterID)
 }
 
 // handleCommit handles commit messages
@@ -374,7 +419,12 @@ func (m *Manager) handleCommit(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
-	return m.voting.HandleCommit(msg, from)
+	if v := storage.GetVault(); v != nil {
+		v.EnsureAccount(msg.VoterAddr)
+	}
+
+	// Use the logical voter ID (origin) for consensus semantics.
+	return m.voting.HandleCommit(msg, msg.VoterID)
 }
 
 // handleViewChange handles view change messages
@@ -406,6 +456,7 @@ func (m *Manager) handlePrepareQuorum(blockHash common.Hash, height int) {
 	prepareCount := 0
 	if round != nil {
 		prepareCount = round.GetPrepareVoteCount()
+		metrics.SetPrepareVotes(prepareCount)
 	}
 	consensusLogger().Infow("[CONSENSUS] Prepare quorum reached",
 		"blockHash", blockHash,
@@ -426,6 +477,7 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 	commitCount := 0
 	if round != nil {
 		commitCount = round.GetCommitVoteCount()
+		metrics.SetCommitVotes(commitCount)
 	}
 	consensusLogger().Infow("[CONSENSUS] Commit quorum reached - finalizing block",
 		"blockHash", blockHash,
@@ -495,6 +547,7 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 			"height", height,
 		)
 		if err := m.chain.AddBlock(b); err != nil {
+			metrics.RecordConsensusRoundFailed()
 			consensusLogger().Errorw("[CONSENSUS] Failed to add finalized block to chain",
 				"error", err,
 				"blockHash", blockHash,
@@ -502,6 +555,7 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 			)
 			return
 		}
+		metrics.RecordConsensusRoundCompleted()
 		consensusLogger().Infow("[CONSENSUS] Block successfully added to chain",
 			"blockHash", blockHash,
 			"height", height,
@@ -518,11 +572,14 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 		m.onBlockFinalized(b)
 	}
 
-	// Cleanup cache entry.
+	// Cleanup cache entry and reset vote gauges for next round
 	m.deleteBlock(blockHash)
+	metrics.SetPrepareVotes(0)
+	metrics.SetCommitVotes(0)
 }
 
 func (m *Manager) handleRoundTimeout(key RoundKey, blockHash common.Hash) {
+	metrics.RecordConsensusRoundFailed()
 	consensusLogger().Warnw("[CONSENSUS] Round timeout - initiating view change",
 		"blockHash", blockHash,
 		"height", key.Height,
@@ -608,23 +665,26 @@ func (m *Manager) verifyVotingMessage(msg *VotingMessage, from peer.ID) error {
 	if msg == nil {
 		return fmt.Errorf("nil voting message")
 	}
-	if msg.VoterID != from {
-		return fmt.Errorf("voterID mismatch: msg=%s from=%s", msg.VoterID, from)
+	if msg.VoterID == "" {
+		return fmt.Errorf("missing voter ID")
 	}
 	if len(msg.Signature) == 0 {
 		return fmt.Errorf("missing signature")
 	}
 
-	pub := m.host.Peerstore().PubKey(from)
+	// Always verify against the logical voter (message origin), not the relay peer.
+	voterID := msg.VoterID
+
+	pub := m.host.Peerstore().PubKey(voterID)
 	if pub == nil {
 		// Attempt extraction for inline public keys.
-		if extracted, err := from.ExtractPublicKey(); err == nil && extracted != nil {
+		if extracted, err := voterID.ExtractPublicKey(); err == nil && extracted != nil {
 			pub = extracted
-			m.host.Peerstore().AddPubKey(from, pub)
+			m.host.Peerstore().AddPubKey(voterID, pub)
 		}
 	}
 	if pub == nil {
-		return fmt.Errorf("missing public key for peer %s", from)
+		return fmt.Errorf("missing public key for peer %s", voterID)
 	}
 
 	payload, err := msg.SignBytes()
@@ -639,8 +699,17 @@ func (m *Manager) verifyVotingMessage(msg *VotingMessage, from peer.ID) error {
 		return fmt.Errorf("invalid signature")
 	}
 
+	// If the transport relay differs from the logical voter, log it for diagnostics
+	// but do not treat it as an error (this is normal for GossipSub).
+	if from != "" && from != voterID {
+		consensusLogger().Debugw("[CONSENSUS] Voting message relayed by different peer",
+			"voterID", voterID,
+			"relayFrom", from,
+		)
+	}
+
 	// Best-effort: ensure peerstore has the pubkey cached for later.
-	m.host.Peerstore().AddPubKey(from, pub)
+	m.host.Peerstore().AddPubKey(voterID, pub)
 
 	return nil
 }

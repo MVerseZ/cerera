@@ -1,0 +1,265 @@
+# Развёртывание на удалённом хосте: 194.76.173.132
+# Observer + 9 нод + Prometheus + Grafana. Запуск: docker compose -f docker_rem9_observer_9nodes.yml up -d
+# Observer UI: http://194.76.173.132:8080
+# Grafana:     http://194.76.173.132:3100  (admin / admin)
+# Prometheus:  http://194.76.173.132:9090
+# Ноды HTTP: 194.76.173.132:1337–1345, P2P: 31100–31108
+
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node1
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
+    ports:
+      - "0.0.0.0:1337:1337"
+      - "0.0.0.0:31100:31100"
+    volumes:
+      - rem9_node1_data:/app/data
+      - rem9_node1_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.11
+
+  node2:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node2
+    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
+    ports:
+      - "0.0.0.0:1338:1338"
+      - "0.0.0.0:31101:31101"
+    volumes:
+      - rem9_node2_data:/app/data
+      - rem9_node2_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.12
+
+  node3:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node3
+    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
+    ports:
+      - "0.0.0.0:1339:1339"
+      - "0.0.0.0:31102:31102"
+    volumes:
+      - rem9_node3_data:/app/data
+      - rem9_node3_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.13
+
+  node4:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node4
+    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.15/tcp/31104
+    ports:
+      - "0.0.0.0:1340:1340"
+      - "0.0.0.0:31103:31103"
+    volumes:
+      - rem9_node4_data:/app/data
+      - rem9_node4_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.14
+
+  node5:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node5
+    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+    ports:
+      - "0.0.0.0:1341:1341"
+      - "0.0.0.0:31104:31104"
+    volumes:
+      - rem9_node5_data:/app/data
+      - rem9_node5_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.15
+
+  node6:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node6
+    command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+    ports:
+      - "0.0.0.0:1342:1342"
+      - "0.0.0.0:31105:31105"
+    volumes:
+      - rem9_node6_data:/app/data
+      - rem9_node6_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.16
+
+  node7:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node7
+    command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+    ports:
+      - "0.0.0.0:1343:1343"
+      - "0.0.0.0:31106:31106"
+    volumes:
+      - rem9_node7_data:/app/data
+      - rem9_node7_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.17
+
+  node8:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node8
+    command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+    ports:
+      - "0.0.0.0:1344:1344"
+      - "0.0.0.0:31107:31107"
+    volumes:
+      - rem9_node8_data:/app/data
+      - rem9_node8_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.18
+
+  node9:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-rem9-node9
+    command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+    ports:
+      - "0.0.0.0:1345:1345"
+      - "0.0.0.0:31108:31108"
+    volumes:
+      - rem9_node9_data:/app/data
+      - rem9_node9_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+        ipv4_address: 172.25.0.19
+
+  observer:
+    image: nginx:alpine
+    container_name: cerera-rem9-observer
+    volumes:
+      - ../tests/observer:/usr/share/nginx/html:ro
+    ports:
+      - "0.0.0.0:8080:80"
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cerera-rem9-prometheus
+    depends_on:
+      - node1
+      - node2
+      - node3
+      - node4
+      - node5
+      - node6
+      - node7
+      - node8
+      - node9
+    volumes:
+      - ./prometheus-rem9.yml:/etc/prometheus/prometheus.yml:ro
+      - rem9_prom_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "0.0.0.0:9090:9090"
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cerera-rem9-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "0.0.0.0:3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - rem9_grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    networks:
+      cerera-rem9-network:
+
+volumes:
+  rem9_node1_data:
+  rem9_node1_config:
+  rem9_node2_data:
+  rem9_node2_config:
+  rem9_node3_data:
+  rem9_node3_config:
+  rem9_node4_data:
+  rem9_node4_config:
+  rem9_node5_data:
+  rem9_node5_config:
+  rem9_node6_data:
+  rem9_node6_config:
+  rem9_node7_data:
+  rem9_node7_config:
+  rem9_node8_data:
+  rem9_node8_config:
+  rem9_node9_data:
+  rem9_node9_config:
+  rem9_prom_data:
+  rem9_grafana_data:
+
+networks:
+  cerera-rem9-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1

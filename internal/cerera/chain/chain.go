@@ -585,8 +585,12 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 		bc.metrics.blockGasUsed.Observe(float64(newBlock.Head.GasUsed))
 	}
 
-	if err := bc.storage.Save(newBlock, bc.chainPath); err != nil {
-		return err
+	// Persist block only when a storage backend and path are configured.
+	// In in-memory mode (cfg.IN_MEM), chainPath is empty and persistence is skipped.
+	if bc.storage != nil && bc.chainPath != "" {
+		if err := bc.storage.Save(newBlock, bc.chainPath); err != nil {
+			return err
+		}
 	}
 
 	return nil

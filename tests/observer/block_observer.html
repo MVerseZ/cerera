@@ -222,7 +222,7 @@
   <div class="panel">
     <h2>Добавить URL ноды для получения блоков</h2>
     <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
-      Укажите базовый URL ноды (например: http://localhost:1337/app). Запросы блоков отправляются как JSON-RPC POST на этот адрес.
+      Укажите базовый URL ноды (например: http://194.76.173.132:1337/app). Запросы блоков отправляются как JSON-RPC POST на этот адрес.
     </p>
     <div class="quick-urls">
       <p>Быстрый выбор (Docker, localhost):</p>
@@ -234,7 +234,7 @@
       </div>
     </div>
     <form class="url-form" id="addUrlForm">
-      <input type="url" id="nodeUrl" placeholder="http://localhost:1337/app" required>
+      <input type="url" id="nodeUrl" placeholder="http://194.76.173.132:1337/app" required>
       <button type="submit">Добавить</button>
     </form>
     <ul class="url-list" id="urlList"></ul>
@@ -268,7 +268,7 @@
     </p>
     <div class="block-index-input">
       <label for="blockNodeUrl">URL ноды:</label>
-      <input type="text" id="blockNodeUrl" placeholder="http://localhost:1337/app" style="flex:1; min-width: 200px;">
+      <input type="text" id="blockNodeUrl" placeholder="http://194.76.173.132:1337/app" style="flex:1; min-width: 200px;">
       <label for="blockIndex">Индекс:</label>
       <input type="number" id="blockIndex" min="0" value="0" style="width: 80px;">
       <button type="button" id="loadBlockBtn">Загрузить блок</button>
@@ -339,7 +339,7 @@
         const n = parseInt(btn.dataset.preset, 10);
         const ports = DOCKER_PRESETS[n];
         if (!ports) return;
-        urls = ports.map(p => `http://localhost:${p}/app`);
+        urls = ports.map(p => `http://194.76.173.132:${p}/app`);
         saveUrls();
         renderUrlList();
         renderNodes();

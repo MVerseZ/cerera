@@ -154,6 +154,31 @@ var (
 		Help:      "Number of commit votes in current round",
 	})
 
+	// Consensus status/nodes/voters/nonce (for Grafana Icenet Consensus panel)
+	ConsensusStatus = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "consensus_status",
+		Help:      "Consensus status: 0=stopped, 1=started",
+	})
+
+	ConsensusNodesTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "consensus_nodes_total",
+		Help:      "Number of nodes in consensus (validator set size)",
+	})
+
+	ConsensusVotersTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "consensus_voters_total",
+		Help:      "Number of voters (validators) in consensus",
+	})
+
+	ConsensusNonce = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "consensus_nonce",
+		Help:      "Consensus sequence ID (nonce) for current view",
+	})
+
 	// Network metrics
 	MessagesReceived = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
@@ -349,6 +374,26 @@ func SetPrepareVotes(count int) {
 // SetCommitVotes sets the commit vote count
 func SetCommitVotes(count int) {
 	ConsensusCommitVotes.Set(float64(count))
+}
+
+// SetConsensusStatus sets consensus status (0=stopped, 1=started)
+func SetConsensusStatus(status int) {
+	ConsensusStatus.Set(float64(status))
+}
+
+// SetConsensusNodesTotal sets the number of nodes in consensus
+func SetConsensusNodesTotal(count int) {
+	ConsensusNodesTotal.Set(float64(count))
+}
+
+// SetConsensusVotersTotal sets the number of voters in consensus
+func SetConsensusVotersTotal(count int) {
+	ConsensusVotersTotal.Set(float64(count))
+}
+
+// SetConsensusNonce sets the consensus sequence ID (nonce)
+func SetConsensusNonce(nonce int64) {
+	ConsensusNonce.Set(float64(nonce))
 }
 
 // RecordMessageReceived records a received message

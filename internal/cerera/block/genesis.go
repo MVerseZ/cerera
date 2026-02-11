@@ -10,7 +10,7 @@ import (
 func GenesisHead(chainId int) *Header {
 	var genesisHeader = &Header{
 		Ctx:        17,
-		Difficulty: uint64(111111110), //uint64(111111111111111), // 4 trailng zeros
+		Difficulty: uint64(11111111), //uint64(111111111111111), // 4 trailng zeros
 		Extra:      [8]byte{0x1, 0xf, 0x0, 0x0, 0x0, 0x0, 0xd, 0xe},
 		Height:     0,
 		Index:      0,
@@ -23,7 +23,7 @@ func GenesisHead(chainId int) *Header {
 		Root:       common.EmptyHash(),
 		Size:       0,
 		V:          [8]byte{0xe, 0x0, 0xf, 0xf, 0xf, 0xf, 0x2, 0x1},
-		Nonce:      53164400,
+		Nonce:      20122872,
 	}
 	return genesisHeader
 }
