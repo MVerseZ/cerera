@@ -1,0 +1,46 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "vault-faucet-transfers",
+  "title": "Vault Faucet / Transfers",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Vault Faucet / Transfers",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "increase(vault_faucet_amount_total[1h])",
+          "legendFormat": "faucet (1h)",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(vault_transfers_total[5m])",
+          "legendFormat": "transfers rate",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

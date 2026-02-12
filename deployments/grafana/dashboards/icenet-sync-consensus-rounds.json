@@ -1,0 +1,66 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-sync-consensus-rounds",
+  "title": "Icenet Sync & Consensus Rounds",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet Sync & Consensus Rounds",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "icenet_sync_progress",
+          "legendFormat": "sync progress %",
+          "refId": "A"
+        },
+        {
+          "expr": "icenet_sync_active",
+          "legendFormat": "sync active (0/1)",
+          "refId": "B"
+        },
+        {
+          "expr": "icenet_sync_blocks_remaining",
+          "legendFormat": "blocks remaining",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(icenet_consensus_rounds_total[5m])",
+          "legendFormat": "rounds started rate",
+          "refId": "D"
+        },
+        {
+          "expr": "rate(icenet_consensus_rounds_completed_total[5m])",
+          "legendFormat": "rounds completed rate",
+          "refId": "E"
+        },
+        {
+          "expr": "rate(icenet_consensus_rounds_failed_total[5m])",
+          "legendFormat": "rounds failed rate",
+          "refId": "F"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

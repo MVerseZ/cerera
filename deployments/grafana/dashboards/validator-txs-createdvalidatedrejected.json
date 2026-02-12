@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "validator-txs-createdvalidatedrejected",
+  "title": "Validator TXs (created/validated/rejected)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Validator TXs (created/validated/rejected)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "increase(validator_tx_created_total[15m])",
+          "legendFormat": "created",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(validator_tx_validated_total[15m])",
+          "legendFormat": "validated",
+          "refId": "B"
+        },
+        {
+          "expr": "increase(validator_tx_rejected_total[15m])",
+          "legendFormat": "rejected",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

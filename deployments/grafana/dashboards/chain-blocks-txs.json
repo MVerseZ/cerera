@@ -1,0 +1,46 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "chain-blocks-txs",
+  "title": "Chain Blocks / TXs",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Chain Blocks / TXs",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "increase(chain_blocks_total[1h])",
+          "legendFormat": "blocks (1h)",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(chain_txs_total[1h])",
+          "legendFormat": "txs (1h)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

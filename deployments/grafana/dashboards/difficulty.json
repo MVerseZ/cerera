@@ -1,0 +1,41 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "difficulty",
+  "title": "Difficulty",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Difficulty",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "chain_avg_block_time_seconds",
+          "legendFormat": "avg block time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

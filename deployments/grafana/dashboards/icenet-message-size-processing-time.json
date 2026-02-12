@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-message-size-processing-time",
+  "title": "Icenet Message Size & Processing Time",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet Message Size & Processing Time",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(icenet_message_size_bytes_bucket[5m])) by (le, message_type)))",
+          "legendFormat": "p95 size",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(icenet_message_size_bytes_bucket[5m])) by (le, message_type)))",
+          "legendFormat": "p50 size",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(icenet_message_processing_time_seconds_bucket[5m])) by (le, message_type))",
+          "legendFormat": "p95 processing time",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

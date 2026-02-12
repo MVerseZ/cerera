@@ -1,0 +1,46 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "vault-accounts-circulating-supply",
+  "title": "Vault Accounts & Circulating Supply",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Vault Accounts & Circulating Supply",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "vault_accounts_total",
+          "legendFormat": "accounts",
+          "refId": "A"
+        },
+        {
+          "expr": "vault_circulating_supply",
+          "legendFormat": "circulating",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

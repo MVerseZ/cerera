@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "pool-size-bytes",
+  "title": "Pool Size & Bytes",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Pool Size & Bytes",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "pool_size",
+          "legendFormat": "size",
+          "refId": "A"
+        },
+        {
+          "expr": "pool_bytes",
+          "legendFormat": "bytes",
+          "refId": "B"
+        },
+        {
+          "expr": "pool_max_size",
+          "legendFormat": "max size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

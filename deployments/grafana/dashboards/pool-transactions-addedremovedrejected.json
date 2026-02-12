@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "pool-transactions-addedremovedrejected",
+  "title": "Pool Transactions (added/removed/rejected)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Pool Transactions (added/removed/rejected)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(pool_tx_added_total[5m])",
+          "legendFormat": "added rate",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(pool_tx_removed_total[5m])",
+          "legendFormat": "removed rate",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(pool_tx_rejected_total[5m])",
+          "legendFormat": "rejected rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

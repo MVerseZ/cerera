@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-network-latencythroughputtopology",
+  "title": "Icenet Network (latency/throughput/topology)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet Network (latency/throughput/topology)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(icenet_network_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95 latency",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(icenet_network_throughput_bytes[5m])",
+          "legendFormat": "throughput - {{direction}}",
+          "refId": "B"
+        },
+        {
+          "expr": "icenet_network_topology_nodes",
+          "legendFormat": "topology nodes",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

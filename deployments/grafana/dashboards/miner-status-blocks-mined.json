@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "miner-status-blocks-mined",
+  "title": "Miner Status & Blocks Mined",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Miner Status & Blocks Mined",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "miner_status",
+          "legendFormat": "status (0=stopped, 1=active)",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(miner_blocks_mined_total[15m])",
+          "legendFormat": "blocks mined (15m)",
+          "refId": "B"
+        },
+        {
+          "expr": "increase(miner_mining_errors_total[15m])",
+          "legendFormat": "errors (15m)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

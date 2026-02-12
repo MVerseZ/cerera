@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "miner-mining-duration-pending-txs",
+  "title": "Miner Mining Duration & Pending TXs",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Miner Mining Duration & Pending TXs",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(miner_mining_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(miner_mining_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50 duration",
+          "refId": "B"
+        },
+        {
+          "expr": "miner_pending_txs_in_block",
+          "legendFormat": "pending txs",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

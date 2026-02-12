@@ -1,0 +1,61 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "consensus-voters-nodes-rounds-icenet",
+  "title": "Consensus Voters, Nodes & Rounds (icenet)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Consensus Voters, Nodes & Rounds (icenet)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "icenet_consensus_voters_total",
+          "legendFormat": "voters",
+          "refId": "A"
+        },
+        {
+          "expr": "icenet_consensus_nodes_total",
+          "legendFormat": "nodes",
+          "refId": "B"
+        },
+        {
+          "expr": "increase(icenet_consensus_rounds_completed_total[1h])",
+          "legendFormat": "rounds completed (1h)",
+          "refId": "C"
+        },
+        {
+          "expr": "icenet_consensus_prepare_votes",
+          "legendFormat": "prepare votes",
+          "refId": "D"
+        },
+        {
+          "expr": "icenet_consensus_commit_votes",
+          "legendFormat": "commit votes",
+          "refId": "E"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

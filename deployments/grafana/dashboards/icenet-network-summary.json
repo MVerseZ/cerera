@@ -1,0 +1,56 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-network-summary",
+  "title": "Icenet Network Summary",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Icenet Network Summary",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "icenet_connections_active",
+          "legendFormat": "Active Connections",
+          "refId": "A"
+        },
+        {
+          "expr": "icenet_consensus_nodes_total",
+          "legendFormat": "Consensus Nodes",
+          "refId": "B"
+        },
+        {
+          "expr": "icenet_network_topology_nodes",
+          "legendFormat": "Topology Nodes",
+          "refId": "C"
+        },
+        {
+          "expr": "icenet_consensus_status",
+          "legendFormat": "Consensus Status",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

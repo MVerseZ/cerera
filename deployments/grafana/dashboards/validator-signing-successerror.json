@@ -1,0 +1,46 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "validator-signing-successerror",
+  "title": "Validator Signing (success/error)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Validator Signing (success/error)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "increase(validator_sign_success_total[15m])",
+          "legendFormat": "sign success",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(validator_sign_error_total[15m])",
+          "legendFormat": "sign error",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

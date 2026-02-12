@@ -1,0 +1,56 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "pool-getpendingtransactions-duration",
+  "title": "Pool GetPendingTransactions Duration",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Pool GetPendingTransactions Duration",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(pool_get_pending_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(pool_get_pending_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50 duration",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(pool_get_pending_duration_seconds_sum[5m]) / rate(pool_get_pending_duration_seconds_count[5m])",
+          "legendFormat": "avg duration",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(pool_get_pending_duration_seconds_count[5m])",
+          "legendFormat": "calls rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

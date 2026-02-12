@@ -1,0 +1,61 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-dht-pubsub",
+  "title": "Icenet DHT & PubSub",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet DHT & PubSub",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "icenet_dht_routing_table_size",
+          "legendFormat": "DHT routing table size",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(icenet_dht_queries_total[5m])",
+          "legendFormat": "DHT queries rate",
+          "refId": "B"
+        },
+        {
+          "expr": "icenet_pubsub_topics_joined",
+          "legendFormat": "pubsub topics joined",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(icenet_pubsub_messages_received_total[5m])) by (topic)",
+          "legendFormat": "pubsub received - {{topic}}",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(rate(icenet_pubsub_messages_published_total[5m])) by (topic)",
+          "legendFormat": "pubsub published - {{topic}}",
+          "refId": "E"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

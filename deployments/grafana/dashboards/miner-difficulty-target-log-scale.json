@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "miner-difficulty-target-log-scale",
+  "title": "Miner Difficulty & Target (log scale)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Miner Difficulty & Target (log scale)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "miner_current_difficulty",
+          "legendFormat": "difficulty",
+          "refId": "A"
+        },
+        {
+          "expr": "miner_current_target",
+          "legendFormat": "target (log2)",
+          "refId": "B"
+        },
+        {
+          "expr": "miner_hash_to_target_ratio",
+          "legendFormat": "hash/target ratio (log2 diff)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

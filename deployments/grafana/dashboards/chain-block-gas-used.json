@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "chain-block-gas-used",
+  "title": "Chain Block Gas Used",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Chain Block Gas Used",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(chain_block_gas_used_bucket[5m]))",
+          "legendFormat": "p95 gas used",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(chain_block_gas_used_bucket[5m]))",
+          "legendFormat": "p50 gas used",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(chain_gas_total[5m])",
+          "legendFormat": "total gas rate",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

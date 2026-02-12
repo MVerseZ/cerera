@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-connection-latency",
+  "title": "Icenet Connection Latency",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet Connection Latency",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(icenet_connection_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95 latency",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(icenet_connection_latency_seconds_bucket[5m]))",
+          "legendFormat": "p50 latency",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(icenet_connection_latency_seconds_sum[5m]) / rate(icenet_connection_latency_seconds_count[5m])",
+          "legendFormat": "avg latency",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

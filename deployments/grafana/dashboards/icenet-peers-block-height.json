@@ -1,0 +1,56 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-peers-block-height",
+  "title": "Icenet Peers & Block Height",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet Peers & Block Height",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "icenet_peers_connected",
+          "legendFormat": "peers connected",
+          "refId": "A"
+        },
+        {
+          "expr": "icenet_block_height",
+          "legendFormat": "block height",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(icenet_peers_total[5m])",
+          "legendFormat": "peers total rate",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(icenet_peers_disconnected_total[5m])",
+          "legendFormat": "disconnects rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

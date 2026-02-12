@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "chain-height-block-size",
+  "title": "Chain Height & Block Size",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Chain Height & Block Size",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "chain_height",
+          "legendFormat": "height",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(chain_block_size_bytes_bucket[5m]))",
+          "legendFormat": "p95 block size",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(chain_block_size_bytes_bucket[5m]))",
+          "legendFormat": "p50 block size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

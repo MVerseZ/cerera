@@ -1,0 +1,51 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "consensus-state-nonce-icenet",
+  "title": "Consensus State & Nonce (icenet)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Consensus State & Nonce (icenet)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "icenet_consensus_status",
+          "legendFormat": "status (0=stopped, 1=started)",
+          "refId": "A"
+        },
+        {
+          "expr": "icenet_consensus_nonce",
+          "legendFormat": "nonce (sequence)",
+          "refId": "B"
+        },
+        {
+          "expr": "icenet_consensus_validators",
+          "legendFormat": "validators",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}

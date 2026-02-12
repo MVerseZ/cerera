@@ -1,0 +1,56 @@
+{
+  "tags": [
+    "cerera"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "editable": true,
+  "uid": "icenet-blocks-receivedvalidatedrejectedbroadcast",
+  "title": "Icenet Blocks (received/validated/rejected/broadcast)",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Icenet Blocks (received/validated/rejected/broadcast)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(icenet_blocks_received_total[5m])",
+          "legendFormat": "received rate",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(icenet_blocks_validated_total[5m])",
+          "legendFormat": "validated rate",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(icenet_blocks_rejected_total[5m])",
+          "legendFormat": "rejected rate",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(icenet_blocks_broadcast_total[5m])",
+          "legendFormat": "broadcast rate",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        }
+      }
+    }
+  ]
+}
