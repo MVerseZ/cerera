@@ -1,3 +1,4 @@
+# Prometheus: сбор метрик с нод Cerera (в т.ч. icenet_* из internal/icenet/metrics)
 global:
   scrape_interval: 5s
   evaluation_interval: 5s

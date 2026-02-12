@@ -1,4 +1,4 @@
-# Prometheus: сбор метрик с 9 нод (docker_rem9_observer_9nodes)
+# Prometheus: сбор метрик с 9 нод (docker_rem9_observer_9nodes), включая icenet_* (metrics.go)
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
