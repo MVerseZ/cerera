@@ -143,7 +143,7 @@
     {
       "id": 13,
       "type": "timeseries",
-      "title": "Consensus State & Nonce",
+      "title": "Consensus State & Nonce (icenet)",
       "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
@@ -151,18 +151,18 @@
       },
       "targets": [
         { 
-          "expr": "consensus_state", 
-          "legendFormat": "state (0=Follower, 1=Candidate, 2=Leader, 3=Validator, 4=Miner)",
+          "expr": "icenet_consensus_status", 
+          "legendFormat": "status (0=stopped, 1=started)",
           "refId": "A"
         },
         { 
-          "expr": "consensus_nonce", 
-          "legendFormat": "nonce",
+          "expr": "icenet_consensus_nonce", 
+          "legendFormat": "nonce (sequence)",
           "refId": "B"
         },
         { 
-          "expr": "consensus_status", 
-          "legendFormat": "status",
+          "expr": "icenet_consensus_validators", 
+          "legendFormat": "validators",
           "refId": "C"
         }
       ],
@@ -175,7 +175,7 @@
     {
       "id": 14,
       "type": "timeseries",
-      "title": "Consensus Voters & Nodes",
+      "title": "Consensus Voters, Nodes & Rounds (icenet)",
       "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
@@ -183,19 +183,29 @@
       },
       "targets": [
         { 
-          "expr": "consensus_voters_total", 
+          "expr": "icenet_consensus_voters_total", 
           "legendFormat": "voters",
           "refId": "A"
         },
         { 
-          "expr": "consensus_nodes_total", 
+          "expr": "icenet_consensus_nodes_total", 
           "legendFormat": "nodes",
           "refId": "B"
         },
         { 
-          "expr": "increase(consensus_period_advances_total[1h])", 
-          "legendFormat": "period advances (1h)",
+          "expr": "increase(icenet_consensus_rounds_completed_total[1h])", 
+          "legendFormat": "rounds completed (1h)",
           "refId": "C"
+        },
+        { 
+          "expr": "icenet_consensus_prepare_votes", 
+          "legendFormat": "prepare votes",
+          "refId": "D"
+        },
+        { 
+          "expr": "icenet_consensus_commit_votes", 
+          "legendFormat": "commit votes",
+          "refId": "E"
         }
       ],
       "fieldConfig": {
@@ -214,7 +224,7 @@
     {
       "id": 34,
       "type": "timeseries",
-      "title": "Icenet Blocks (received/processed/rejected/broadcast)",
+      "title": "Icenet Blocks (received/validated/rejected/broadcast)",
       "gridPos": { "x": 0, "y": 27, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
@@ -227,8 +237,8 @@
           "refId": "A"
         },
         { 
-          "expr": "rate(icenet_blocks_processed_total[5m])", 
-          "legendFormat": "processed rate",
+          "expr": "rate(icenet_blocks_validated_total[5m])", 
+          "legendFormat": "validated rate",
           "refId": "B"
         },
         { 
@@ -527,17 +537,83 @@
       }
     },
     {
+      "id": 44,
+      "type": "row",
+      "title": "Icenet metrics.go (peers / blocks / sync / rounds / messages / DHT)",
+      "gridPos": { "x": 0, "y": 84, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 45,
+      "type": "timeseries",
+      "title": "Icenet Peers & Block Height",
+      "gridPos": { "x": 0, "y": 85, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "icenet_peers_connected", "legendFormat": "peers connected", "refId": "A" },
+        { "expr": "icenet_block_height", "legendFormat": "block height", "refId": "B" },
+        { "expr": "rate(icenet_peers_total[5m])", "legendFormat": "peers total rate", "refId": "C" },
+        { "expr": "rate(icenet_peers_disconnected_total[5m])", "legendFormat": "disconnects rate", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": { "custom": {} } }
+    },
+    {
+      "id": 46,
+      "type": "timeseries",
+      "title": "Icenet Sync & Consensus Rounds",
+      "gridPos": { "x": 12, "y": 85, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "icenet_sync_progress", "legendFormat": "sync progress %", "refId": "A" },
+        { "expr": "icenet_sync_active", "legendFormat": "sync active (0/1)", "refId": "B" },
+        { "expr": "icenet_sync_blocks_remaining", "legendFormat": "blocks remaining", "refId": "C" },
+        { "expr": "rate(icenet_consensus_rounds_total[5m])", "legendFormat": "rounds started rate", "refId": "D" },
+        { "expr": "rate(icenet_consensus_rounds_completed_total[5m])", "legendFormat": "rounds completed rate", "refId": "E" },
+        { "expr": "rate(icenet_consensus_rounds_failed_total[5m])", "legendFormat": "rounds failed rate", "refId": "F" }
+      ],
+      "fieldConfig": { "defaults": { "custom": {} } }
+    },
+    {
+      "id": 47,
+      "type": "timeseries",
+      "title": "Icenet Messages & Bytes",
+      "gridPos": { "x": 0, "y": 93, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(icenet_messages_received_total[5m])) by (type)", "legendFormat": "received - {{type}}", "refId": "A" },
+        { "expr": "sum(rate(icenet_messages_sent_total[5m])) by (type)", "legendFormat": "sent - {{type}}", "refId": "B" },
+        { "expr": "rate(icenet_bytes_received_total[5m])", "legendFormat": "bytes received rate", "refId": "C" },
+        { "expr": "rate(icenet_bytes_sent_total[5m])", "legendFormat": "bytes sent rate", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": { "custom": {} } }
+    },
+    {
+      "id": 48,
+      "type": "timeseries",
+      "title": "Icenet DHT & PubSub",
+      "gridPos": { "x": 12, "y": 93, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "icenet_dht_routing_table_size", "legendFormat": "DHT routing table size", "refId": "A" },
+        { "expr": "rate(icenet_dht_queries_total[5m])", "legendFormat": "DHT queries rate", "refId": "B" },
+        { "expr": "icenet_pubsub_topics_joined", "legendFormat": "pubsub topics joined", "refId": "C" },
+        { "expr": "sum(rate(icenet_pubsub_messages_received_total[5m])) by (topic)", "legendFormat": "pubsub received - {{topic}}", "refId": "D" },
+        { "expr": "sum(rate(icenet_pubsub_messages_published_total[5m])) by (topic)", "legendFormat": "pubsub published - {{topic}}", "refId": "E" }
+      ],
+      "fieldConfig": { "defaults": { "custom": {} } }
+    },
+    {
       "id": 8,
       "type": "row",
       "title": "Miner",
-      "gridPos": { "x": 0, "y": 67, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 101, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 9,
       "type": "timeseries",
       "title": "Miner Status & Blocks Mined",
-      "gridPos": { "x": 0, "y": 68, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 102, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -569,7 +645,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "Miner Mining Duration & Pending TXs",
-      "gridPos": { "x": 12, "y": 68, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 102, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -601,7 +677,7 @@
       "id": 21,
       "type": "timeseries",
       "title": "Miner Hash Validation",
-      "gridPos": { "x": 0, "y": 76, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 137, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -633,7 +709,7 @@
       "id": 22,
       "type": "timeseries",
       "title": "Miner Nonce Search",
-      "gridPos": { "x": 12, "y": 76, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 137, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -670,7 +746,7 @@
       "id": 23,
       "type": "timeseries",
       "title": "Miner Difficulty & Target (log scale)",
-      "gridPos": { "x": 0, "y": 84, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 118, "w": 24, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -702,14 +778,14 @@
       "id": 11,
       "type": "row",
       "title": "Pool",
-      "gridPos": { "x": 0, "y": 92, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 126, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 12,
       "type": "timeseries",
       "title": "Pool Size & Bytes",
-      "gridPos": { "x": 0, "y": 93, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 127, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -741,7 +817,7 @@
       "id": 19,
       "type": "timeseries",
       "title": "Pool Transactions (added/removed/rejected)",
-      "gridPos": { "x": 12, "y": 93, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 127, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -773,7 +849,7 @@
       "id": 32,
       "type": "timeseries",
       "title": "Pool GetPendingTransactions Duration",
-      "gridPos": { "x": 0, "y": 101, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 135, "w": 24, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -810,14 +886,14 @@
       "id": 29,
       "type": "row",
       "title": "RPC",
-      "gridPos": { "x": 0, "y": 109, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 136, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 30,
       "type": "timeseries",
       "title": "RPC Requests Rate by Method",
-      "gridPos": { "x": 0, "y": 110, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 137, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -839,7 +915,7 @@
       "id": 31,
       "type": "timeseries",
       "title": "RPC Request Duration & Errors",
-      "gridPos": { "x": 12, "y": 110, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 137, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -866,14 +942,14 @@
       "id": 20,
       "type": "row",
       "title": "Validator",
-      "gridPos": { "x": 0, "y": 118, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 145, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 24,
       "type": "timeseries",
       "title": "Validator TXs (created/validated/rejected)",
-      "gridPos": { "x": 0, "y": 119, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 146, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -905,7 +981,7 @@
       "id": 25,
       "type": "timeseries",
       "title": "Validator Signing (success/error)",
-      "gridPos": { "x": 12, "y": 119, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 146, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -932,14 +1008,14 @@
       "id": 26,
       "type": "row",
       "title": "Vault",
-      "gridPos": { "x": 0, "y": 127, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 154, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "id": 27,
       "type": "timeseries",
       "title": "Vault Accounts & Circulating Supply",
-      "gridPos": { "x": 0, "y": 128, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 155, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -966,7 +1042,7 @@
       "id": 28,
       "type": "timeseries",
       "title": "Vault Faucet / Transfers",
-      "gridPos": { "x": 12, "y": 128, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 155, "w": 12, "h": 8 },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
