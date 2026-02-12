@@ -214,7 +214,6 @@ services:
     networks:
       cerera-rem9-network:
 
-  # Grafana: папка ./grafana в этой же папке (deployments/grafana). Запуск из deployments/
   grafana:
     image: grafana/grafana:latest
     container_name: cerera-rem9-grafana
