@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Block Observer — Cerera</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --success: #3fb950;
+      --error: #f85149;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0 0 24px 0;
+      color: var(--text);
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 16px 0;
+      color: var(--muted);
+    }
+    .url-form {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .url-form input {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .url-form input::placeholder { color: var(--muted); }
+    .url-form button {
+      padding: 10px 20px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .url-form button:hover { filter: brightness(1.1); }
+    .url-list {
+      list-style: none;
+      padding: 0;
+      margin: 16px 0 0 0;
+    }
+    .url-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      border: 1px solid var(--border);
+    }
+    .url-list li .url { word-break: break-all; color: var(--text); }
+    .url-list li .remove {
+      margin-left: 12px;
+      padding: 4px 10px;
+      background: transparent;
+      color: var(--error);
+      border: 1px solid var(--error);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .url-list li .remove:hover { background: var(--error); color: var(--bg); }
+    .actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .actions button {
+      padding: 10px 18px;
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .actions button:hover { border-color: var(--accent); }
+    .actions button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .nodes-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .node-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .node-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      color: var(--accent);
+      word-break: break-all;
+    }
+    .node-card .status {
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .node-card .status.ok { color: var(--success); }
+    .node-card .status.err { color: var(--error); }
+    .node-card .info {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .node-card .info span { color: var(--text); }
+    .blocks-section {
+      margin-top: 24px;
+    }
+    .blocks-section h2 { margin-bottom: 12px; }
+    .block-index-input {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .block-index-input input {
+      width: 100px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .block-index-input button {
+      padding: 8px 16px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .block-result {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 12px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 400px;
+      overflow: auto;
+    }
+    .block-result.empty { color: var(--muted); }
+    .block-result.error { color: var(--error); }
+    .block-result.ok { color: var(--success); }
+    .loading { color: var(--muted); }
+    .check-section { margin-bottom: 24px; }
+    .check-section .block-result { max-height: 300px; }
+    .check-viz { margin-top: 12px; overflow: auto; max-height: 420px; }
+    .check-viz table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .check-viz th, .check-viz td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .check-viz th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+    .check-viz td.hash { font-family: 'Consolas', monospace; color: var(--text); }
+    .check-viz tr.match td { background: rgba(63, 185, 80, 0.08); }
+    .check-viz tr.mismatch td { background: rgba(248, 81, 73, 0.08); }
+    .check-viz .cell-ok { color: var(--success); }
+    .check-viz .cell-err { color: var(--error); }
+    .check-summary { margin-bottom: 12px; padding: 10px 14px; background: var(--bg); border-radius: var(--radius); font-size: 13px; }
+    .quick-urls { margin-bottom: 16px; }
+    .quick-urls p { font-size: 13px; color: var(--muted); margin: 0 0 8px 0; }
+    .quick-urls .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .quick-urls .btns button {
+      padding: 8px 14px;
+      background: var(--bg);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .quick-urls .btns button:hover { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Block Observer — получение блоков по URL</h1>
+
+  <div class="panel">
+    <h2>Добавить URL ноды для получения блоков</h2>
+    <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
+      Укажите базовый URL ноды (например: http://194.76.173.132:1337/app). Запросы блоков отправляются как JSON-RPC POST на этот адрес.
+    </p>
+    <div class="quick-urls">
+      <p>Быстрый выбор (Docker, localhost):</p>
+      <div class="btns">
+        <button type="button" data-preset="3">3 ноды (1337–1339)</button>
+        <button type="button" data-preset="5">5 нод (1337–1341)</button>
+        <button type="button" data-preset="9">9 нод (1337–1345)</button>
+        <button type="button" data-preset="15">15 нод (1337–1351)</button>
+      </div>
+    </div>
+    <form class="url-form" id="addUrlForm">
+      <input type="url" id="nodeUrl" placeholder="http://194.76.173.132:1337/app" required>
+      <button type="submit">Добавить</button>
+    </form>
+    <ul class="url-list" id="urlList"></ul>
+    <div class="actions">
+      <button type="button" class="primary" id="fetchAllBtn">Обновить все ноды</button>
+      <button type="button" id="getBlockBtn">Получить блок по индексу</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Ноды и информация о цепочке</h2>
+    <div class="nodes-grid" id="nodesGrid"></div>
+  </div>
+
+  <div class="panel blocks-section">
+    <div class="check-section">
+      <h2>Проверка блоков</h2>
+      <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
+        Запрос блоков со <strong>всех</strong> добавленных нод, сравнение хешей по каждому индексу и проверка целостности цепочки (prevHash). Кнопка доступна, если есть ноды с блоками.
+      </p>
+      <div class="block-index-input">
+        <button type="button" id="checkBlocksBtn" disabled>Проверить блоки на всех нодах</button>
+      </div>
+      <div id="checkSummary" class="check-summary" style="display: none;"></div>
+      <div id="checkViz" class="check-viz" style="display: none;"></div>
+      <div id="checkResult" class="block-result empty">Результат проверки появится здесь.</div>
+    </div>
+    <h2>Получить блок по индексу</h2>
+    <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
+      Выберите ноду и введите индекс блока (0 — genesis). Блок будет загружен с выбранного URL.
+    </p>
+    <div class="block-index-input">
+      <label for="blockNodeUrl">URL ноды:</label>
+      <input type="text" id="blockNodeUrl" placeholder="http://194.76.173.132:1337/app" style="flex:1; min-width: 200px;">
+      <label for="blockIndex">Индекс:</label>
+      <input type="number" id="blockIndex" min="0" value="0" style="width: 80px;">
+      <button type="button" id="loadBlockBtn">Загрузить блок</button>
+    </div>
+    <div id="blockResult" class="block-result empty">Результат блока появится здесь.</div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'cerera_block_observer_urls';
+    let urls = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+    const DOCKER_PRESETS = {
+      3: [1337, 1338, 1339],
+      5: [1337, 1338, 1339, 1340, 1341],
+      9: [1337, 1338, 1339, 1340, 1341, 1342, 1343, 1344, 1345],
+      15: [1337, 1338, 1339, 1340, 1341, 1342, 1343, 1344, 1345, 1346, 1347, 1348, 1349, 1350, 1351]
+    };
+
+    const urlListEl = document.getElementById('urlList');
+    const nodesGridEl = document.getElementById('nodesGrid');
+    const addUrlForm = document.getElementById('addUrlForm');
+    const nodeUrlInput = document.getElementById('nodeUrl');
+    const blockNodeUrlInput = document.getElementById('blockNodeUrl');
+    const blockIndexInput = document.getElementById('blockIndex');
+    const blockResultEl = document.getElementById('blockResult');
+    const checkBlocksBtn = document.getElementById('checkBlocksBtn');
+    const checkResultEl = document.getElementById('checkResult');
+    const checkSummaryEl = document.getElementById('checkSummary');
+    const checkVizEl = document.getElementById('checkViz');
+    const nodeHeights = {}; // url -> height
+
+    function nodeLabel(url) {
+      try {
+        const u = new URL(url);
+        return u.port || u.hostname;
+      } catch (_) { return url.slice(0, 20); }
+    }
+
+    function saveUrls() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(urls));
+    }
+
+    function renderUrlList() {
+      urlListEl.innerHTML = urls.map((url, i) => `
+        <li>
+          <span class="url">${escapeHtml(url)}</span>
+          <button class="remove" data-index="${i}" type="button">Удалить</button>
+        </li>
+      `).join('');
+      urlListEl.querySelectorAll('.remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          urls.splice(+btn.dataset.index, 1);
+          saveUrls();
+          renderUrlList();
+          renderNodes();
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    document.querySelectorAll('.quick-urls .btns button[data-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const n = parseInt(btn.dataset.preset, 10);
+        const ports = DOCKER_PRESETS[n];
+        if (!ports) return;
+        urls = ports.map(p => `http://194.76.173.132:${p}/app`);
+        saveUrls();
+        renderUrlList();
+        renderNodes();
+      });
+    });
+
+    addUrlForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      let url = (nodeUrlInput.value || '').trim();
+      if (!url) return;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'http://' + url;
+      if (!urls.includes(url)) {
+        urls.push(url);
+        saveUrls();
+        renderUrlList();
+        renderNodes();
+      }
+      nodeUrlInput.value = '';
+    });
+
+    async function jsonRpc(baseUrl, method, params = []) {
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method,
+          params,
+          id: 1
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      return data.result;
+    }
+
+    async function getChainInfo(baseUrl) {
+      try {
+        const info = await jsonRpc(baseUrl, 'cerera.chain.getInfo', []);
+        const total = typeof info === 'object' && info !== null ? (info.total ?? info.height ?? 0) : (info ?? 0);
+        let height = total;
+        try {
+          height = await jsonRpc(baseUrl, 'cerera.chain.height', []) ?? total;
+        } catch (_) {}
+        return { ok: true, height: Number(height), info: typeof info === 'object' ? info : { total: height } };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    }
+
+    async function getBlockByIndex(baseUrl, index) {
+      return jsonRpc(baseUrl, 'cerera.chain.getBlockByIndex', [index]);
+    }
+
+    function renderNodes() {
+      if (urls.length === 0) {
+        nodesGridEl.innerHTML = '<p style="color: var(--muted);">Добавьте URL ноды выше.</p>';
+        return;
+      }
+      nodesGridEl.innerHTML = urls.map(url => `
+        <div class="node-card" data-url="${escapeHtml(url)}">
+          <h3>${escapeHtml(url)}</h3>
+          <div class="status loading">Загрузка…</div>
+          <div class="info" style="display:none;"></div>
+        </div>
+      `);
+      urls.forEach(async (url) => {
+        const card = nodesGridEl.querySelector(`.node-card[data-url="${url.replace(/"/g, '&quot;')}"]`);
+        if (!card) return;
+        const status = card.querySelector('.status');
+        const info = card.querySelector('.info');
+        const r = await getChainInfo(url);
+        if (r.ok) {
+          nodeHeights[url] = r.height;
+          status.textContent = 'Доступна';
+          status.className = 'status ok';
+          info.style.display = 'block';
+          info.innerHTML = `
+            Высота цепочки: <span>${r.height}</span><br>
+            Всего блоков: <span>${r.height}</span>
+          `;
+        } else {
+          nodeHeights[url] = 0;
+          status.textContent = 'Ошибка: ' + r.error;
+          status.className = 'status err';
+        }
+        updateCheckButton();
+      });
+    }
+
+    function updateCheckButton() {
+      const hasBlocks = Object.values(nodeHeights).some(h => h > 0);
+      checkBlocksBtn.disabled = !hasBlocks;
+    }
+
+    async function runCheckBlocks() {
+      const nodesToCheck = urls.filter(u => (nodeHeights[u] || 0) > 0);
+      if (nodesToCheck.length === 0) {
+        checkResultEl.textContent = 'Нет нод с блоками. Добавьте ноды и нажмите «Обновить все ноды».';
+        checkResultEl.className = 'block-result empty';
+        checkSummaryEl.style.display = 'none';
+        checkVizEl.style.display = 'none';
+        return;
+      }
+      const minHeight = Math.min(...nodesToCheck.map(u => nodeHeights[u]));
+      if (minHeight === 0) {
+        checkResultEl.textContent = 'На выбранных нодах нет блоков.';
+        checkResultEl.className = 'block-result empty';
+        checkSummaryEl.style.display = 'none';
+        checkVizEl.style.display = 'none';
+        return;
+      }
+      checkResultEl.textContent = `Запрос блоков 0…${minHeight - 1} с ${nodesToCheck.length} нод…`;
+      checkResultEl.className = 'block-result loading';
+      checkSummaryEl.style.display = 'none';
+      checkVizEl.style.display = 'none';
+
+      const norm = (h) => {
+        if (h == null) return '';
+        if (typeof h === 'string') return h.replace(/^0x/, '').toLowerCase();
+        return String(h).toLowerCase();
+      };
+
+      const byIndex = []; // byIndex[i] = { url -> { hash, prevHash } }
+      for (let i = 0; i < minHeight; i++) {
+        byIndex[i] = {};
+        const results = await Promise.all(
+          nodesToCheck.map(async (url) => {
+            try {
+              const block = await getBlockByIndex(url, i);
+              return { url, block, err: null };
+            } catch (err) {
+              return { url, block: null, err: err.message };
+            }
+          })
+        );
+        for (const { url, block, err } of results) {
+          if (err) byIndex[i][url] = { hash: null, prevHash: null, err };
+          else
+            byIndex[i][url] = {
+              hash: norm(block.hash),
+              prevHash: norm((block.header || {}).prevHash),
+              err: null
+            };
+        }
+      }
+
+      const matchCount = [];
+      const chainErrors = [];
+      for (let i = 0; i < minHeight; i++) {
+        const hashes = nodesToCheck.map((u) => byIndex[i][u].hash).filter(Boolean);
+        const unique = new Set(hashes);
+        matchCount.push(unique.size === 1 && hashes.length === nodesToCheck.length);
+        if (i > 0) {
+          for (const url of nodesToCheck) {
+            const cur = byIndex[i][url];
+            const prev = byIndex[i - 1][url];
+            if (cur.prevHash && prev.hash && cur.prevHash !== prev.hash)
+              chainErrors.push(`Нода ${nodeLabel(url)} блок ${i}: prevHash ≠ hash предыдущего`);
+          }
+        }
+      }
+      const matches = matchCount.filter(Boolean).length;
+      const mismatches = minHeight - matches;
+
+      checkSummaryEl.style.display = 'block';
+      checkSummaryEl.innerHTML = `
+        <strong>Проверено:</strong> блоков ${minHeight} · нод ${nodesToCheck.length}.<br>
+        <span class="cell-ok">Совпадают на всех нодах: ${matches}</span>${mismatches ? ` · <span class="cell-err">Расхождения: ${mismatches}</span>` : ''}
+        ${chainErrors.length ? `<br><span class="cell-err">Цепочка: ${chainErrors.length} ошибок</span>` : ''}
+      `;
+
+      const thead = nodesToCheck.map((u) => `<th>${escapeHtml(nodeLabel(u))}</th>`).join('');
+      let tbody = '';
+      for (let i = 0; i < minHeight; i++) {
+        const rowClass = matchCount[i] ? 'match' : 'mismatch';
+        const cells = nodesToCheck
+          .map((u) => {
+            const d = byIndex[i][u];
+            if (d.err) return `<td class="hash cell-err">— ${escapeHtml(d.err)}</td>`;
+            const short = (d.hash || '').slice(0, 16) + (d.hash && d.hash.length > 16 ? '…' : '');
+            return `<td class="hash">${escapeHtml(short) || '—'}</td>`;
+          })
+          .join('');
+        const status = matchCount[i] ? '<span class="cell-ok">✓</span>' : '<span class="cell-err">✗</span>';
+        tbody += `<tr class="${rowClass}"><td><strong>${i}</strong></td>${cells}<td>${status}</td></tr>`;
+      }
+      checkVizEl.style.display = 'block';
+      checkVizEl.innerHTML = `
+        <table>
+          <thead><tr><th>Блок</th>${thead}<th>Совпадение</th></tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      `;
+
+      const hasErrors = chainErrors.length > 0 || mismatches > 0;
+      if (hasErrors) {
+        checkResultEl.textContent =
+          (mismatches ? `Расхождение хешей в ${mismatches} блоках.\n\n` : '') +
+          (chainErrors.length ? 'Цепочка prevHash:\n' + chainErrors.slice(0, 10).join('\n') + (chainErrors.length > 10 ? '\n…' : '') : '');
+        checkResultEl.className = 'block-result error';
+      } else {
+        checkResultEl.textContent = `Проверка пройдена: все ${minHeight} блоков совпадают на ${nodesToCheck.length} нодах. Цепочка prevHash целостна.`;
+        checkResultEl.className = 'block-result ok';
+      }
+    }
+
+    checkBlocksBtn.addEventListener('click', runCheckBlocks);
+
+    document.getElementById('fetchAllBtn').addEventListener('click', () => renderNodes());
+
+    document.getElementById('getBlockBtn').addEventListener('click', () => {
+      if (urls.length) blockNodeUrlInput.value = urls[0];
+    });
+
+    document.getElementById('loadBlockBtn').addEventListener('click', async () => {
+      const baseUrl = (blockNodeUrlInput.value || '').trim();
+      const index = parseInt(blockIndexInput.value, 10);
+      if (!baseUrl) {
+        blockResultEl.textContent = 'Укажите URL ноды.';
+        blockResultEl.className = 'block-result error';
+        return;
+      }
+      if (isNaN(index) || index < 0) {
+        blockResultEl.textContent = 'Укажите корректный индекс блока (≥ 0).';
+        blockResultEl.className = 'block-result error';
+        return;
+      }
+      blockResultEl.textContent = 'Загрузка…';
+      blockResultEl.className = 'block-result loading';
+      try {
+        const block = await getBlockByIndex(baseUrl, index);
+        blockResultEl.textContent = JSON.stringify(block, null, 2);
+        blockResultEl.className = 'block-result';
+      } catch (err) {
+        blockResultEl.textContent = 'Ошибка: ' + err.message;
+        blockResultEl.className = 'block-result error';
+      }
+    });
+
+    renderUrlList();
+    renderNodes();
+  </script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"testing"
@@ -103,19 +105,35 @@ func TestSerialize(t *testing.T) {
 
 	var tx GTransaction
 	if err := tx.UnmarshalJSON(txBytes); err != nil {
-		t.Error("Error while unmarshaling transaction:", err)
+		t.Fatalf("Error while unmarshaling transaction: %v", err)
 	}
 
-	// // Print unmarshaled transaction details
-	// t.Logf("\nUnmarshaled transaction:")
-	// t.Logf("  Data: %v", tx.Data())
-	// t.Logf("  DNA: %v", tx.Dna())
-	// t.Logf("  To: %v", tx.To())
-	// t.Logf("  Value: %v", tx.Value())
-	// t.Logf("  GasPrice: %v", tx.GasPrice())
-	// t.Logf("  Gas: %v", tx.Gas())
-	// t.Logf("  Nonce: %v", tx.Nonce())
-	// t.Logf("  Unmarshaled size: %d", tx.Size())
+	// Verify all fields are correctly deserialized
+	if tx.To() == nil || *tx.To() != to {
+		t.Errorf("To address mismatch: got %v, want %v", tx.To(), &to)
+	}
+
+	if tx.Value().Cmp(big.NewInt(10)) != 0 {
+		t.Errorf("Value mismatch: got %s, want 10", tx.Value().String())
+	}
+
+	if tx.GasPrice().Cmp(big.NewInt(15)) != 0 {
+		t.Errorf("GasPrice mismatch: got %s, want 15", tx.GasPrice().String())
+	}
+
+	if tx.Gas() != 1000000 {
+		t.Errorf("Gas mismatch: got %f, want 1000000", tx.Gas())
+	}
+
+	if tx.Nonce() != 0x1 {
+		t.Errorf("Nonce mismatch: got %d, want %d", tx.Nonce(), 0x1)
+	}
+
+	// Verify DNA is correctly deserialized
+	txDna := tx.Dna()
+	if !bytes.Equal(txDna, dna) {
+		t.Errorf("DNA mismatch: got %v, want %v", txDna, dna)
+	}
 
 	// Expected size calculation:
 	// - inner data: 0 bytes
@@ -400,5 +418,116 @@ func TestGasCostEdgeCases(t *testing.T) {
 			t.Logf("Gas limit: %f, Gas price: %s wei, Cost: %s wei (%.6f CER)",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), BigIntToFloat(cost))
 		})
+	}
+}
+
+// TestGasCostEdgeCases проверяет граничные случаи расчета газа
+func TestUpdateNonce(t *testing.T) {
+	tx := NewTransaction(
+		1,
+		HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		big.NewInt(1000000000000000000),
+		3.0,
+		FloatToBigInt(0.000001),
+		[]byte("test data"),
+	)
+	tx.UpdateNonce(1337)
+	if tx.Nonce() != 1337 {
+		t.Errorf("Nonce mismatch: got %d, want %d", tx.Nonce(), 1337)
+	}
+}
+
+// TestTransactionMarshalFormat tests that MarshalJSON returns transaction in unified format
+func TestTransactionMarshalFormat(t *testing.T) {
+	toAddr := HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")
+	tx := NewTransaction(
+		1,
+		toAddr,
+		big.NewInt(1000000000000000000), // 1 ETH in wei
+		21000,
+		big.NewInt(20000000000), // 20 gwei
+		[]byte("test data"),
+	)
+
+	// Marshal transaction to JSON
+	jsonBytes, err := tx.MarshalJSON()
+	if err != nil {
+		t.Fatalf("Failed to marshal transaction: %v", err)
+	}
+
+	// Parse JSON to map for inspection
+	var result map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	// Verify format: value should be decimal string
+	value, ok := result["value"].(string)
+	if !ok {
+		t.Errorf("value should be a string, got %T", result["value"])
+	} else {
+		// Should be decimal, not hex (should not start with 0x)
+		if len(value) >= 2 && value[0:2] == "0x" {
+			t.Errorf("value should be decimal string, not hex. Got: %s", value)
+		}
+		// Verify it's a valid decimal number
+		expectedValue := big.NewInt(1000000000000000000)
+		parsedValue, ok := new(big.Int).SetString(value, 10)
+		if !ok {
+			t.Errorf("value should be a valid decimal number. Got: %s", value)
+		} else if parsedValue.Cmp(expectedValue) != 0 {
+			t.Errorf("value mismatch: got %s, want %s", parsedValue.String(), expectedValue.String())
+		}
+	}
+
+	// Verify format: gasPrice should be decimal string
+	gasPrice, ok := result["gasPrice"].(string)
+	if !ok {
+		t.Errorf("gasPrice should be a string, got %T", result["gasPrice"])
+	} else {
+		// Should be decimal, not hex
+		if len(gasPrice) >= 2 && gasPrice[0:2] == "0x" {
+			t.Errorf("gasPrice should be decimal string, not hex. Got: %s", gasPrice)
+		}
+	}
+
+	// Verify format: gas should be number (float64 from JSON unmarshal)
+	gas, ok := result["gas"].(float64)
+	if !ok {
+		t.Errorf("gas should be a number, got %T", result["gas"])
+	} else {
+		if uint64(gas) != 21000 {
+			t.Errorf("gas mismatch: got %f, want 21000", gas)
+		}
+	}
+
+	// Verify format: nonce should be number
+	nonce, ok := result["nonce"].(float64)
+	if !ok {
+		t.Errorf("nonce should be a number, got %T", result["nonce"])
+	} else {
+		if uint64(nonce) != 1 {
+			t.Errorf("nonce mismatch: got %f, want 1", nonce)
+		}
+	}
+
+	// Verify format: data should be hex string
+	data, ok := result["input"].(string)
+	if !ok {
+		t.Errorf("data (input) should be a string, got %T", result["input"])
+	} else {
+		if len(data) < 2 || data[0:2] != "0x" {
+			t.Errorf("data should be hex string (0x...), got: %s", data)
+		}
+	}
+
+	// Verify format: hash, to should be hex strings
+	hash, ok := result["hash"].(string)
+	if !ok {
+		t.Errorf("hash should be a string, got %T", result["hash"])
+	} else {
+		if len(hash) < 2 || hash[0:2] != "0x" {
+			t.Errorf("hash should be hex string (0x...), got: %s", hash)
+		}
 	}
 }

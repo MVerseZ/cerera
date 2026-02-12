@@ -213,6 +213,8 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vltlogger().Infow("Vault recovery password generated", "password", "NODE_PASS")
 	vltlogger().Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
 	vltlogger().Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
+
+	SetKeys(masterKey, publicKey)
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &types.StateAccount{
@@ -482,6 +484,27 @@ func (v *D5Vault) Put(address types.Address, acc *types.StateAccount) {
 		return
 	}
 	v.accounts.Append(address, acc)
+}
+
+// EnsureAccount ensures an address exists in the vault with balance 0 if not present.
+// Used so that validator/node addresses appear in account list (e.g. cerera.account.getAll)
+// even when they have never received a transaction.
+func (v *D5Vault) EnsureAccount(addr types.Address) {
+	if addr.IsEmpty() {
+		return
+	}
+	if v.accounts.GetAccount(addr) != nil {
+		return
+	}
+	acc := types.NewStateAccount(addr, 0, v.rootHash)
+	v.accounts.Append(addr, acc)
+	vaultAccountsTotal.Set(float64(v.accounts.Size()))
+	if !v.inMem && v.db != nil {
+		key := addr.Bytes()
+		if err := v.db.Put(key, acc.Bytes()); err != nil {
+			vltlogger().Warnw("EnsureAccount: failed to persist account", "address", addr.Hex(), "err", err)
+		}
+	}
 }
 func (v *D5Vault) Size() int64 {
 	if v.inMem || v.db == nil {

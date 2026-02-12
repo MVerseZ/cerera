@@ -1,0 +1,21 @@
+# Prometheus: сбор метрик с 9 нод (docker_rem9_observer_9nodes)
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: cerera-rem9-nodes
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "node1:1337"
+          - "node2:1338"
+          - "node3:1339"
+          - "node4:1340"
+          - "node5:1341"
+          - "node6:1342"
+          - "node7:1343"
+          - "node8:1344"
+          - "node9:1345"
+        labels:
+          cluster: "cerera-rem9"

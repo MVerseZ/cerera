@@ -1,0 +1,132 @@
+# version: "3.8"
+
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node1
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102
+    ports:
+      - "1337:1337"
+      - "31100:31100"
+    volumes:
+      - node1_data:/app/data
+      - node1_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-network:
+        ipv4_address: 172.25.0.11
+
+  node2:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node2
+    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.13/tcp/31102
+    ports:
+      - "1338:1338"
+      - "31101:31101"
+    volumes:
+      - node2_data:/app/data
+      - node2_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-network:
+        ipv4_address: 172.25.0.12
+
+  node3:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node3
+    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    environment:
+      - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101
+    ports:
+      - "1339:1339"
+      - "31102:31102"
+    volumes:
+      - node3_data:/app/data
+      - node3_config:/app/config
+    restart: unless-stopped
+    networks:
+      cerera-network:
+        ipv4_address: 172.25.0.13
+
+  # Prometheus для мониторинга всех трех нод
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: cerera-prometheus-3nodes
+  #   volumes:
+  #     - ./prometheus-3nodes.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prom_data:/prometheus
+  #   command:
+  #     - --config.file=/etc/prometheus/prometheus.yml
+  #     - --storage.tsdb.path=/prometheus
+  #     - --storage.tsdb.retention.time=30d
+  #     - --web.enable-lifecycle
+  #     - --web.enable-admin-api
+  #   ports:
+  #     - "9090:9090"
+  #   restart: unless-stopped
+  #   networks:
+  #     cerera-network:
+  #       ipv4_address: 172.25.0.100
+
+  # # Grafana для визуализации метрик
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: cerera-grafana-3nodes
+  #   ports:
+  #     - "3100:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #     - GF_INSTALL_PLUGINS=
+  #     - GF_SERVER_ROOT_URL=http://localhost:3100
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #     - GF_SERVER_DOMAIN=localhost
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ../grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+  #     - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+  #     - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+  #   restart: unless-stopped
+  #   networks:
+  #     cerera-network:
+  #       ipv4_address: 172.25.0.101
+
+  # Block Observer — веб-страница для просмотра блоков с нод (открыть в браузере)
+  observer:
+    image: nginx:alpine
+    container_name: cerera-observer
+    volumes:
+      - ../tests/observer:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    networks:
+      cerera-network:
+
+volumes:
+  node1_data:
+  node1_config:
+  node2_data:
+  node2_config:
+  node3_data:
+  node3_config:
+  # prom_data:
+  # grafana_data:
+
+networks:
+  cerera-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1

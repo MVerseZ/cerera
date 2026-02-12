@@ -130,6 +130,10 @@ func (tx *CBTransaction) time() time.Time {
 	return tx.Time
 }
 
+func (tx *CBTransaction) setNonce(nonce uint64) {
+	tx.Nonce = nonce
+}
+
 type FaucetTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64
@@ -247,4 +251,8 @@ func (tx *FaucetTransaction) getPayload() []byte {
 
 func (tx *FaucetTransaction) time() time.Time {
 	return tx.Time
+}
+
+func (tx *FaucetTransaction) setNonce(nonce uint64) {
+	tx.Nonce = nonce
 }

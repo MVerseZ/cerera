@@ -5,6 +5,8 @@
 - Перебирает все блоки
 - Проверяет, что хэши цепочки совпадают (prevHash == hash предыдущего блока)
 - Проверяет, что хэши блоков не дублируются
+- Проверяет, что сумма газа транзакций соответствует gasUsed в заголовке блока
+- Проверяет, что nonce транзакций соответствует nonce в заголовке блока
 """
 
 import requests
@@ -121,6 +123,7 @@ def check_blockchain_integrity(api_url: str = "http://91.199.32.125:1337/app",
     all_blocks = {}  # {index: block_data}
     errors = 0
     seen_hashes = set()
+    seen_nonces = {}  # {nonce: first_block_index} - для проверки уникальности nonce
     lock = Lock()
     
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
@@ -154,6 +157,9 @@ def check_blockchain_integrity(api_url: str = "http://91.199.32.125:1337/app",
     sorted_indices = sorted(all_blocks.keys())
     previous_hash = None
     duplicate_errors = []
+    duplicate_nonce_errors = []
+    gas_mismatch_errors = []
+    nonce_mismatch_errors = []
     
     for i in sorted_indices:
         block = all_blocks[i]
@@ -167,8 +173,60 @@ def check_blockchain_integrity(api_url: str = "http://91.199.32.125:1337/app",
             else:
                 seen_hashes.add(current_hash)
         
-        # Получаем prevHash из заголовка
+        # Получаем заголовок блока
         header = block.get("header", {})
+        block_nonce = header.get("nonce")
+        gas_used = header.get("gasUsed")
+        
+        # Проверка уникальности nonce блока
+        if block_nonce is not None:
+            with lock:
+                if block_nonce in seen_nonces:
+                    # Находим, какой блок уже имел этот nonce
+                    first_block_idx = seen_nonces[block_nonce]
+                    duplicate_nonce_errors.append((i, block_nonce, first_block_idx))
+                    errors += 1
+                else:
+                    seen_nonces[block_nonce] = i  # Сохраняем индекс первого блока с этим nonce
+        
+        # Проверка суммы газа по транзакциям
+        transactions = block.get("transactions", [])
+        if gas_used is not None:
+            total_tx_gas = 0.0
+            if transactions:
+                for tx in transactions:
+                    tx_gas = tx.get("gas")
+                    if tx_gas is not None:
+                        # Преобразуем в float, если это строка или число
+                        try:
+                            print(float(tx_gas))
+                            total_tx_gas += float(tx_gas)
+                        except (ValueError, TypeError):
+                            pass
+            
+            # Сравниваем сумму газа транзакций с gasUsed в заголовке
+            gas_used_float = float(gas_used) if gas_used is not None else 0.0
+            # Допускаем небольшую погрешность из-за округления float
+            if abs(total_tx_gas - gas_used_float) > 0.0001:
+                gas_mismatch_errors.append((i, gas_used_float, total_tx_gas))
+                errors += 1
+        
+        # Проверка сверки nonce в заголовке блока и в транзакциях
+        if transactions and block_nonce is not None:
+            for tx_idx, tx in enumerate(transactions):
+                tx_nonce = tx.get("nonce")
+                if tx_nonce is not None:
+                    # Преобразуем в int для сравнения
+                    try:
+                        tx_nonce_int = int(tx_nonce)
+                        block_nonce_int = int(block_nonce)
+                        if tx_nonce_int != block_nonce_int:
+                            nonce_mismatch_errors.append((i, tx_idx, block_nonce_int, tx_nonce_int))
+                            errors += 1
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Получаем prevHash из заголовка (header уже получен выше)
         prev_hash = normalize_hash(header.get("prevHash"))
         
         # Для первого блока (genesis) prevHash может быть пустым или нулевым
@@ -193,7 +251,7 @@ def check_blockchain_integrity(api_url: str = "http://91.199.32.125:1337/app",
         
         previous_hash = current_hash
     
-    # Выводим информацию о дубликатах
+    # Выводим информацию о дубликатах хэшей
     if duplicate_errors:
         print("=" * 60)
         print("❌ Найдены дублирующиеся хэши:")
@@ -201,24 +259,62 @@ def check_blockchain_integrity(api_url: str = "http://91.199.32.125:1337/app",
             print(f"   Блок {block_idx}: хэш уже встречался ранее")
             print(f"   Хэш: {dup_hash[:32]}...")
     
+    # Выводим информацию о дубликатах nonce
+    if duplicate_nonce_errors:
+        print("=" * 60)
+        print("❌ Найдены дублирующиеся nonce:")
+        for block_idx, dup_nonce, first_block_idx in duplicate_nonce_errors:
+            print(f"   Блок {block_idx}: nonce = {dup_nonce} уже встречался в блоке {first_block_idx}")
+    
+    # Выводим информацию о несоответствии газа
+    if gas_mismatch_errors:
+        print("=" * 60)
+        print("❌ Найдены несоответствия суммы газа:")
+        for block_idx, header_gas_used, total_tx_gas in gas_mismatch_errors:
+            print(f"   Блок {block_idx}: gasUsed в заголовке = {header_gas_used}, сумма газа транзакций = {total_tx_gas}")
+            print(f"   Разница: {abs(header_gas_used - total_tx_gas):.6f}")
+    
+    # Выводим информацию о несоответствии nonce транзакций
+    if nonce_mismatch_errors:
+        print("=" * 60)
+        print("❌ Найдены несоответствия nonce транзакций:")
+        for block_idx, tx_idx, block_nonce, tx_nonce in nonce_mismatch_errors:
+            print(f"   Блок {block_idx}, транзакция {tx_idx}: nonce блока = {block_nonce}, nonce транзакции = {tx_nonce}")
+    
     print("=" * 60)
     print(f"📈 Статистика:")
     print(f"   Проверено блоков: {len(all_blocks)}")
     print(f"   Уникальных хэшей: {len(seen_hashes)}")
-    print(f"   Найдено ошибок: {errors}")
+    print(f"   Уникальных nonce: {len(seen_nonces)}")
+    print(f"   Ошибок дублирования хэшей: {len(duplicate_errors)}")
+    print(f"   Ошибок дублирования nonce блоков: {len(duplicate_nonce_errors)}")
+    print(f"   Ошибок несоответствия газа: {len(gas_mismatch_errors)}")
+    print(f"   Ошибок несоответствия nonce транзакций: {len(nonce_mismatch_errors)}")
+    print(f"   Всего найдено ошибок: {errors}")
     print("=" * 60)
     
     if errors == 0:
         print(f"✅ Все блоки проверены: целостность цепочки подтверждена!")
         print(f"✅ Дублирование хэшей не обнаружено!")
+        print(f"✅ Дублирование nonce блоков не обнаружено!")
+        print(f"✅ Сумма газа транзакций соответствует gasUsed в заголовках!")
+        print(f"✅ Nonce транзакций соответствует nonce в заголовках блоков!")
         return True
     else:
         print(f"❌ Найдено ошибок: {errors}")
+        if duplicate_errors:
+            print(f"   - Дублирование хэшей: {len(duplicate_errors)}")
+        if duplicate_nonce_errors:
+            print(f"   - Дублирование nonce блоков: {len(duplicate_nonce_errors)}")
+        if gas_mismatch_errors:
+            print(f"   - Несоответствие газа: {len(gas_mismatch_errors)}")
+        if nonce_mismatch_errors:
+            print(f"   - Несоответствие nonce транзакций: {len(nonce_mismatch_errors)}")
         return False
 
 def main():
     """Главная функция"""
-    api_url = "http://91.199.32.125:1337/app"
+    api_url = "http://localhost:1337/app"
     num_threads = 10
     chunk_size = 50
     

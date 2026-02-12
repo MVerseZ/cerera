@@ -344,7 +344,35 @@ func (v *CoreValidator) ProposeBlock(b *block.Block) {
 			v.printConsensusStatus(blockHash)
 		}()
 	} else {
-		// Консенсус начался
+		// Консенсус начался - предлагаем блок для консенсуса
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					vlogger.Warnw("Failed to propose block for consensus", "error", r, "blockHash", blockHash)
+				}
+			}()
+			registry, err := service.GetRegistry()
+			if err != nil {
+				vlogger.Debugw("Registry not available for consensus proposal", "err", err)
+				return
+			}
+
+			iceService, ok := registry.GetService("ice")
+			if !ok {
+				iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+				if !ok {
+					vlogger.Debugw("Ice service not found for consensus proposal")
+					return
+				}
+			}
+
+			result := iceService.Exec("proposeBlock", []interface{}{b})
+			if err, ok := result.(error); ok && err != nil {
+				vlogger.Warnw("Failed to propose block for consensus", "err", err, "blockHash", blockHash, "height", header.Height)
+			} else {
+				vlogger.Infow("Block proposed for consensus", "blockHash", blockHash, "height", header.Height)
+			}
+		}()
 	}
 
 	if b.Transactions != nil {
@@ -367,7 +395,9 @@ func (v *CoreValidator) ProposeBlock(b *block.Block) {
 					// Игнорируем панику при обновлении цепи
 				}
 			}()
-			v.UpdateChain(b)
+			if err := v.UpdateChain(b); err != nil {
+				vlogger.Errorw("Failed to update chain", "err", err)
+			}
 		}()
 	}
 }
@@ -676,13 +706,13 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 					txBlock := v.GetBlockByNumber(index)
 					for _, btx := range txBlock.Transactions {
 						if btx.Hash() == hash {
-							// Return only selected fields
+							// Return only selected fields with unified format
 							result := map[string]interface{}{
 								"hash":  btx.Hash().Hex(),
 								"from":  btx.From().Hex(),
-								"value": btx.Value().String(),
-								"gas":   btx.Gas(),
-								"data":  string(btx.Data()),
+								"value": btx.Value().String(),              // decimal string
+								"gas":   uint64(btx.Gas()),                 // number, not hex
+								"data":  common.Bytes(btx.Data()).String(), // hex string
 							}
 							// Handle To() which can be nil
 							if to := btx.To(); to != nil {

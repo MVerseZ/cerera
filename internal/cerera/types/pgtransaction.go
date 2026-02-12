@@ -76,6 +76,7 @@ func (tx *PGTransaction) copy() TxData {
 		To:     copyAddressPtr(tx.To),
 		Data:   CopyBytes(tx.Data),
 		Gas:    tx.Gas,
+		Dna:    CopyBytes(tx.Dna),
 		// atomic
 		Value:    new(big.Int),
 		GasPrice: new(big.Int),
@@ -165,4 +166,8 @@ func CopyBytes(b []byte) (copiedBytes []byte) {
 	copiedBytes = make([]byte, len(b))
 	copy(copiedBytes, b)
 	return copiedBytes
+}
+
+func (tx *PGTransaction) setNonce(nonce uint64) {
+	tx.Nonce = nonce
 }

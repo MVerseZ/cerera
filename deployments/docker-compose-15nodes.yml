@@ -1,10 +1,10 @@
-version: "3.8"
+# version: "3.8"
 
 services:
   node1:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node1
     command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
     ports:
@@ -15,12 +15,13 @@ services:
       - node1_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.11
 
   node2:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node2
     command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
     ports:
@@ -31,12 +32,13 @@ services:
       - node2_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.12
 
   node3:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node3
     command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
     ports:
@@ -47,12 +49,13 @@ services:
       - node3_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.13
 
   node4:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node4
     command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
     ports:
@@ -63,12 +66,13 @@ services:
       - node4_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.14
 
   node5:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node5
     command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
     ports:
@@ -79,12 +83,13 @@ services:
       - node5_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.15
 
   node6:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node6
     command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--mem=true", "--miner"]
     ports:
@@ -95,12 +100,13 @@ services:
       - node6_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.16
 
   node7:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node7
     command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--mem=true", "--miner"]
     ports:
@@ -111,12 +117,13 @@ services:
       - node7_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.17
 
   node8:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node8
     command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--mem=true", "--miner"]
     ports:
@@ -127,12 +134,13 @@ services:
       - node8_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.18
 
   node9:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node9
     command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--mem=true", "--miner"]
     ports:
@@ -143,12 +151,13 @@ services:
       - node9_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.19
 
   node10:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node10
     command: ["cerera", "--mode=p2p", "--http=1346", "--port=31109", "--mem=true", "--miner"]
     ports:
@@ -159,12 +168,13 @@ services:
       - node10_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.20
 
   node11:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node11
     command: ["cerera", "--mode=p2p", "--http=1347", "--port=31110", "--mem=true", "--miner"]
     ports:
@@ -175,12 +185,13 @@ services:
       - node11_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.21
 
   node12:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node12
     command: ["cerera", "--mode=p2p", "--http=1348", "--port=31111", "--mem=true", "--miner"]
     ports:
@@ -191,12 +202,13 @@ services:
       - node12_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.22
 
   node13:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node13
     command: ["cerera", "--mode=p2p", "--http=1349", "--port=31112", "--mem=true", "--miner"]
     ports:
@@ -207,12 +219,13 @@ services:
       - node13_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.23
 
   node14:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node14
     command: ["cerera", "--mode=p2p", "--http=1350", "--port=31113", "--mem=true", "--miner"]
     ports:
@@ -223,12 +236,13 @@ services:
       - node14_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.24
 
   node15:
     build:
       context: ..
-      dockerfile: ci-cd/Dockerfile
+      dockerfile: Dockerfile
     container_name: cerera-node15
     command: ["cerera", "--mode=p2p", "--http=1351", "--port=31114", "--mem=true", "--miner"]
     ports:
@@ -239,7 +253,20 @@ services:
       - node15_config:/app/config
     restart: unless-stopped
     networks:
-      - cerera-network
+      cerera-network:
+        ipv4_address: 172.25.0.25
+
+  # Block Observer — веб-страница для просмотра блоков с нод (открыть в браузере)
+  observer:
+    image: nginx:alpine
+    container_name: cerera-observer
+    volumes:
+      - ../tests/observer:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    networks:
+      cerera-network:
 
 volumes:
   node1_data:
@@ -276,4 +303,8 @@ volumes:
 networks:
   cerera-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 
 	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -22,12 +23,20 @@ type ChainConfig struct {
 	Type    string
 }
 type NetworkConfig struct {
-	PID  protocol.ID
-	P2P  int
-	RPC  int
-	ADDR types.Address // address of running node
-	PRIV string        // private key of current running node
-	PUB  []byte        // public key of current running node
+	PID           protocol.ID
+	P2P           int
+	RPC           int
+	ADDR          types.Address // address of running node
+	PRIV          string        // private key of current running node
+	PUB           []byte        // public key of current running node
+	BootstrapIP   string        // bootstrap node IP address (deprecated, use SeedNodes)
+	BootstrapPort string        // bootstrap node port (deprecated, use SeedNodes)
+	SeedNodes     []string      // список seed nodes в формате multiaddr libp2p (например: "/ip4/192.168.1.6/tcp/31100") или "ip:port" (будет автоматически конвертирован)
+	// Libp2p specific configuration
+	BootstrapNodes []string // libp2p bootstrap nodes в формате multiaddr (например: "/ip4/192.168.1.6/tcp/31100/p2p/QmPeerID"). Если пусто, используется SeedNodes
+	RelayNodes     []string // libp2p relay nodes в формате multiaddr для NAT traversal (опционально)
+	DHTServerMode  bool     // включить DHT server mode для bootstrap узлов (по умолчанию: false, auto mode)
+	EnableMDNS     bool     // включить mDNS discovery для локальной сети (по умолчанию: true)
 }
 type VaultConfig struct {
 	MEM  bool
@@ -63,6 +72,32 @@ func GenerageConfig() *Config {
 	configFilePath := "config.json"
 	cfg := &Config{}
 	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+		// Default seed nodes
+		defaultSeedNodes := []string{
+			"/ip4/172.20.0.11/tcp/31100",
+			"/ip4/172.25.0.11/tcp/31100",
+			"/ip4/172.25.0.12/tcp/31101",
+			"/ip4/192.168.1.6/tcp/31100",
+		}
+
+		// Check for SEED_NODES environment variable (comma-separated list)
+		// Format: "/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101"
+		if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
+			seedNodesList := []string{}
+			// Split by comma and trim spaces
+			for _, seed := range splitAndTrim(envSeedNodes, ",") {
+				if seed != "" {
+					seedNodesList = append(seedNodesList, seed)
+				}
+			}
+			if len(seedNodesList) > 0 {
+				defaultSeedNodes = seedNodesList
+				fmt.Printf("[CONFIG] Using seed nodes from environment: %v\n", defaultSeedNodes)
+			}
+		} else {
+			fmt.Printf("[CONFIG] Using default seed nodes: %v\n", defaultSeedNodes)
+		}
+
 		cfg = &Config{
 			TlsFlag: false,
 			POOL: PoolConfig{
@@ -79,7 +114,13 @@ func GenerageConfig() *Config {
 				},
 			},
 			NetCfg: NetworkConfig{
-				PID: "/vavilov/1.0.0",
+				PID:           "/vavilov/1.0.0",
+				BootstrapIP:   "192.168.1.6",
+				BootstrapPort: "31100",
+				// Seed nodes in multiaddr format for libp2p
+				SeedNodes:      defaultSeedNodes,
+				BootstrapNodes: defaultSeedNodes,
+				EnableMDNS:     true, // Disabled by default to avoid multicast interface warnings on Windows
 			},
 			Chain: ChainConfig{
 				ChainID: 11,
@@ -97,8 +138,36 @@ func GenerageConfig() *Config {
 		if err != nil {
 			panic(err)
 		}
+
+		// Override seed nodes from environment variable if set
+		if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
+			seedNodesList := []string{}
+			for _, seed := range splitAndTrim(envSeedNodes, ",") {
+				if seed != "" {
+					seedNodesList = append(seedNodesList, seed)
+				}
+			}
+			if len(seedNodesList) > 0 {
+				cfg.NetCfg.SeedNodes = seedNodesList
+				cfg.NetCfg.BootstrapNodes = seedNodesList
+				fmt.Printf("[CONFIG] Updated seed nodes from environment: %v\n", seedNodesList)
+				cfg.WriteConfigToFile() // Save updated config
+			}
+		}
 	}
 	return cfg
+}
+
+// splitAndTrim splits a string by separator and trims whitespace from each part
+func splitAndTrim(s, sep string) []string {
+	parts := []string{}
+	for _, part := range strings.Split(s, sep) {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return parts
 }
 func (cfg *Config) SetPorts(rpc int, p2p int) {
 	if rpc == -1 || rpc == 0 {
@@ -198,5 +267,52 @@ func ReadConfig(filePath string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
 	}
+
+	// Convert old format seed nodes to multiaddr format if needed
+	cfg.convertSeedNodesToMultiaddr()
+
 	return &cfg, nil
+}
+
+// convertSeedNodesToMultiaddr converts seed nodes from ip:port format to multiaddr format
+func (cfg *Config) convertSeedNodesToMultiaddr() {
+	// If BootstrapNodes is empty but SeedNodes has old format, convert them
+	if len(cfg.NetCfg.BootstrapNodes) == 0 && len(cfg.NetCfg.SeedNodes) > 0 {
+		converted := false
+		newSeedNodes := make([]string, 0, len(cfg.NetCfg.SeedNodes))
+
+		for _, seed := range cfg.NetCfg.SeedNodes {
+			// Check if already in multiaddr format
+			if len(seed) > 0 && seed[0] == '/' {
+				// Already in multiaddr format
+				newSeedNodes = append(newSeedNodes, seed)
+			} else {
+				// Convert ip:port to multiaddr format
+				// Extract IP and port
+				var ip, port string
+				for i := len(seed) - 1; i >= 0; i-- {
+					if seed[i] == ':' {
+						ip = seed[:i]
+						port = seed[i+1:]
+						break
+					}
+				}
+
+				if ip == "" {
+					ip = seed
+					port = "31100" // default port
+				}
+
+				multiaddrStr := fmt.Sprintf("/ip4/%s/tcp/%s", ip, port)
+				newSeedNodes = append(newSeedNodes, multiaddrStr)
+				converted = true
+			}
+		}
+
+		if converted {
+			cfg.NetCfg.SeedNodes = newSeedNodes
+			cfg.NetCfg.BootstrapNodes = newSeedNodes
+			cfg.WriteConfigToFile() // Save converted config
+		}
+	}
 }
