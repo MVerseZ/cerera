@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/types"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -22,13 +22,14 @@ const (
 	TopicBlocks    = "cerera/blocks"
 	TopicTxs       = "cerera/txs"
 	TopicConsensus = "cerera/consensus"
+	TopicAccounts  = "cerera/accounts"
 
 	// Message types for pubsub
 	PubSubMsgTypeBlock     = "block"
 	PubSubMsgTypeBlockHash = "block_hash"
 	PubSubMsgTypeTx        = "tx"
 	PubSubMsgTypeConsensus = "consensus"
-
+	PubSubMsgTypeAccount   = "account"
 	// MaxMessageAge is the maximum age of a message before it's considered stale
 	MaxMessageAge = 5 * time.Minute
 )

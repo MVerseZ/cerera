@@ -2,12 +2,13 @@ package chain
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
@@ -163,6 +164,11 @@ type Chain struct {
 	metrics   *ChainMetrics
 	storage   BlockStorage
 	chainPath string
+
+	// height lock for sync/miner: prevents mining on height already received from network
+	heightMu     sync.Mutex
+	lockedHeight int
+	cancelCh     chan struct{}
 }
 
 var (
@@ -226,6 +232,7 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		metrics:   metrics,
 		storage:   storage,
 		chainPath: chainPath,
+		cancelCh:  make(chan struct{}),
 	}
 
 	chain.info.Size = int64(initialTotalSize)
@@ -514,6 +521,44 @@ func (bc *Chain) Start() {
 	}
 }
 
+// TryLockHeight locks the given height (e.g. when block is added from sync/consensus).
+// Returns false if this height is already locked. Used to prevent miner from competing.
+func (bc *Chain) TryLockHeight(height int) bool {
+	bc.heightMu.Lock()
+	defer bc.heightMu.Unlock()
+	if bc.lockedHeight >= height {
+		return false
+	}
+	oldCh := bc.cancelCh
+	bc.cancelCh = make(chan struct{})
+	bc.lockedHeight = height
+	if oldCh != nil {
+		close(oldCh)
+	}
+	return true
+}
+
+// IsHeightLocked returns whether the given height is locked (block received from network).
+func (bc *Chain) IsHeightLocked(height int) bool {
+	bc.heightMu.Lock()
+	defer bc.heightMu.Unlock()
+	return bc.lockedHeight >= height
+}
+
+// GetLockedHeight returns the current locked height.
+func (bc *Chain) GetLockedHeight() int {
+	bc.heightMu.Lock()
+	defer bc.heightMu.Unlock()
+	return bc.lockedHeight
+}
+
+// GetCancelChannel returns a channel that is closed when a new block height is locked (miner should cancel).
+func (bc *Chain) GetCancelChannel() <-chan struct{} {
+	bc.heightMu.Lock()
+	defer bc.heightMu.Unlock()
+	return bc.cancelCh
+}
+
 /*
 Update chain with new block
 param:
@@ -526,6 +571,13 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 	}
 	if newBlock.Head == nil {
 		return errors.New("newBlock.Head cannot be nil")
+	}
+
+	height := newBlock.Header().Height
+	if height <= 0 {
+		// genesis or invalid; allow without lock
+	} else if !bc.TryLockHeight(height) {
+		return fmt.Errorf("height %d already locked", height)
 	}
 
 	bc.mu.Lock()

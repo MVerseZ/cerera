@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cerera/core/pool"
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/miner"
 	"github.com/cerera/internal/cerera/network"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/validator"

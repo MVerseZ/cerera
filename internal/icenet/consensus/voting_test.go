@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/message"
 	"github.com/cerera/internal/cerera/types"
@@ -158,4 +158,3 @@ func TestRoundTimeout_EmitsCallback(t *testing.T) {
 		t.Fatalf("expected timeout callback")
 	}
 }
-

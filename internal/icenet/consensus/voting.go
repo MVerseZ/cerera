@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/message"
 	"github.com/cerera/internal/cerera/types"

@@ -76,10 +76,11 @@ type Pool struct {
 	Listen      chan []*types.GTransaction // outbound channel
 	DataChannel chan []byte                // ws channel
 
-	maxSize        int
-	minGas         float64
-	memPool        map[common.Hash]types.GTransaction
-	maintainTicker *time.Ticker
+	NewTxEventChannel chan *types.GTransaction
+	maxSize           int
+	minGas            float64
+	memPool           map[common.Hash]types.GTransaction
+	maintainTicker    *time.Ticker
 
 	Status   byte
 	Prepared []*types.GTransaction
@@ -99,10 +100,12 @@ func Get() TxPool {
 }
 
 type TxPool interface {
+	AddRawTransaction(tx *types.GTransaction)
 	GetInfo() MemPoolInfo
-	GetRawMemPool() []interface{}
+	GetRawMemPool() []any
 	GetPendingTransactions() []types.GTransaction
-	Exec(method string, params []interface{}) interface{}
+	GetTransaction(transactionHash common.Hash) *types.GTransaction
+	Exec(method string, params []any) any
 	QueueTransaction(tx *types.GTransaction)
 	Register(observer observer.Observer)
 	RemoveFromPool(txHash common.Hash) error
@@ -355,10 +358,15 @@ func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 	if !ok {
 		return errors.New("no in mempool")
 	}
-	// fmt.Printf("Deleted: %s\r\n", tx.Hash())
 	delete(p.memPool, txHash)
+	// Исключаем также из Prepared, чтобы не было рассинхрона и утечки
+	for i := 0; i < len(p.Prepared); i++ {
+		if p.Prepared[i].Hash() == txHash {
+			p.Prepared = append(p.Prepared[:i], p.Prepared[i+1:]...)
+			break
+		}
+	}
 	poolTxRemovedTotal.Inc()
-	// Update metrics
 	p.calcInfo()
 	return nil
 }

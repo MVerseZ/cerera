@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/stretchr/testify/assert"
@@ -509,33 +509,33 @@ func TestTransactionGetFormat(t *testing.T) {
 
 	// Verify the format structure by checking how data would be formatted
 	// according to the implementation in validator.go:680-693
-	
+
 	// Verify that common.Bytes is used for data (which produces hex)
 	dataBytes := common.Bytes(tx.Data())
 	dataHex := dataBytes.String()
 	require.True(t, len(dataHex) >= 2 && dataHex[0:2] == "0x", "data should be formatted as hex string (0x...)")
-	
+
 	// Verify value is formatted as decimal string (via big.Int.String())
 	valueStr := tx.Value().String()
 	require.False(t, len(valueStr) >= 2 && valueStr[0:2] == "0x", "value should be decimal string, not hex")
 	// Verify it's a valid decimal number
 	_, ok := new(big.Int).SetString(valueStr, 10)
 	require.True(t, ok, "value should be a valid decimal number")
-	
+
 	// Verify gas is converted to uint64
 	gasUint64 := uint64(tx.Gas())
 	require.Equal(t, uint64(21000), gasUint64, "gas should be convertible to uint64")
-	
+
 	// Verify hash, from, to are formatted as hex strings
 	hashHex := tx.Hash().Hex()
 	require.True(t, len(hashHex) >= 2 && hashHex[0:2] == "0x", "hash should be hex string (0x...)")
-	
+
 	fromHex := tx.From().Hex()
 	require.True(t, len(fromHex) >= 2 && fromHex[0:2] == "0x", "from should be hex string (0x...)")
-	
+
 	toHex := tx.To().Hex()
 	require.True(t, len(toHex) >= 2 && toHex[0:2] == "0x", "to should be hex string (0x...)")
-	
-	t.Logf("Format verified: value=%s (decimal), gas=%d (uint64), data=%s (hex), hash=%s (hex)", 
+
+	t.Logf("Format verified: value=%s (decimal), gas=%d (uint64), data=%s (hex), hash=%s (hex)",
 		valueStr, gasUint64, dataHex, hashHex)
 }

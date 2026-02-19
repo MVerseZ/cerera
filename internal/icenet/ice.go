@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cerera/internal/cerera/block"
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/consensus"
@@ -39,61 +39,22 @@ type IceAddress struct {
 	PeerID   peer.ID
 }
 
-// ChainProvider provides access to blockchain data for Ice
-type ChainProvider interface {
-	GetCurrentHeight() int
-	GetBlockByHeight(height int) *block.Block
-	GetBlockByHash(hash common.Hash) *block.Block
-	GetBestHash() common.Hash
-	GetGenesisHash() common.Hash
-	AddBlock(b *block.Block) error
-	GetChainID() int
-	ValidateBlock(b *block.Block) error
-}
-
-// TxPoolProvider provides access to the transaction pool
-type TxPoolProvider interface {
-	AddTx(tx *types.GTransaction) error
-	GetPendingTxs() []*types.GTransaction
-	GetTx(hash common.Hash) *types.GTransaction
-	Size() int
-}
-
-// BlockValidator validates blocks (used for consensus)
-type BlockValidator interface {
-	ValidateBlock(b *block.Block) error
-	ValidateBlockPoW(b *block.Block) bool
-}
-
-// HeightLockProvider interface for height locking to prevent forks
-type HeightLockProvider interface {
-	TryLockHeight(height int) bool
-	IsHeightLocked(height int) bool
-	LockHeight(height int)
-	GetCancelChannel() <-chan struct{}
-	GetLockedHeight() int
-}
-
 // Ice is the main P2P network component
 type Ice struct {
-	Host        host.Host
-	DHT         *dht.IpfsDHT
-	Discovery   *Discovery
-	PubSub      *PubSubManager
-	PeerManager *peers.Manager
-	PeerScorer  *peers.Scorer
-	SyncManager *icesync.Manager
-	Consensus   *consensus.Manager
-	Handler     *protocol.Handler
-	Address     IceAddress
-	cfg         *config.Config
-	ctx         context.Context
-	cancel      context.CancelFunc
-
-	// External providers
-	chain      ChainProvider
-	txPool     TxPoolProvider
-	heightLock HeightLockProvider
+	Host            host.Host
+	DHT             *dht.IpfsDHT
+	Discovery       *Discovery
+	PubSub          *PubSubManager
+	PeerManager     *peers.Manager
+	PeerScorer      *peers.Scorer
+	SyncManager     *icesync.Manager
+	Consensus       *consensus.Manager
+	ServiceProvider service.ServiceProvider
+	Handler         *protocol.Handler
+	Address         IceAddress
+	cfg             *config.Config
+	ctx             context.Context
+	cancel          context.CancelFunc
 
 	// Dev-mode: treat connected peers as validators.
 	devValidators bool
@@ -145,7 +106,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	ice.PeerScorer = peers.NewScorer(ice.PeerManager)
 
 	// Create protocol handler (initially without chain/txPool - will be set later)
-	ice.Handler = protocol.NewHandler(h, nil, nil, cfg.NetCfg.ADDR, cfg.GetVersion())
+	ice.Handler = protocol.NewHandler(h, nil, cfg.NetCfg.ADDR, cfg.GetVersion())
 	ice.Handler.RegisterHandlers()
 
 	// Create discovery service
@@ -184,7 +145,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	}
 
 	// Create consensus manager
-	ice.Consensus = consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, nil, cfg.NetCfg.ADDR)
+	ice.Consensus = consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, cfg.NetCfg.ADDR, nil)
 	ice.Consensus.SetOnBlockFinalized(func(b *block.Block) {
 		if b != nil && b.Head != nil {
 			metrics.SetBlockHeight(b.Head.Height)
@@ -222,61 +183,29 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	return ice, nil
 }
 
-// SetChainProvider sets the chain provider and initializes sync manager
-func (ice *Ice) SetChainProvider(chain ChainProvider) {
-	ice.chain = chain
+// SetApiProvider sets the api provider, creates sync manager and handler with it, and starts sync.
+func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
+	ice.ServiceProvider = provider
 
-	// Provide chain access to consensus finalization.
+	// Consensus uses same provider for AddBlock/GetBlockByHash
 	if ice.Consensus != nil {
-		ice.Consensus.SetChainProvider(chain)
+		ice.Consensus.SetServiceProvider(provider)
 	}
 
-	// Update handler with chain
-	ice.Handler = protocol.NewHandler(ice.Host, chain, ice.txPool, ice.cfg.NetCfg.ADDR, ice.cfg.GetVersion())
+	// Handler with chain + txPool from same provider
+	ice.Handler = protocol.NewHandler(ice.Host, provider, ice.cfg.NetCfg.ADDR, ice.cfg.GetVersion())
 	ice.Handler.RegisterHandlers()
 
-	// Create sync manager now that we have chain
-	ice.SyncManager = icesync.NewManager(ice.ctx, ice.Host, ice.Handler, ice.PeerManager, chain)
-
-	// Setup sync callbacks
+	// Sync manager using provider as chain
+	ice.SyncManager = icesync.NewManager(ice.ctx, ice.Host, ice.Handler, ice.PeerManager, provider)
 	ice.SyncManager.SetOnNewBlock(func(b *block.Block) {
-		metrics.SetBlockHeight(b.Head.Height)
+		if b != nil && b.Head != nil {
+			metrics.SetBlockHeight(b.Head.Height)
+		}
 	})
-
-	// Start sync manager
 	ice.SyncManager.Start()
 
-	iceLogger().Infow("Chain provider set, sync manager started")
-}
-
-// SetTxPoolProvider sets the transaction pool provider
-func (ice *Ice) SetTxPoolProvider(txPool TxPoolProvider) {
-	ice.txPool = txPool
-
-	// Update handler with txPool
-	if ice.chain != nil {
-		ice.Handler = protocol.NewHandler(ice.Host, ice.chain, txPool, ice.cfg.NetCfg.ADDR, ice.cfg.GetVersion())
-		ice.Handler.RegisterHandlers()
-	}
-
-	iceLogger().Infow("TxPool provider set")
-}
-
-// SetBlockValidator sets the block validator for consensus
-func (ice *Ice) SetBlockValidator(validator BlockValidator) {
-	if ice.Consensus != nil {
-		ice.Consensus.SetBlockValidator(validator)
-		iceLogger().Infow("Block validator set for consensus")
-	}
-}
-
-// SetHeightLockProvider sets the height lock provider for fork prevention
-func (ice *Ice) SetHeightLockProvider(heightLock HeightLockProvider) {
-	ice.heightLock = heightLock
-	if ice.Consensus != nil {
-		ice.Consensus.SetHeightLockProvider(heightLock)
-	}
-	iceLogger().Infow("Height lock provider set for fork prevention")
+	iceLogger().Infow("API provider set, sync manager and handler started")
 }
 
 // onPeerConnected handles new peer connections
@@ -362,16 +291,16 @@ func (ice *Ice) onPubSubTx(tx *types.GTransaction, from peer.ID) {
 	metrics.RecordTxReceived()
 	metrics.RecordPubSubMessageReceived(TopicTxs)
 
-	if ice.txPool != nil {
-		if err := ice.txPool.AddTx(tx); err != nil {
-			iceLogger().Debugw("Failed to add tx to pool", "error", err, "from", from)
-			metrics.RecordTxRejected()
-			ice.PeerScorer.RecordInvalidTx(from)
-		} else {
-			metrics.RecordTxValidated()
-			ice.PeerScorer.RecordValidTx(from)
-		}
-	}
+	// if ice.ApiProvider != nil {
+	// 	if err := ice.ApiProvider.AddTx(tx); err != nil {
+	// 		iceLogger().Debugw("Failed to add tx to pool", "error", err, "from", from)
+	// 		metrics.RecordTxRejected()
+	// 		ice.PeerScorer.RecordInvalidTx(from)
+	// 	} else {
+	// 		metrics.RecordTxValidated()
+	// 		ice.PeerScorer.RecordValidTx(from)
+	// 	}
+	// }
 }
 
 // onPubSubConsensus handles consensus messages received via PubSub
@@ -572,9 +501,6 @@ func (ice *Ice) Exec(method string, params []interface{}) interface{} {
 		return ice.GetStatus()
 	case "forceSync":
 		return ice.ForceSync()
-	case "getHeightLock":
-		// Return the height lock provider for miner to check/cancel
-		return ice.heightLock
 	}
 	return nil
 }

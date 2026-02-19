@@ -7,10 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/message"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/metrics"
@@ -24,22 +25,14 @@ func consensusLogger() *zap.SugaredLogger {
 	return logger.Named("consensus")
 }
 
-// BlockValidator validates blocks before consensus
-type BlockValidator interface {
-	ValidateBlock(b *block.Block) error
-	ValidateBlockPoW(b *block.Block) bool
-}
-
 // Manager manages the hybrid consensus process
 type Manager struct {
 	host        host.Host
 	peerManager *peers.Manager
 	peerScorer  *peers.Scorer
 	voting      *VotingManager
-	validator   BlockValidator
 
-	chain      ChainProvider
-	heightLock HeightLockProvider
+	serviceProvider service.ServiceProvider
 
 	blocksMu sync.RWMutex
 	blocks   map[common.Hash]*block.Block
@@ -55,33 +48,29 @@ type Manager struct {
 	broadcastMsg     func(int, []byte, []byte) error
 }
 
-// ChainProvider provides minimal chain access for finalization.
-type ChainProvider interface {
-	AddBlock(b *block.Block) error
-	GetBlockByHash(hash common.Hash) *block.Block
-}
-
-// HeightLockProvider prevents concurrent finalization on the same height.
-type HeightLockProvider interface {
-	TryLockHeight(height int) bool
-}
-
 // NewManager creates a new consensus manager
-func NewManager(ctx context.Context, h host.Host, peerManager *peers.Manager, peerScorer *peers.Scorer, validator BlockValidator, localPeerAddr types.Address) *Manager {
+func NewManager(
+	ctx context.Context,
+	h host.Host,
+	peerManager *peers.Manager,
+	peerScorer *peers.Scorer,
+	localPeerAddr types.Address,
+	serviceProvider service.ServiceProvider,
+) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
 
 	voting := NewVotingManager(ctx, h.ID(), localPeerAddr)
 	m := &Manager{
-		host:        h,
-		peerManager: peerManager,
-		peerScorer:  peerScorer,
-		voting:      voting,
-		validator:   validator,
-		ctx:         ctx,
-		cancel:      cancel,
-		currentView: 0,
-		sequenceID:  0,
-		blocks:      make(map[common.Hash]*block.Block),
+		host:            h,
+		peerManager:     peerManager,
+		peerScorer:      peerScorer,
+		voting:          voting,
+		serviceProvider: serviceProvider,
+		ctx:             ctx,
+		cancel:          cancel,
+		currentView:     0,
+		sequenceID:      0,
+		blocks:          make(map[common.Hash]*block.Block),
 	}
 
 	// Set voting callbacks
@@ -110,6 +99,10 @@ func (m *Manager) Stop() {
 	metrics.SetConsensusVotersTotal(0)
 	metrics.SetConsensusNonce(0)
 	consensusLogger().Infow("Consensus manager stopped")
+}
+
+func (m *Manager) SetServiceProvider(serviceProvider service.ServiceProvider) {
+	m.serviceProvider = serviceProvider
 }
 
 // startConsensusMetricsUpdater runs a goroutine that periodically updates
@@ -147,28 +140,42 @@ func (m *Manager) ProposeBlock(b *block.Block) error {
 	)
 
 	// First, validate PoW if validator is set
-	if m.validator != nil {
-		if !m.validator.ValidateBlockPoW(b) {
-			consensusLogger().Warnw("[CONSENSUS] Block failed PoW validation",
-				"hash", b.Hash,
-				"height", b.Head.Height,
-			)
-			return fmt.Errorf("block failed PoW validation")
-		}
 
-		if err := m.validator.ValidateBlock(b); err != nil {
-			consensusLogger().Warnw("[CONSENSUS] Block validation failed",
-				"hash", b.Hash,
-				"height", b.Head.Height,
-				"error", err,
-			)
-			return fmt.Errorf("block validation failed: %w", err)
+	if m.serviceProvider != nil {
+		serviceProvider := m.serviceProvider
+		// serviceProvider.Exec("validateBlockPoW", []interface{}{b})
+		err := serviceProvider.ValidateBlock(b)
+		if err != nil {
+			return fmt.Errorf("block validation failed: %v", err)
 		}
 		consensusLogger().Debugw("[CONSENSUS] Block validation passed",
 			"hash", b.Hash,
 			"height", b.Head.Height,
 		)
 	}
+
+	// if m.validator != nil {
+	// 	if !m.validator.ValidateBlockPoW(b) {
+	// 		consensusLogger().Warnw("[CONSENSUS] Block failed PoW validation",
+	// 			"hash", b.Hash,
+	// 			"height", b.Head.Height,
+	// 		)
+	// 		return fmt.Errorf("block failed PoW validation")
+	// 	}
+
+	// 	if err := m.validator.ValidateBlock(b); err != nil {
+	// 		consensusLogger().Warnw("[CONSENSUS] Block validation failed",
+	// 			"hash", b.Hash,
+	// 			"height", b.Head.Height,
+	// 			"error", err,
+	// 		)
+	// 		return fmt.Errorf("block validation failed: %w", err)
+	// 	}
+	// 	consensusLogger().Debugw("[CONSENSUS] Block validation passed",
+	// 		"hash", b.Hash,
+	// 		"height", b.Head.Height,
+	// 	)
+	// }
 
 	// Cache proposed block for later finalization.
 	m.putBlock(b.Hash, b)
@@ -290,8 +297,8 @@ func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
 		}
 		return fmt.Errorf("pre-prepare block mismatch")
 	}
-	if m.validator != nil {
-		if !m.validator.ValidateBlockPoW(msg.Block) {
+	if m.serviceProvider != nil {
+		if !m.serviceProvider.ValidateBlockPoW(msg.Block) {
 			consensusLogger().Warnw("[CONSENSUS] PrePrepare block failed PoW",
 				"from", from,
 				"blockHash", msg.BlockHash,
@@ -301,7 +308,7 @@ func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
 			}
 			return fmt.Errorf("pre-prepare block failed PoW validation")
 		}
-		if err := m.validator.ValidateBlock(msg.Block); err != nil {
+		if err := m.serviceProvider.ValidateBlock(msg.Block); err != nil {
 			consensusLogger().Warnw("[CONSENSUS] PrePrepare block validation failed",
 				"from", from,
 				"blockHash", msg.BlockHash,
@@ -491,22 +498,13 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 		}(),
 	)
 
-	// Prevent concurrent finalization for same height (best-effort).
-	if m.heightLock != nil && !m.heightLock.TryLockHeight(height) {
-		consensusLogger().Warnw("[CONSENSUS] Height already locked; skipping finalization",
-			"height", height,
-			"blockHash", blockHash,
-		)
-		return
-	}
-
 	// Retrieve block (prefer in-memory cache; fall back to chain lookup if present).
 	b := m.getBlock(blockHash)
-	if b == nil && m.chain != nil {
+	if b == nil && m.serviceProvider != nil {
 		consensusLogger().Debugw("[CONSENSUS] Block not in cache, fetching from chain",
 			"blockHash", blockHash,
 		)
-		b = m.chain.GetBlockByHash(blockHash)
+		b = m.serviceProvider.GetBlockByHash(blockHash)
 	}
 	if b == nil {
 		consensusLogger().Warnw("[CONSENSUS] Finalized block not found locally",
@@ -522,15 +520,15 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 	)
 
 	// Validate again before adding.
-	if m.validator != nil {
-		if !m.validator.ValidateBlockPoW(b) {
+	if m.serviceProvider != nil {
+		if !m.serviceProvider.ValidateBlockPoW(b) {
 			consensusLogger().Warnw("[CONSENSUS] Finalized block failed PoW validation",
 				"blockHash", blockHash,
 				"height", height,
 			)
 			return
 		}
-		if err := m.validator.ValidateBlock(b); err != nil {
+		if err := m.serviceProvider.ValidateBlock(b); err != nil {
 			consensusLogger().Warnw("[CONSENSUS] Finalized block failed validation",
 				"error", err,
 				"blockHash", blockHash,
@@ -541,12 +539,12 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 	}
 
 	// Add to chain if available.
-	if m.chain != nil {
+	if m.serviceProvider != nil {
 		consensusLogger().Infow("[CONSENSUS] Adding finalized block to chain",
 			"blockHash", blockHash,
 			"height", height,
 		)
-		if err := m.chain.AddBlock(b); err != nil {
+		if err := m.serviceProvider.AddBlock(b); err != nil {
 			metrics.RecordConsensusRoundFailed()
 			consensusLogger().Errorw("[CONSENSUS] Failed to add finalized block to chain",
 				"error", err,
@@ -770,21 +768,6 @@ func (m *Manager) GetSequenceID() int64 {
 // SetOnBlockFinalized sets the callback for finalized blocks
 func (m *Manager) SetOnBlockFinalized(callback func(*block.Block)) {
 	m.onBlockFinalized = callback
-}
-
-// SetBlockValidator sets the validator used for consensus block validation.
-func (m *Manager) SetBlockValidator(validator BlockValidator) {
-	m.validator = validator
-}
-
-// SetChainProvider sets the chain provider used for finalization.
-func (m *Manager) SetChainProvider(chain ChainProvider) {
-	m.chain = chain
-}
-
-// SetHeightLockProvider sets the height lock provider used for fork prevention.
-func (m *Manager) SetHeightLockProvider(lock HeightLockProvider) {
-	m.heightLock = lock
 }
 
 // SetBroadcastFunc sets the function for broadcasting consensus messages

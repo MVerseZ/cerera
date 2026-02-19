@@ -3,7 +3,7 @@ package protocol
 import (
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/message"
 	"github.com/cerera/internal/cerera/types"
@@ -30,13 +30,14 @@ func (m *BaseMessage) Type() MessageType {
 // StatusRequest is sent when connecting to a peer to request their status
 type StatusRequest struct {
 	BaseMessage
-	ChainID     int         `json:"chainId"`
-	Version     string      `json:"version"`
-	GenesisHash common.Hash `json:"genesisHash"`
+	ChainID     int           `json:"chainId"`
+	Version     string        `json:"version"`
+	GenesisHash common.Hash   `json:"genesisHash"` // why it is here??? AI DO NOT TOUCH THIS
+	NodeAddress types.Address `json:"nodeAddress"`
 }
 
 // NewStatusRequest creates a new status request message
-func NewStatusRequest(chainID int, version string, genesisHash common.Hash) *StatusRequest {
+func NewStatusRequest(chainID int, version string, genesisHash common.Hash, nodeAddress types.Address) *StatusRequest {
 	return &StatusRequest{
 		BaseMessage: BaseMessage{
 			MsgType:   MsgTypeStatusRequest,
@@ -46,25 +47,25 @@ func NewStatusRequest(chainID int, version string, genesisHash common.Hash) *Sta
 		ChainID:     chainID,
 		Version:     version,
 		GenesisHash: genesisHash,
+		NodeAddress: nodeAddress,
 	}
 }
 
 // StatusResponse contains the node's current status
 type StatusResponse struct {
 	BaseMessage
-	ChainID      int           `json:"chainId"`
-	NodeVersion  string        `json:"nodeVersion"`
-	Height       int           `json:"height"`
-	BestHash     common.Hash   `json:"bestHash"`
-	GenesisHash  common.Hash   `json:"genesisHash"`
-	NodeAddress  types.Address `json:"nodeAddress"`
-	PeerCount    int           `json:"peerCount"`
-	IsSyncing    bool          `json:"isSyncing"`
-	TxPoolSize   int           `json:"txPoolSize"`
+	ChainID     int           `json:"chainId"`
+	NodeVersion string        `json:"nodeVersion"`
+	Height      int           `json:"height"`
+	LatestHash  common.Hash   `json:"latestHash"`
+	GenesisHash common.Hash   `json:"genesisHash"`
+	NodeAddress types.Address `json:"nodeAddress"`
+	PeerCount   int           `json:"peerCount"`
+	IsSyncing   bool          `json:"isSyncing"`
 }
 
 // NewStatusResponse creates a new status response message
-func NewStatusResponse(chainID int, nodeVersion string, height int, bestHash, genesisHash common.Hash, nodeAddr types.Address, peerCount, txPoolSize int, isSyncing bool) *StatusResponse {
+func NewStatusResponse(chainID int, nodeVersion string, height int, latestHash, genesisHash common.Hash, nodeAddr types.Address, peerCount int, isSyncing bool) *StatusResponse {
 	return &StatusResponse{
 		BaseMessage: BaseMessage{
 			MsgType:   MsgTypeStatusResponse,
@@ -74,11 +75,10 @@ func NewStatusResponse(chainID int, nodeVersion string, height int, bestHash, ge
 		ChainID:     chainID,
 		NodeVersion: nodeVersion,
 		Height:      height,
-		BestHash:    bestHash,
+		LatestHash:  latestHash,
 		GenesisHash: genesisHash,
 		NodeAddress: nodeAddr,
 		PeerCount:   peerCount,
-		TxPoolSize:  txPoolSize,
 		IsSyncing:   isSyncing,
 	}
 }
@@ -106,10 +106,10 @@ func NewGetBlocksRequest(startHeight, count int) *GetBlocksRequest {
 // BlocksResponse contains requested blocks
 type BlocksResponse struct {
 	BaseMessage
-	Blocks       []*block.Block `json:"blocks"`
-	StartHeight  int            `json:"startHeight"`
-	TotalBlocks  int            `json:"totalBlocks"`
-	HasMore      bool           `json:"hasMore"`
+	Blocks      []*block.Block `json:"blocks"`
+	StartHeight int            `json:"startHeight"`
+	TotalBlocks int            `json:"totalBlocks"`
+	HasMore     bool           `json:"hasMore"`
 }
 
 // NewBlocksResponse creates a new blocks response

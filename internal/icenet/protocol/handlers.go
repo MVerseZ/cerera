@@ -6,9 +6,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -27,32 +28,12 @@ func protocolLogger() *zap.SugaredLogger {
 	return logger.Named("protocol")
 }
 
-// ChainProvider provides access to blockchain data
-type ChainProvider interface {
-	GetCurrentHeight() int
-	GetBlockByHeight(height int) *block.Block
-	GetBlockByHash(hash common.Hash) *block.Block
-	GetBestHash() common.Hash
-	GetGenesisHash() common.Hash
-	AddBlock(b *block.Block) error
-	GetChainID() int
-}
-
-// TxPoolProvider provides access to the transaction pool
-type TxPoolProvider interface {
-	AddTx(tx *types.GTransaction) error
-	GetPendingTxs() []*types.GTransaction
-	GetTx(hash common.Hash) *types.GTransaction
-	Size() int
-}
-
 // Handler handles protocol messages
 type Handler struct {
-	host       host.Host
-	chain      ChainProvider
-	txPool     TxPoolProvider
-	nodeAddr   types.Address
-	version    string
+	host            host.Host
+	serviceProvider service.ServiceProvider
+	nodeAddr        types.Address
+	version         string
 
 	// Callbacks for specific message types
 	onNewBlock     func(*block.Block, peer.ID)
@@ -62,13 +43,12 @@ type Handler struct {
 }
 
 // NewHandler creates a new protocol handler
-func NewHandler(h host.Host, chain ChainProvider, txPool TxPoolProvider, nodeAddr types.Address, version string) *Handler {
+func NewHandler(h host.Host, serviceProvider service.ServiceProvider, nodeAddr types.Address, version string) *Handler {
 	return &Handler{
-		host:     h,
-		chain:    chain,
-		txPool:   txPool,
-		nodeAddr: nodeAddr,
-		version:  version,
+		host:            h,
+		serviceProvider: serviceProvider,
+		nodeAddr:        nodeAddr,
+		version:         version,
 	}
 }
 
@@ -135,8 +115,8 @@ func (h *Handler) handleStatusStream(s network.Stream) {
 
 	// Create and send response
 	genesisHash := common.Hash{}
-	if h.chain != nil {
-		genesisHash = h.chain.GetGenesisHash()
+	if h.serviceProvider != nil {
+		genesisHash = h.serviceProvider.GenesisHash()
 	}
 
 	// Check chain compatibility
@@ -149,29 +129,23 @@ func (h *Handler) handleStatusStream(s network.Stream) {
 	}
 
 	height := 0
-	bestHash := common.Hash{}
+	latestHash := common.Hash{}
 	chainID := statusReq.ChainID
-	txPoolSize := 0
 
-	if h.chain != nil {
-		height = h.chain.GetCurrentHeight()
-		bestHash = h.chain.GetBestHash()
-		chainID = h.chain.GetChainID()
-	}
-
-	if h.txPool != nil {
-		txPoolSize = h.txPool.Size()
+	if h.serviceProvider != nil {
+		height = h.serviceProvider.GetCurrentHeight()
+		latestHash = h.serviceProvider.GetLatestHash()
+		chainID = h.serviceProvider.GetChainID()
 	}
 
 	response := NewStatusResponse(
 		chainID,
 		h.version,
 		height,
-		bestHash,
+		latestHash,
 		genesisHash,
 		h.nodeAddr,
 		len(h.host.Network().Peers()),
-		txPoolSize,
 		false, // TODO: implement syncing status
 	)
 
@@ -226,14 +200,14 @@ func (h *Handler) handleSyncStream(s network.Stream) {
 // handleSyncRequest handles a sync request
 func (h *Handler) handleSyncRequest(req *SyncRequest, encoder *Encoder, peer peer.ID) {
 	height := 0
-	bestHash := common.Hash{}
+	latestHash := common.Hash{}
 
-	if h.chain != nil {
-		height = h.chain.GetCurrentHeight()
-		bestHash = h.chain.GetBestHash()
+	if h.serviceProvider != nil {
+		height = h.serviceProvider.GetCurrentHeight()
+		latestHash = h.serviceProvider.GetLatestHash()
 	}
 
-	response := NewSyncResponse(true, height, bestHash, "")
+	response := NewSyncResponse(true, height, latestHash, "")
 	if err := encoder.Encode(response); err != nil {
 		protocolLogger().Warnw("Failed to send sync response", "peer", peer, "error", err)
 	}
@@ -241,17 +215,17 @@ func (h *Handler) handleSyncRequest(req *SyncRequest, encoder *Encoder, peer pee
 
 // handleGetBlocksRequest handles a get blocks request
 func (h *Handler) handleGetBlocksRequest(req *GetBlocksRequest, encoder *Encoder, peer peer.ID) {
-	if h.chain == nil {
+	if h.serviceProvider == nil {
 		response := NewBlocksResponse(nil, req.StartHeight, 0, false)
 		encoder.Encode(response)
 		return
 	}
 
 	blocks := make([]*block.Block, 0, req.Count)
-	currentHeight := h.chain.GetCurrentHeight()
+	currentHeight := h.serviceProvider.GetCurrentHeight()
 
 	for i := 0; i < req.Count && req.StartHeight+i <= currentHeight; i++ {
-		b := h.chain.GetBlockByHeight(req.StartHeight + i)
+		b := h.serviceProvider.GetBlockByHeight(req.StartHeight + i)
 		if b != nil {
 			blocks = append(blocks, b)
 		}
@@ -417,12 +391,12 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 
 	genesisHash := common.Hash{}
 	chainID := 0
-	if h.chain != nil {
-		genesisHash = h.chain.GetGenesisHash()
-		chainID = h.chain.GetChainID()
+	if h.serviceProvider != nil {
+		genesisHash = h.serviceProvider.GenesisHash()
+		chainID = h.serviceProvider.GetChainID()
 	}
 
-	request := NewStatusRequest(chainID, h.version, genesisHash)
+	request := NewStatusRequest(chainID, h.version, genesisHash, h.nodeAddr)
 
 	encoder := NewEncoder(s)
 	if err := encoder.Encode(request); err != nil {

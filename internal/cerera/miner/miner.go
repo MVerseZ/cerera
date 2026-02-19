@@ -7,11 +7,12 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
+	"github.com/cerera/core/pool"
+	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/cerera/validator"
@@ -163,11 +164,11 @@ func (m *miner) Start() error {
 	m.stopChan = make(chan struct{})
 	minerStatus.Set(1)
 
-	minerLogger().Infow("Starting miner", "id", m.GetID())
+	minerLogger().Infow("[MINER] Starting miner", "id", m.GetID())
 
 	// Получаем конфигурацию
 	m.config = config.GenerageConfig()
-	minerLogger().Infow("Chain config loaded",
+	minerLogger().Infow("[MINER] Chain config loaded",
 		"chain_id", m.config.Chain.ChainID,
 		"type", m.config.Chain.Type)
 
@@ -188,7 +189,7 @@ func (m *miner) Start() error {
 		m.mining = false
 		return ErrChainServiceNotFound
 	}
-	minerLogger().Info("Chain service connected")
+	minerLogger().Info("[MINER] Chain service connected")
 
 	// Получаем пул транзакций
 	_, ok = registry.GetService("pool")
@@ -199,7 +200,7 @@ func (m *miner) Start() error {
 		return ErrPoolServiceNotFound
 	}
 	m.pool = pool.Get()
-	minerLogger().Info("Pool service connected")
+	minerLogger().Info("[MINER] Pool service connected")
 
 	// Получаем последний блок
 	lastBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
@@ -226,7 +227,7 @@ func (m *miner) Start() error {
 		m.mining = false
 		return ErrBlockHeaderNil
 	}
-	minerLogger().Infow("Last block retrieved",
+	minerLogger().Infow("[MINER] Last block retrieved",
 		"height", header.Height,
 		"hash", lastBlock.GetHash())
 
@@ -242,7 +243,7 @@ func (m *miner) Stop() {
 	if m.stopChan != nil {
 		close(m.stopChan)
 	}
-	minerLogger().Info("Miner stopped")
+	minerLogger().Info("[MINER] Miner stopped")
 }
 
 func (m *miner) miningLoop() {
@@ -258,12 +259,12 @@ func (m *miner) miningLoop() {
 				// Валидатор проверит консенсус перед добавлением блока в цепочку
 				if !m.isConsensusStarted() {
 					m.printConsensusStatus()
-					minerLogger().Warnw("Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
+					minerLogger().Warnw("[MINER] Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
 				}
 				m.mineBlock()
 			}
 		case <-m.stopChan:
-			minerLogger().Info("Mining loop stopped")
+			minerLogger().Info("[MINER] Mining loop stopped")
 			return
 		}
 	}
@@ -303,26 +304,19 @@ func (m *miner) printConsensusStatus() {
 		"address", consensusInfo["address"])
 }
 
-// getHeightLockChecker retrieves the HeightLockChecker from the service registry
+// getHeightLockChecker retrieves the HeightLockChecker from the chain (registered in service registry).
 func (m *miner) getHeightLockChecker() HeightLockChecker {
 	registry, err := service.GetRegistry()
 	if err != nil {
 		return nil
 	}
-
-	iceService, ok := registry.GetService("ice")
+	chainSvc, ok := registry.GetService(chain.CHAIN_SERVICE_NAME)
 	if !ok {
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			return nil
-		}
+		return nil
 	}
-
-	result := iceService.Exec("getHeightLock", nil)
-	if checker, ok := result.(HeightLockChecker); ok {
+	if checker, ok := chainSvc.(HeightLockChecker); ok {
 		return checker
 	}
-
 	return nil
 }
 
@@ -415,11 +409,13 @@ func (m *miner) mineBlock() {
 	minerBlocksMinedTotal.Inc()
 	duration := time.Since(startTime).Seconds()
 	minerMiningDurationSeconds.Observe(duration)
+	txCount := len(newBlock.Transactions)
 	minerLogger().Infow("Block mined and proposed",
 		"height", newBlock.Header().Height,
 		"hash", newBlock.GetHash(),
-		"txs", len(newBlock.Transactions),
+		"txs", txCount,
 		"duration_seconds", duration)
+	minerLogger().Infow("New block: transactions count", "count", txCount, "height", newBlock.Header().Height)
 
 	// Broadcast the block to other nodes
 	m.broadcastBlock(newBlock)

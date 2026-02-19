@@ -1,6 +1,6 @@
 # Развёртывание на удалённом хосте: 194.76.173.132
 # Observer + 9 нод + Prometheus + Grafana. Запуск: docker compose -f docker_rem9_observer_9nodes.yml up -d
-# Observer UI: http://194.76.173.132:8080
+# Observer UI: http://localhost:8080
 # Grafana:     http://194.76.173.132:3100  (admin / admin)
 # Prometheus:  http://194.76.173.132:9090
 # Ноды HTTP: 194.76.173.132:1337–1345, P2P: 31100–31108

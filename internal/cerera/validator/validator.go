@@ -10,12 +10,12 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
+	"github.com/cerera/core/pool"
 	"github.com/cerera/internal/cerera/chain"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/storage"
 	"github.com/cerera/internal/gigea"
@@ -665,6 +665,9 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 				}
 				time.Sleep(1 * time.Second) // prefer spam
 				pool.Get().QueueTransaction(tx)
+				registry, _ := service.GetRegistry()
+				iceService, _ := registry.GetService("ice")
+				iceService.Exec("broadcastTx", []interface{}{tx})
 				return tx.Hash()
 			}
 		}
@@ -695,6 +698,12 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		valSignSuccess.Inc() // temporary move metrics here
 		valTxValidated.Inc() // temporary move metrics here
 		pool.Get().QueueTransaction(tx)
+		// Broadcast tx to all nodes (same as in structured send path)
+		if registry, err := service.GetRegistry(); err == nil {
+			if iceService, ok := registry.GetService("ice"); ok {
+				iceService.Exec("broadcastTx", []interface{}{tx})
+			}
+		}
 		return tx.Hash()
 	case "get":
 		// params[0]: hash string

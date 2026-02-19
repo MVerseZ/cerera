@@ -115,6 +115,16 @@
     }
     .actions button:hover { border-color: var(--accent); }
     .actions button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .panels-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 900px) {
+      .panels-row { grid-template-columns: 1fr; }
+    }
+    .panels-row .panel { margin-bottom: 0; }
     .nodes-grid {
       display: flex;
       flex-direction: column;
@@ -214,6 +224,35 @@
       font-size: 13px;
     }
     .quick-urls .btns button:hover { border-color: var(--accent); }
+    .mempool-grid { display: flex; flex-direction: column; gap: 12px; }
+    .mempool-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .mempool-card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent); word-break: break-all; }
+    .mempool-card .mempool-meta { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .mempool-card .mempool-meta span { color: var(--text); }
+    .mempool-tx-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow: auto;
+    }
+    .mempool-tx-list li {
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--border);
+      word-break: break-all;
+      color: var(--muted);
+    }
+    .mempool-tx-list li:last-child { border-bottom: none; }
+    .mempool-card .status { font-size: 12px; margin-bottom: 8px; }
+    .mempool-card .status.ok { color: var(--success); }
+    .mempool-card .status.err { color: var(--error); }
   </style>
 </head>
 <body>
@@ -222,7 +261,7 @@
   <div class="panel">
     <h2>Добавить URL ноды для получения блоков</h2>
     <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
-      Укажите базовый URL ноды (например: http://194.76.173.132:1337/app). Запросы блоков отправляются как JSON-RPC POST на этот адрес.
+      Укажите базовый URL ноды (например: http://localhost:1337/app). Запросы блоков отправляются как JSON-RPC POST на этот адрес.
     </p>
     <div class="quick-urls">
       <p>Быстрый выбор (Docker, localhost):</p>
@@ -234,7 +273,7 @@
       </div>
     </div>
     <form class="url-form" id="addUrlForm">
-      <input type="url" id="nodeUrl" placeholder="http://194.76.173.132:1337/app" required>
+      <input type="url" id="nodeUrl" placeholder="http://localhost:1337/app" required>
       <button type="submit">Добавить</button>
     </form>
     <ul class="url-list" id="urlList"></ul>
@@ -244,9 +283,21 @@
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Ноды и информация о цепочке</h2>
-    <div class="nodes-grid" id="nodesGrid"></div>
+  <div class="panels-row">
+    <div class="panel">
+      <h2>Ноды и информация о цепочке</h2>
+      <div class="nodes-grid" id="nodesGrid"></div>
+    </div>
+    <div class="panel">
+      <h2>Мемпул узлов</h2>
+      <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
+        Транзакции в пуле каждой ноды (pending). Запрос <code>cerera.pool.getInfo</code> по каждому URL.
+      </p>
+      <div class="actions">
+        <button type="button" class="primary" id="fetchMempoolsBtn">Обновить мемпулы</button>
+      </div>
+      <div class="mempool-grid" id="mempoolGrid"></div>
+    </div>
   </div>
 
   <div class="panel blocks-section">
@@ -268,7 +319,7 @@
     </p>
     <div class="block-index-input">
       <label for="blockNodeUrl">URL ноды:</label>
-      <input type="text" id="blockNodeUrl" placeholder="http://194.76.173.132:1337/app" style="flex:1; min-width: 200px;">
+      <input type="text" id="blockNodeUrl" placeholder="http://localhost:1337/app" style="flex:1; min-width: 200px;">
       <label for="blockIndex">Индекс:</label>
       <input type="number" id="blockIndex" min="0" value="0" style="width: 80px;">
       <button type="button" id="loadBlockBtn">Загрузить блок</button>
@@ -298,6 +349,8 @@
     const checkResultEl = document.getElementById('checkResult');
     const checkSummaryEl = document.getElementById('checkSummary');
     const checkVizEl = document.getElementById('checkViz');
+    const mempoolGridEl = document.getElementById('mempoolGrid');
+    const fetchMempoolsBtn = document.getElementById('fetchMempoolsBtn');
     const nodeHeights = {}; // url -> height
 
     function nodeLabel(url) {
@@ -339,7 +392,7 @@
         const n = parseInt(btn.dataset.preset, 10);
         const ports = DOCKER_PRESETS[n];
         if (!ports) return;
-        urls = ports.map(p => `http://194.76.173.132:${p}/app`);
+        urls = ports.map(p => `http://localhost:${p}/app`);
         saveUrls();
         renderUrlList();
         renderNodes();
@@ -393,6 +446,15 @@
 
     async function getBlockByIndex(baseUrl, index) {
       return jsonRpc(baseUrl, 'cerera.chain.getBlockByIndex', [index]);
+    }
+
+    async function getMempoolInfo(baseUrl) {
+      try {
+        const info = await jsonRpc(baseUrl, 'cerera.pool.getInfo', []);
+        return { ok: true, info: info };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
     }
 
     function renderNodes() {
@@ -551,6 +613,52 @@
     checkBlocksBtn.addEventListener('click', runCheckBlocks);
 
     document.getElementById('fetchAllBtn').addEventListener('click', () => renderNodes());
+
+    async function renderMempools() {
+      if (urls.length === 0) {
+        mempoolGridEl.innerHTML = '<p style="color: var(--muted);">Добавьте URL ноды выше и нажмите «Обновить мемпулы».</p>';
+        return;
+      }
+      mempoolGridEl.innerHTML = urls.map(url => `
+        <div class="mempool-card" data-url="${escapeHtml(url)}">
+          <h3>${escapeHtml(url)}</h3>
+          <div class="status loading">Загрузка…</div>
+          <div class="mempool-meta" style="display:none;"></div>
+          <ul class="mempool-tx-list" style="display:none;"></ul>
+        </div>
+      `);
+      for (const url of urls) {
+        const card = mempoolGridEl.querySelector(`.mempool-card[data-url="${url.replace(/"/g, '&quot;')}"]`);
+        if (!card) continue;
+        const status = card.querySelector('.status');
+        const meta = card.querySelector('.mempool-meta');
+        const txList = card.querySelector('.mempool-tx-list');
+        const r = await getMempoolInfo(url);
+        if (r.ok) {
+          const info = r.info;
+          const size = info.Size ?? info.size ?? 0;
+          const bytes = info.Bytes ?? info.bytes ?? 0;
+          status.textContent = 'Доступно';
+          status.className = 'status ok';
+          meta.style.display = 'block';
+          meta.innerHTML = `Транзакций: <span>${size}</span> · Размер: <span>${bytes}</span> байт`;
+          const hashes = info.Hashes ?? info.hashes ?? [];
+          const txs = info.Txs ?? info.txs ?? [];
+          const hashList = Array.isArray(hashes) && hashes.length > 0
+            ? hashes.map(h => (typeof h === 'string' ? h : (h && (h.Hex ?? h.hex ?? h)) || String(h)))
+            : (Array.isArray(txs) ? txs.map(tx => (tx && (tx.Hash ?? tx.hash)) || (tx && tx.hash ? tx.hash : '')) : []).filter(Boolean);
+          if (hashList.length > 0) {
+            txList.style.display = 'block';
+            txList.innerHTML = hashList.map(h => `<li>${escapeHtml(String(h))}</li>`).join('');
+          }
+        } else {
+          status.textContent = 'Ошибка: ' + r.error;
+          status.className = 'status err';
+        }
+      }
+    }
+
+    fetchMempoolsBtn.addEventListener('click', () => renderMempools());
 
     document.getElementById('getBlockBtn').addEventListener('click', () => {
       if (urls.length) blockNodeUrlInput.value = urls[0];

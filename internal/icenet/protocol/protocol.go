@@ -14,6 +14,9 @@ const (
 
 // Protocol IDs for different message types
 var (
+	// AccountProtocolID is used for account messages
+	AccountProtocolID = protocol.ID(ProtocolPrefix + "/account/" + ProtocolVersion)
+
 	// StatusProtocolID is used for exchanging node status information
 	StatusProtocolID = protocol.ID(ProtocolPrefix + "/status/" + ProtocolVersion)
 
@@ -31,12 +34,17 @@ var (
 
 	// PingProtocolID is used for ping/pong messages
 	PingProtocolID = protocol.ID(ProtocolPrefix + "/ping/" + ProtocolVersion)
+
+	// SystemProtocolID is used for system messages
+	SystemProtocolID = protocol.ID(ProtocolPrefix + "/system/" + ProtocolVersion)
 )
 
 // AllProtocols returns all supported protocol IDs
 func AllProtocols() []protocol.ID {
 	return []protocol.ID{
+		AccountProtocolID,
 		StatusProtocolID,
+		SystemProtocolID,
 		SyncProtocolID,
 		BlockProtocolID,
 		TxProtocolID,
@@ -83,6 +91,13 @@ const (
 	// Ping/Pong messages
 	MsgTypePing
 	MsgTypePong
+
+	// Account messages
+	MsgTypeCreateAccount
+	MsgTypeGetAccountBalance
+	MsgTypeGetAccountInputs
+	MsgTypeRestoreAccount
+	MsgTypeVerifyAccount
 )
 
 // String returns the string representation of the message type
@@ -134,6 +149,16 @@ func (mt MessageType) String() string {
 		return "Ping"
 	case MsgTypePong:
 		return "Pong"
+	case MsgTypeCreateAccount:
+		return "CreateAccount"
+	case MsgTypeGetAccountBalance:
+		return "GetAccountBalance"
+	case MsgTypeGetAccountInputs:
+		return "GetAccountInputs"
+	case MsgTypeRestoreAccount:
+		return "RestoreAccount"
+	case MsgTypeVerifyAccount:
+		return "VerifyAccount"
 	default:
 		return "Unknown"
 	}

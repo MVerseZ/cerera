@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
+	"github.com/cerera/core/pool"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/observer"
-	"github.com/cerera/internal/cerera/pool"
 	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/cerera/types"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +32,23 @@ func (m *mockTxPool) RemoveFromPool(hash common.Hash) error {
 			return nil
 		}
 	}
+	return nil
+}
+
+func (m *mockTxPool) AddRawTransaction(tx *types.GTransaction) {
+	m.txs = append(m.txs, *tx)
+}
+
+func (m *mockTxPool) GetTransaction(hash common.Hash) *types.GTransaction {
+	for _, tx := range m.txs {
+		if tx.Hash() == hash {
+			return &tx
+		}
+	}
+	return nil
+}
+
+func (m *mockTxPool) NewTxEvent() <-chan *types.GTransaction {
 	return nil
 }
 

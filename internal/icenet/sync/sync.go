@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/block"
+	"github.com/cerera/core/block"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/cerera/service"
 	"github.com/cerera/internal/icenet/peers"
 	"github.com/cerera/internal/icenet/protocol"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -43,13 +44,13 @@ type ChainProvider interface {
 
 // Manager manages block synchronization with peers
 type Manager struct {
-	host        host.Host
-	handler     *protocol.Handler
-	peerManager *peers.Manager
-	chain       ChainProvider
-	progress    *SyncProgress
-	peerTracker *PeerSyncTracker
-	fetcher     *Fetcher
+	host            host.Host
+	handler         *protocol.Handler
+	peerManager     *peers.Manager
+	serviceProvider service.ServiceProvider
+	progress        *SyncProgress
+	peerTracker     *PeerSyncTracker
+	fetcher         *Fetcher
 
 	mu        sync.RWMutex
 	ctx       context.Context
@@ -63,20 +64,26 @@ type Manager struct {
 }
 
 // NewManager creates a new sync manager
-func NewManager(ctx context.Context, h host.Host, handler *protocol.Handler, peerManager *peers.Manager, chain ChainProvider) *Manager {
+func NewManager(
+	ctx context.Context,
+	h host.Host,
+	handler *protocol.Handler,
+	peerManager *peers.Manager,
+	provider service.ServiceProvider,
+) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
 
 	peerTracker := NewPeerSyncTracker()
 
 	m := &Manager{
-		host:        h,
-		handler:     handler,
-		peerManager: peerManager,
-		chain:       chain,
-		progress:    NewSyncProgress(),
-		peerTracker: peerTracker,
-		ctx:         ctx,
-		cancel:      cancel,
+		host:            h,
+		handler:         handler,
+		peerManager:     peerManager,
+		serviceProvider: provider,
+		progress:        NewSyncProgress(),
+		peerTracker:     peerTracker,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 
 	// Create fetcher
@@ -127,8 +134,8 @@ func (m *Manager) checkAndSync() {
 
 	// Get current height
 	currentHeight := 0
-	if m.chain != nil {
-		currentHeight = m.chain.GetCurrentHeight()
+	if m.serviceProvider != nil {
+		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
 	// Find best peer
@@ -229,8 +236,8 @@ func (m *Manager) syncWithPeer(peerID peer.ID, startHeight, targetHeight int) {
 			}
 
 			// Validate block
-			if m.chain != nil {
-				if err := m.chain.ValidateBlock(b); err != nil {
+			if m.serviceProvider != nil {
+				if err := m.serviceProvider.ValidateBlock(b); err != nil {
 					syncLogger().Warnw("Block validation failed",
 						"height", b.Head.Height,
 						"hash", b.Hash,
@@ -241,7 +248,7 @@ func (m *Manager) syncWithPeer(peerID peer.ID, startHeight, targetHeight int) {
 				}
 
 				// Add block to chain
-				if err := m.chain.AddBlock(b); err != nil {
+				if err := m.serviceProvider.AddBlock(b); err != nil {
 					syncLogger().Warnw("Failed to add block",
 						"height", b.Head.Height,
 						"hash", b.Hash,
@@ -301,8 +308,8 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 	}
 
 	// Update peer info
-	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.BestHash.String(), status.NodeVersion, status.NodeAddress)
-	m.peerTracker.UpdatePeer(peerID, status.Height, status.BestHash)
+	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.LatestHash.String(), status.NodeVersion, status.NodeAddress)
+	m.peerTracker.UpdatePeer(peerID, status.Height, status.LatestHash)
 
 	syncLogger().Infow("[SYNC] Peer status received",
 		"peer", peerID,
@@ -313,8 +320,8 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 
 	// Check if we need to sync
 	currentHeight := 0
-	if m.chain != nil {
-		currentHeight = m.chain.GetCurrentHeight()
+	if m.serviceProvider != nil {
+		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
 	if status.Height > currentHeight+MinBlocksAhead {
@@ -329,8 +336,8 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 	}
 
 	currentHeight := 0
-	if m.chain != nil {
-		currentHeight = m.chain.GetCurrentHeight()
+	if m.serviceProvider != nil {
+		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
 	// Skip if we already have a block at this height or higher
@@ -346,12 +353,12 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 	// Check if this is the next expected block
 	if b.Head.Height == currentHeight+1 {
 		// Validate and add
-		if m.chain != nil {
-			if err := m.chain.ValidateBlock(b); err != nil {
+		if m.serviceProvider != nil {
+			if err := m.serviceProvider.ValidateBlock(b); err != nil {
 				return fmt.Errorf("block validation failed: %w", err)
 			}
 
-			if err := m.chain.AddBlock(b); err != nil {
+			if err := m.serviceProvider.AddBlock(b); err != nil {
 				return fmt.Errorf("failed to add block: %w", err)
 			}
 		}
@@ -415,8 +422,8 @@ func (m *Manager) ForceSync() error {
 	}
 
 	currentHeight := 0
-	if m.chain != nil {
-		currentHeight = m.chain.GetCurrentHeight()
+	if m.serviceProvider != nil {
+		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
 	if bestPeer.Height <= currentHeight {
