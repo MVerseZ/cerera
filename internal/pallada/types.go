@@ -3,7 +3,7 @@ package pallada
 import (
 	"math/big"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 // BlockInfo содержит информацию о текущем блоке

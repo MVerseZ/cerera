@@ -1,11 +1,12 @@
 package network
 
 import (
-	"context"
 	"sync"
 
+	"context"
+
 	"github.com/btcsuite/websocket"
-	"github.com/cerera/internal/cerera/chain"
+	"github.com/cerera/core/chain"
 	"github.com/cerera/internal/cerera/logger"
 )
 

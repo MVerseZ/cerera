@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/pallada"
 )
 

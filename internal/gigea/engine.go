@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/cerera/core/block"
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 type TxTree struct {

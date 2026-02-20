@@ -13,8 +13,8 @@ import (
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/trie"
-	"github.com/cerera/internal/cerera/types"
 
 	"github.com/prometheus/client_golang/prometheus"
 )

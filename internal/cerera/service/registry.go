@@ -96,13 +96,22 @@ func (r *Registry) Register(name string, s Service) {
 	if r == nil {
 		return
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.services[name] = s
 }
 
 // StopAllServices останавливает все сервисы, которые поддерживают остановку
 func (r *Registry) StopAllServices() error {
+	r.mu.Lock()
+	services := make([]Service, 0, len(r.services))
+	for _, s := range r.services {
+		services = append(services, s)
+	}
+	r.mu.Unlock()
+
 	var lastErr error
-	for _, service := range r.services {
+	for _, service := range services {
 		if stoppable, ok := service.(StoppableService); ok {
 			if err := stoppable.Stop(); err != nil {
 				lastErr = err

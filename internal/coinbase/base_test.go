@@ -3,7 +3,7 @@ package coinbase
 import (
 	"testing"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 func TestBlockReward(t *testing.T) {

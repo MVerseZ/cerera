@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 

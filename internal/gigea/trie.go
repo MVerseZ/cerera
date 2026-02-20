@@ -14,8 +14,8 @@ import (
 	"hash"
 	"math/big"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 )
 
 // MerkleTree is the container for the tree. It holds a pointer to the root of the tree,

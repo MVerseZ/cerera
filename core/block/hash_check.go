@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 )
 
 // CalculateBlockHash вычисляет хэш блока и возвращает его в виде байтов

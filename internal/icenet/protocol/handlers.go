@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/service"
-	"github.com/cerera/internal/cerera/types"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"

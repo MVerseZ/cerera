@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
-	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
 	"golang.org/x/crypto/blake2b"
 

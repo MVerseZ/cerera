@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 // mockStorage для тестов опкодов

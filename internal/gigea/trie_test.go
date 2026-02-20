@@ -4,8 +4,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/coinbase"
 	"golang.org/x/crypto/sha3"
 )

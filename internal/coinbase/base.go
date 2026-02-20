@@ -3,7 +3,7 @@ package coinbase
 import (
 	"math/big"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 // BlockReward returns the currently configured block reward.

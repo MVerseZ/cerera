@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 )
 
 var nodeAddress = types.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")

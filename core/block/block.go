@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/trie"
-	"github.com/cerera/internal/cerera/types"
 	"golang.org/x/crypto/blake2b"
 )
 

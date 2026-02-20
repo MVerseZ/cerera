@@ -5,7 +5,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/storage"
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/config"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/service"
-	"github.com/cerera/internal/cerera/storage"
-	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/consensus"
 	"github.com/cerera/internal/icenet/metrics"
 	"github.com/cerera/internal/icenet/peers"
@@ -58,6 +59,8 @@ type Ice struct {
 
 	// Dev-mode: treat connected peers as validators.
 	devValidators bool
+
+	mu sync.RWMutex // guards fields read by Exec() and written during Start()/SetServiceProvider()
 }
 
 // Start initializes and starts the Ice P2P network component
@@ -144,9 +147,13 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 		return nil, fmt.Errorf("failed to start pubsub: %w", err)
 	}
 
-	// Create consensus manager
-	ice.Consensus = consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, cfg.NetCfg.ADDR, nil)
-	ice.Consensus.SetOnBlockFinalized(func(b *block.Block) {
+	// Create consensus manager (publish under lock so Exec() sees it safely)
+	consensusMgr := consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, cfg.NetCfg.ADDR, nil)
+	ice.mu.Lock()
+	ice.Consensus = consensusMgr
+	ice.mu.Unlock()
+
+	consensusMgr.SetOnBlockFinalized(func(b *block.Block) {
 		if b != nil && b.Head != nil {
 			metrics.SetBlockHeight(b.Head.Height)
 		}
@@ -154,7 +161,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	})
 	// Dev-mode validator set: treat connected peers as validators, including self.
 	if ice.devValidators {
-		ice.Consensus.AddValidator(h.ID())
+		consensusMgr.AddValidator(h.ID())
 	}
 
 	// Setup peer callbacks
@@ -167,7 +174,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	ice.PubSub.SetOnConsensus(ice.onPubSubConsensus)
 
 	// Setup consensus broadcast
-	ice.Consensus.SetBroadcastFunc(ice.broadcastConsensusMsg)
+	consensusMgr.SetBroadcastFunc(ice.broadcastConsensusMsg)
 
 	// Log startup info
 	iceLogger().Infow("Ice P2P network started",
@@ -185,6 +192,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 
 // SetApiProvider sets the api provider, creates sync manager and handler with it, and starts sync.
 func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
+	ice.mu.Lock()
 	ice.ServiceProvider = provider
 
 	// Consensus uses same provider for AddBlock/GetBlockByHash
@@ -203,6 +211,8 @@ func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
 			metrics.SetBlockHeight(b.Head.Height)
 		}
 	})
+	ice.mu.Unlock()
+
 	ice.SyncManager.Start()
 
 	iceLogger().Infow("API provider set, sync manager and handler started")
@@ -465,6 +475,9 @@ func (ice *Ice) ServiceName() string {
 
 // Exec executes a method on the Ice service
 func (ice *Ice) Exec(method string, params []interface{}) interface{} {
+	ice.mu.RLock()
+	defer ice.mu.RUnlock()
+
 	switch method {
 	case "broadcastBlock":
 		if len(params) > 0 {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 type Worker struct {

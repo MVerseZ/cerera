@@ -3,8 +3,8 @@ package block
 import (
 	"time"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 )
 
 func GenesisHead(chainId int) *Header {

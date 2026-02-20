@@ -4,7 +4,7 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 )
 
 var (

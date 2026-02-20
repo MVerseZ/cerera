@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
 	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/cerera/message"
-	"github.com/cerera/internal/cerera/types"
 	"github.com/cerera/internal/icenet/peers"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -206,8 +206,8 @@ func TestManager_ProposeBlock_noServiceProvider(t *testing.T) {
 
 // mockServiceProvider implements service.ServiceProvider for tests.
 type mockServiceProvider struct {
-	validatePoW  bool
-	validateErr  error
+	validatePoW bool
+	validateErr error
 }
 
 func (m *mockServiceProvider) GenesisHash() common.Hash {

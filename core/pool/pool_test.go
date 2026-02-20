@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

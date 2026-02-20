@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	pb "github.com/libp2p/go-libp2p-pubsub/pb"
 	"github.com/libp2p/go-libp2p/core/host"

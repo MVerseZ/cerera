@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cerera/internal/cerera/types"
+	"github.com/cerera/core/types"
 	"github.com/tyler-smith/go-bip32"
 )
 

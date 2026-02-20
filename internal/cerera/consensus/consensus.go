@@ -5,8 +5,8 @@ import (
 	"net"
 	"strings"
 
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/types"
 )
 
 type Voter struct {
