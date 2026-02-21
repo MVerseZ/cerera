@@ -56,11 +56,5 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: go test -v -race  ./...
 
-    - name: Upload coverage
-      uses: codecov/codecov-action@v4
-      if: always()
-      with:
-        file: ./coverage.out
-        fail_ci_if_error: false
