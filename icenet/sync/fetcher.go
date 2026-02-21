@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cerera/core/block"
-	"github.com/cerera/internal/icenet/protocol"
+	"github.com/cerera/icenet/protocol"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 )

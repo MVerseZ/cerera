@@ -5,9 +5,9 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 
-	"github.com/cerera/core/types"
 	"github.com/cerera/config"
-	"github.com/cerera/internal/icenet/nat"
+	"github.com/cerera/core/types"
+	"github.com/cerera/icenet/nat"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"

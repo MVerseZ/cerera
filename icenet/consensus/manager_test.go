@@ -9,7 +9,7 @@ import (
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/icenet/peers"
+	"github.com/cerera/icenet/peers"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/message"
 	"github.com/libp2p/go-libp2p"

@@ -16,7 +16,7 @@ import (
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
-	"github.com/cerera/internal/gigea"
+	"github.com/cerera/gigea"
 	"github.com/cerera/internal/miner"
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"

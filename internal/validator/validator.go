@@ -18,7 +18,7 @@ import (
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/gigea"
+	"github.com/cerera/gigea"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
 

@@ -8,8 +8,8 @@ import (
 
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
-	"github.com/cerera/internal/icenet/peers"
-	"github.com/cerera/internal/icenet/protocol"
+	"github.com/cerera/icenet/peers"
+	"github.com/cerera/icenet/protocol"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
 	"github.com/libp2p/go-libp2p/core/host"

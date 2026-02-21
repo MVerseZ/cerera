@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/pallada"
+	"github.com/cerera/pallada"
 )
 
 // mockStorage реализует StorageInterface для демонстрации
