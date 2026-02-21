@@ -8,13 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cerera/config"
+	"github.com/cerera/core/address"
 	"github.com/cerera/core/block"
-	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/core/common"
+
+	"github.com/cerera/internal/logger"
 
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/trie"
+	"github.com/cerera/core/types/trie"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -141,7 +143,7 @@ type Chain struct {
 	autoGen        bool
 	chainId        int
 	chainWork      *big.Int
-	currentAddress types.Address
+	currentAddress address.Address
 	currentBlock   *block.Block
 
 	mu     sync.RWMutex
@@ -478,7 +480,7 @@ func (bc *Chain) GetChainId() int {
 	return bc.chainId
 }
 
-func (bc *Chain) GetCurrentChainOwnerAddress() types.Address {
+func (bc *Chain) GetCurrentChainOwnerAddress() address.Address {
 	return bc.currentAddress
 }
 

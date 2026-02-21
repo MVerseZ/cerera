@@ -253,6 +253,49 @@
     .mempool-card .status { font-size: 12px; margin-bottom: 8px; }
     .mempool-card .status.ok { color: var(--success); }
     .mempool-card .status.err { color: var(--error); }
+    .ws-panels-section { margin-bottom: 24px; }
+    .ws-panels-grid { display: flex; flex-direction: column; gap: 12px; }
+    .ws-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .ws-card h3 { margin: 0 0 8px 0; font-size: 14px; color: var(--accent); word-break: break-all; }
+    .ws-card .ws-status { font-size: 12px; margin-bottom: 10px; }
+    .ws-card .ws-status.connected { color: var(--success); }
+    .ws-card .ws-status.disconnected { color: var(--muted); }
+    .ws-card .ws-status.error { color: var(--error); }
+    .ws-card .ws-actions { margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .ws-card .ws-actions button {
+      padding: 6px 14px;
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .ws-card .ws-actions button:hover { border-color: var(--accent); }
+    .ws-card .ws-actions button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .ws-card .ws-actions button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .ws-log {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 11px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 200px;
+      overflow: auto;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .ws-log .entry { margin-bottom: 4px; }
+    .ws-log .entry.time { color: var(--muted); }
+    .ws-log .entry.msg { color: var(--text); }
+    .ws-log .entry.err { color: var(--error); }
   </style>
 </head>
 <body>
@@ -298,6 +341,18 @@
       </div>
       <div class="mempool-grid" id="mempoolGrid"></div>
     </div>
+  </div>
+
+  <div class="panel ws-panels-section">
+    <h2>Панели WebSocket — подключение к нодам</h2>
+    <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
+      Панели подключаются к <code>/ws</code> на каждой добавленной ноде и слушают события (новые блоки, транзакции, ответы на ping). Для каждой ноды: подключиться / отключиться и просмотр лога сообщений.
+    </p>
+    <div class="actions" style="margin-bottom: 16px;">
+      <button type="button" class="primary" id="wsConnectAllBtn">Подключить ко всем нодам</button>
+      <button type="button" id="wsDisconnectAllBtn">Отключить все</button>
+    </div>
+    <div class="ws-panels-grid" id="wsPanelsGrid"></div>
   </div>
 
   <div class="panel blocks-section">
@@ -353,11 +408,24 @@
     const fetchMempoolsBtn = document.getElementById('fetchMempoolsBtn');
     const nodeHeights = {}; // url -> height
 
+    const wsPanelsGridEl = document.getElementById('wsPanelsGrid');
+    const wsConnectAllBtn = document.getElementById('wsConnectAllBtn');
+    const wsDisconnectAllBtn = document.getElementById('wsDisconnectAllBtn');
+    const wsConnections = {}; // url -> { socket, logs[], logEl }
+
     function nodeLabel(url) {
       try {
         const u = new URL(url);
         return u.port || u.hostname;
       } catch (_) { return url.slice(0, 20); }
+    }
+
+    function httpToWsUrl(httpUrl) {
+      try {
+        const u = new URL(httpUrl);
+        const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${proto}//${u.host}/ws`;
+      } catch (_) { return null; }
     }
 
     function saveUrls() {

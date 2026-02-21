@@ -3,8 +3,8 @@ package block
 import (
 	"time"
 
-	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
 )
 
 func GenesisHead(chainId int) *Header {
@@ -18,7 +18,7 @@ func GenesisHead(chainId int) *Header {
 		GasLimit:   250000,
 		GasUsed:    0,
 		ChainId:    chainId,
-		Node:       types.EmptyAddress(),
+		Node:       address.EmptyAddress(),
 		PrevHash:   common.EmptyHash(),
 		Root:       common.EmptyHash(),
 		Size:       0,

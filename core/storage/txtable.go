@@ -2,7 +2,7 @@ package storage
 
 import (
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 var txTable TxTable

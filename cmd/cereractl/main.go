@@ -12,15 +12,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cerera/config"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
-	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/miner"
-	"github.com/cerera/internal/cerera/network"
-	"github.com/cerera/internal/cerera/service"
-	"github.com/cerera/internal/cerera/validator"
 	"github.com/cerera/internal/gigea"
+	"github.com/cerera/internal/miner"
+	"github.com/cerera/internal/network"
+	"github.com/cerera/internal/service"
+	"github.com/cerera/internal/validator"
 	"github.com/chzyer/readline"
 )
 

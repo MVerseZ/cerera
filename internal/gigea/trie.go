@@ -15,7 +15,7 @@ import (
 	"math/big"
 
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 // MerkleTree is the container for the tree. It holds a pointer to the root of the tree,
@@ -290,7 +290,7 @@ func (m *TxMerkleTree) VerifyTree() (bool, error) {
 		return false, err
 	}
 
-	if bytes.Compare(m.merkleRoot, calculatedMerkleRoot) == 0 {
+	if bytes.Equal(m.merkleRoot, calculatedMerkleRoot) {
 		return true, nil
 	}
 	return false, nil
@@ -323,7 +323,7 @@ func (m *TxMerkleTree) VerifyContent(content *types.GTransaction) (bool, error) 
 				if _, err := h.Write(sortAppend(m.sort, leftBytes, rightBytes)); err != nil {
 					return false, err
 				}
-				if bytes.Compare(h.Sum(nil), currentParent.Hash) != 0 {
+				if !bytes.Equal(h.Sum(nil), currentParent.Hash) {
 					return false, nil
 				}
 				currentParent = currentParent.Parent

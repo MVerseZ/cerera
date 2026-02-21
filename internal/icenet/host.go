@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/config"
 	"github.com/cerera/internal/icenet/nat"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"

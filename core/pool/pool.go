@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/logger"
-	"github.com/cerera/internal/cerera/observer"
+	"github.com/cerera/internal/logger"
+	"github.com/cerera/internal/observer"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

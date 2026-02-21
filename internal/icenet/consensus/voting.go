@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/message"
+	"github.com/cerera/internal/message"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 

@@ -18,21 +18,21 @@ func Get() Ring {
 
 func (t Ring) Execute() {
 	// var v = validator.Get()
-	for {
-		select {
-		case <-t.RoundTimer.C:
-			// fmt.Printf("Execute txs...\r\n")
-			// if len(t.Pool.Prepared) > 0 {
-			// 	for _, tx := range t.Pool.Prepared {
-			// 		if v.ValidateTransaction(tx, tx.From()) {
-			// 			t.Counter++
-			// 			t.Pool.Executed = append(t.Pool.Executed, *tx)
-			// 		}
-			// 	}
-			// }
-			// t.Pool.Prepared = nil
-		}
-	}
+	// for {
+	// 	select {
+	// 	case <-t.RoundTimer.C:
+	// 		// fmt.Printf("Execute txs...\r\n")
+	// 		// if len(t.Pool.Prepared) > 0 {
+	// 		// 	for _, tx := range t.Pool.Prepared {
+	// 		// 		if v.ValidateTransaction(tx, tx.From()) {
+	// 		// 			t.Counter++
+	// 		// 			t.Pool.Executed = append(t.Pool.Executed, *tx)
+	// 		// 		}
+	// 		// 	}
+	// 		// }
+	// 		// t.Pool.Prepared = nil
+	// 	}
+	// }
 }
 
 func ExecuteCtl(code int) int {

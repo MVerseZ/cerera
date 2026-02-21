@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 const uintBits = 32 << (uint64(^uint(0)) >> 63)

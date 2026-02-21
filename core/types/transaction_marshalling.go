@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 // DecimalBig marshals/unmarshals as a JSON string in decimal format (not hex)

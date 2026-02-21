@@ -5,7 +5,8 @@ import (
 	"crypto/elliptic"
 	"math/big"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/crypto"
+	"github.com/cerera/core/common"
 )
 
 func CreateVavilovEvent(method string, status byte, topic string) PacketData {
@@ -47,7 +48,7 @@ func CreateValidatePacket(pk []byte) PacketData {
 func CreateVavilovNamedPacketWithAddr(pk *ecdsa.PublicKey, method string) PacketData {
 	packetData := &VavilovPacketData{}
 	packetData.method = method
-	packetData.addr = PubkeyToAddress(*pk)
+	packetData.addr = crypto.PubkeyToAddress(*pk)
 	packetData.status = 0xf
 
 	packetData.pk = elliptic.Marshal(pk.Curve, pk.X, pk.Y)
@@ -59,7 +60,7 @@ func CreateVavilovAccountPacket(pk ecdsa.PublicKey) PacketData {
 	packetData.method = "vavilov.account.status"
 	packetData.status = 0x1
 	packetData.Topic = "ACCOUNT STATUS"
-	addr := PubkeyToAddress(pk)
+	addr := crypto.PubkeyToAddress(pk)
 	dpKey := elliptic.Marshal(pk.Curve, pk.X, pk.Y)
 	packetData.SetData(dpKey, addr)
 	return packetData

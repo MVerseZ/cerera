@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cerera/config"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/config"
-	"github.com/cerera/internal/cerera/logger"
 	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/internal/logger"
 	"golang.org/x/crypto/blake2b"
 
 	"github.com/akrylysov/pogreb"

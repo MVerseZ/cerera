@@ -9,29 +9,30 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
-	"github.com/cerera/internal/cerera/trie"
+	"github.com/cerera/core/types/trie"
 	"golang.org/x/crypto/blake2b"
 )
 
 // Header represents a block header in the blockchain.
 type Header struct {
-	Ctx        int32         `json:"ctx" gencodec:"required"`               // 4 bytes
-	Difficulty uint64        `json:"difficulty"       gencodec:"required"`  // 8 bytes
-	Extra      [8]byte       `json:"extraData"        gencodec:"required"`  // 8 bytes
-	GasLimit   uint64        `json:"gasLimit"         gencodec:"required"`  // 8 bytes
-	GasUsed    uint64        `json:"gasUsed"          gencodec:"required"`  // 8 bytes
-	Height     int           `json:"height" gencodec:"required"`            // 8 bytes
-	Index      uint64        `json:"index" gencodec:"required"`             // 8 bytes
-	Node       types.Address `json:"node" gencodec:"required"`              // 20 bytes
-	ChainId    int           `json:"chainId"           gencodec:"required"` // 8 bytes
-	PrevHash   common.Hash   `json:"prevHash" gencodec:"required"`          // 32 bytes
-	Root       common.Hash   `json:"stateRoot"        gencodec:"required"`  // 32 bytes
-	Size       int           `json:"size" gencodec:"required"`              // 8 bytes
-	Timestamp  uint64        `json:"timestamp"        gencodec:"required"`  // 8 bytes
-	V          [8]byte       `json:"version"        gencodec:"required"`    // 8 bytes
-	Nonce      uint64        `json:"nonce"        gencodec:"required"`      // 8 bytes
+	Ctx        int32           `json:"ctx" gencodec:"required"`               // 4 bytes
+	Difficulty uint64          `json:"difficulty"       gencodec:"required"`  // 8 bytes
+	Extra      [8]byte         `json:"extraData"        gencodec:"required"`  // 8 bytes
+	GasLimit   uint64          `json:"gasLimit"         gencodec:"required"`  // 8 bytes
+	GasUsed    uint64          `json:"gasUsed"          gencodec:"required"`  // 8 bytes
+	Height     int             `json:"height" gencodec:"required"`            // 8 bytes
+	Index      uint64          `json:"index" gencodec:"required"`             // 8 bytes
+	Node       address.Address `json:"node" gencodec:"required"`              // 20 bytes
+	ChainId    int             `json:"chainId"           gencodec:"required"` // 8 bytes
+	PrevHash   common.Hash     `json:"prevHash" gencodec:"required"`          // 32 bytes
+	Root       common.Hash     `json:"stateRoot"        gencodec:"required"`  // 32 bytes
+	Size       int             `json:"size" gencodec:"required"`              // 8 bytes
+	Timestamp  uint64          `json:"timestamp"        gencodec:"required"`  // 8 bytes
+	V          [8]byte         `json:"version"        gencodec:"required"`    // 8 bytes
+	Nonce      uint64          `json:"nonce"        gencodec:"required"`      // 8 bytes
 }
 
 func (h *Header) Bytes() []byte {
@@ -174,7 +175,7 @@ func CalculateSize(b Block) int {
 	return txSize + int(unsafe.Sizeof(b))
 }
 
-func GenerateGenesis(nodeAddress types.Address) *Block {
+func GenerateGenesis(nodeAddress address.Address) *Block {
 	var genesisHeader = &Header{
 		Ctx:        17,
 		Difficulty: 11111111111,

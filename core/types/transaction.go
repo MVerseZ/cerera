@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -62,21 +62,21 @@ type TxData interface {
 }
 
 type txJSON struct {
-	Data    *common.Bytes `json:"input,omitempty"`
-	Message *common.Bytes `json:"message,omitempty"`
-	Payload *common.Bytes `json:"payload,omitempty"`
-	Type    common.Uint64 `json:"type,omitempty"`
-	To      *Address      `json:"to,omitempty"`
-	Time    time.Time     `json:"time,omitempty"`
+	Data    *Bytes    `json:"input,omitempty"`
+	Message *Bytes    `json:"message,omitempty"`
+	Payload *Bytes    `json:"payload,omitempty"`
+	Type    Uint64    `json:"type,omitempty"`
+	To      *Address  `json:"to,omitempty"`
+	Time    time.Time `json:"time,omitempty"`
 	// Common transaction fields:
-	Dna      *common.Bytes  `json:"dna,omitempty"`
-	GasPrice *common.Big    `json:"gasPrice,omitempty"`
-	Gas      *common.Uint64 `json:"gas,omitempty"`
-	Nonce    *common.Uint64 `json:"nonce,omitempty"`
-	Value    *common.Big    `json:"value,omitempty"`
-	V        *Big           `json:"v"`
-	R        *Big           `json:"r"`
-	S        *Big           `json:"s"`
+	Dna      *Bytes  `json:"dna,omitempty"`
+	GasPrice *Big    `json:"gasPrice,omitempty"`
+	Gas      *Uint64 `json:"gas,omitempty"`
+	Nonce    *Uint64 `json:"nonce,omitempty"`
+	Value    *Big    `json:"value,omitempty"`
+	V        *Big    `json:"v"`
+	R        *Big    `json:"r"`
+	S        *Big    `json:"s"`
 	// Only used for encoding:
 	Hash common.Hash `json:"hash"`
 }

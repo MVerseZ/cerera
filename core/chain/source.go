@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/cerera/core/block"
-	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/logger"
 )
 
 var chainSrcLogger = logger.Named("chain_source")

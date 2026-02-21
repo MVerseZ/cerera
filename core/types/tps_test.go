@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/address"
 )
 
 func TestFloatToBigInt(t *testing.T) {
@@ -207,7 +207,7 @@ func TestGetFloat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := GetFloat(tt.input)
+			result, err := address.GetFloat(tt.input)
 
 			if tt.hasError {
 				if err == nil {
@@ -245,8 +245,8 @@ func TestAddress(t *testing.T) {
 		addr := BytesToAddress(bytes)
 
 		resultBytes := addr.Bytes()
-		if len(resultBytes) != common.AddressLength {
-			t.Errorf("BytesToAddress result length = %d, want %d", len(resultBytes), common.AddressLength)
+		if len(resultBytes) != address.AddressLength {
+			t.Errorf("BytesToAddress result length = %d, want %d", len(resultBytes), address.AddressLength)
 		}
 	})
 
@@ -315,7 +315,7 @@ func TestAddress(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				result := IsHexAddress(tt.input)
+				result := address.IsHexAddress(tt.input)
 				if result != tt.expected {
 					t.Errorf("IsHexAddress(%s) = %v, want %v", tt.input, result, tt.expected)
 				}
@@ -354,7 +354,7 @@ func TestFromHex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := FromHex(tt.input)
+			result := address.FromHex(tt.input)
 			if len(result) != len(tt.expected) {
 				t.Errorf("FromHex(%s) length = %d, want %d", tt.input, len(result), len(tt.expected))
 			}
@@ -392,7 +392,7 @@ func TestHex2Bytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Hex2Bytes(tt.input)
+			result := address.Hex2Bytes(tt.input)
 			if len(result) != len(tt.expected) {
 				t.Errorf("Hex2Bytes(%s) length = %d, want %d", tt.input, len(result), len(tt.expected))
 			}
@@ -435,7 +435,7 @@ func TestGetServiceName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetServiceName(tt.input)
+			result := address.GetServiceName(tt.input)
 			if result != tt.expected {
 				t.Errorf("GetServiceName(%d) = %s, want %s", tt.input, result, tt.expected)
 			}
@@ -453,13 +453,13 @@ func TestFileExists(t *testing.T) {
 		defer os.Remove(tmpFile.Name())
 		tmpFile.Close()
 
-		if !FileExists(tmpFile.Name()) {
+		if !address.FileExists(tmpFile.Name()) {
 			t.Errorf("FileExists(%s) = false, want true", tmpFile.Name())
 		}
 	})
 
 	t.Run("non-existing file", func(t *testing.T) {
-		if FileExists("non_existing_file_12345") {
+		if address.FileExists("non_existing_file_12345") {
 			t.Errorf("FileExists(non_existing_file) = true, want false")
 		}
 	})
@@ -495,7 +495,7 @@ func TestIntToBytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IntToBytes(tt.input)
+			result := address.IntToBytes(tt.input)
 			if len(result) != len(tt.expected) {
 				t.Errorf("IntToBytes(%d) length = %d, want %d", tt.input, len(result), len(tt.expected))
 			}
@@ -518,7 +518,7 @@ func TestIsFileNotEmpty(t *testing.T) {
 		defer os.Remove(tmpFile.Name())
 		tmpFile.Close()
 
-		isNotEmpty, err := IsFileNotEmpty(tmpFile.Name())
+		isNotEmpty, err := address.IsFileNotEmpty(tmpFile.Name())
 		if err != nil {
 			t.Errorf("IsFileNotEmpty(%s) unexpected error: %v", tmpFile.Name(), err)
 		}
@@ -538,7 +538,7 @@ func TestIsFileNotEmpty(t *testing.T) {
 		tmpFile.WriteString("test content")
 		tmpFile.Close()
 
-		isNotEmpty, err := IsFileNotEmpty(tmpFile.Name())
+		isNotEmpty, err := address.IsFileNotEmpty(tmpFile.Name())
 		if err != nil {
 			t.Errorf("IsFileNotEmpty(%s) unexpected error: %v", tmpFile.Name(), err)
 		}
@@ -548,7 +548,7 @@ func TestIsFileNotEmpty(t *testing.T) {
 	})
 
 	t.Run("non-existing file", func(t *testing.T) {
-		isNotEmpty, err := IsFileNotEmpty("non_existing_file_12345")
+		isNotEmpty, err := address.IsFileNotEmpty("non_existing_file_12345")
 		if err == nil {
 			t.Errorf("IsFileNotEmpty(non_existing_file) expected error, got nil")
 		}
@@ -634,6 +634,6 @@ func BenchmarkHexToAddress(b *testing.B) {
 func BenchmarkIsHexAddress(b *testing.B) {
 	hexStr := "0x1234567890abcdef1234567890abcdef12345678"
 	for i := 0; i < b.N; i++ {
-		IsHexAddress(hexStr)
+		address.IsHexAddress(hexStr)
 	}
 }

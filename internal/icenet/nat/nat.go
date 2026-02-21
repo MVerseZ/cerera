@@ -1,7 +1,7 @@
 package nat
 
 import (
-	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/config"
 	"github.com/libp2p/go-libp2p"
 )
 

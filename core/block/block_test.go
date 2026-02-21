@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
 )
 
-var nodeAddress = types.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
-var addr1 = types.HexToAddress("0x14F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
-var addr2 = types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
+var nodeAddress = address.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
+var addr1 = address.HexToAddress("0x14F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
+var addr2 = address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
 
 // func prepareSignedTx() *types.GTransaction {
 // 	var acc, _ = types.GenerateAccount()
@@ -61,7 +62,7 @@ func createTestBlock() *Block {
 
 	tx1 := types.NewTransaction(
 		11,
-		types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+		address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 		big.NewInt(100000000),
 		1443,
 		big.NewInt(33),
@@ -70,7 +71,7 @@ func createTestBlock() *Block {
 
 	tx2 := types.NewTransaction(
 		11,
-		types.HexToAddress("0x14F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+		address.HexToAddress("0x14F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 		big.NewInt(100001011),
 		1343,
 		big.NewInt(100),
@@ -114,7 +115,7 @@ func hashForTestHeader(b *Header) common.Hash {
 
 func TestBlockFields(t *testing.T) {
 	block := createTestBlock()
-	var expectedAddr = types.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
+	var expectedAddr = address.HexToAddress("0x94F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6")
 
 	// Проверка полей в Header
 	if block.Head.Ctx != 1 {

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 // FuzzStateAccountBytes tests the serialization/deserialization of StateAccount

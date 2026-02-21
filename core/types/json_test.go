@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 // func TestBytesConversion(t *testing.T) {

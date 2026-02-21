@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strconv"
 	"sync"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
 )
 
 const BaseAddressHex = "0xf00000000000000000000000000000000000000000000000000000000000000f"
@@ -23,7 +25,7 @@ type Input struct {
 const DEBUG = false
 
 type StateAccountData struct {
-	Address Address
+	Address address.Address
 	Nonce   uint64
 	Root    common.Hash // merkle root of the storage trie
 }
@@ -43,7 +45,7 @@ type StateAccount struct {
 }
 
 // TODO
-func NewStateAccount(address Address, balance float64, root common.Hash) *StateAccount {
+func NewStateAccount(address address.Address, balance float64, root common.Hash) *StateAccount {
 	return &StateAccount{
 		StateAccountData: StateAccountData{
 			Address: address,
@@ -62,7 +64,7 @@ func NewStateAccount(address Address, balance float64, root common.Hash) *StateA
 }
 
 func (sa *StateAccount) GetBalance() float64 {
-	return BigIntToFloat(sa.balance)
+	return common.BigIntToFloat(sa.balance)
 }
 
 func (sa *StateAccount) SetBalance(balance float64) {
@@ -182,7 +184,7 @@ func (sa *StateAccount) Bytes() []byte {
 		fmt.Printf("Buffer length after bloom: %d\n", buf.Len())
 	}
 	// Write CodeHash
-	if sa.Address == HexToAddress(BaseAddressHex) || sa.Address == HexToAddress(FaucetAddressHex) || sa.Address == HexToAddress(CoreStakingAddressHex) {
+	if sa.Address == address.HexToAddress(BaseAddressHex) || sa.Address == address.HexToAddress(FaucetAddressHex) || sa.Address == address.HexToAddress(CoreStakingAddressHex) {
 		zeroBuf := make([]byte, 4)
 		buf.Write(zeroBuf)
 	} else {
@@ -288,7 +290,7 @@ func BytesToStateAccount(data []byte) *StateAccount {
 			return nil
 		}
 	}
-	sa.Address = BytesToAddress(addressBytes)
+	sa.Address = address.BytesToAddress(addressBytes)
 
 	// Read Passphrase (32 bytes, no length prefix)
 	passphraseBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
@@ -412,4 +414,15 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	sa.Inputs.Unlock()
 
 	return sa
+}
+
+func FloatToBigInt(val float64) *big.Int {
+	// Convert float to decimal string, then use exact decimal -> wei converter
+	// to avoid binary FP artifacts like ...0005
+	s := strconv.FormatFloat(val, 'f', -1, 64)
+	wei, err := common.DecimalStringToWei(s)
+	if err != nil {
+		return big.NewInt(0)
+	}
+	return wei
 }

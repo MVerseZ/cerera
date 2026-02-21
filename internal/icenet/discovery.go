@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/config"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"

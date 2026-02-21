@@ -5,15 +5,16 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var testTx1 = types.NewTransaction(
 	11,
-	types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+	address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 	big.NewInt(100000000),
 	3333,
 	big.NewInt(3333),
@@ -21,7 +22,7 @@ var testTx1 = types.NewTransaction(
 )
 var testTx2 = types.NewTransaction(
 	11,
-	types.HexToAddress("0x43F119F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+	address.HexToAddress("0x43F119F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 	big.NewInt(30),
 	1,
 	big.NewInt(100),
@@ -29,7 +30,7 @@ var testTx2 = types.NewTransaction(
 )
 var testTx3 = types.NewTransaction(
 	11,
-	types.HexToAddress("0x804339F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+	address.HexToAddress("0x804339F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 	big.NewInt(100000000),
 	1500,
 	big.NewInt(10),
@@ -136,7 +137,7 @@ func TestRaceConditionAddRawTransaction(t *testing.T) {
 	for i := 0; i < len(txs); i++ {
 		txs[i] = types.NewTransaction(
 			uint64(i),
-			types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+			address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 			big.NewInt(100000000),
 			3333,
 			big.NewInt(3333),
@@ -176,7 +177,7 @@ func TestRaceConditionGetTransaction(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		txs[i] = types.NewTransaction(
 			uint64(i),
-			types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+			address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 			big.NewInt(100000000),
 			3333,
 			big.NewInt(3333),
@@ -216,7 +217,7 @@ func TestRaceConditionUpdateTx(t *testing.T) {
 	// Add initial transaction
 	tx := types.NewTransaction(
 		1,
-		types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+		address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 		big.NewInt(100000000),
 		3333,
 		big.NewInt(3333),
@@ -234,7 +235,7 @@ func TestRaceConditionUpdateTx(t *testing.T) {
 			defer wg.Done()
 			updatedTx := types.NewTransaction(
 				nonce,
-				types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+				address.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
 				big.NewInt(100000000),
 				3333,
 				big.NewInt(3333),

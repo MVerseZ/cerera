@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 

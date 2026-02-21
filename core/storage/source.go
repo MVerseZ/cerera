@@ -11,7 +11,7 @@ import (
 
 	"github.com/akrylysov/pogreb"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/logger"
+	"github.com/cerera/internal/logger"
 )
 
 var vaultSrcLogger = logger.Named("vault.source")

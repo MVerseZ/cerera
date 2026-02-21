@@ -11,7 +11,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
 )
 
 func TestHexToAddress(t *testing.T) {
@@ -66,7 +67,7 @@ func TestIsHexAddress(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if result := IsHexAddress(test.str); result != test.exp {
+		if result := address.IsHexAddress(test.str); result != test.exp {
 			t.Errorf("IsHexAddress(%s) == %v; expected %v",
 				test.str, result, test.exp)
 		}

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 var nonce, txValue, txData, gasLimit, gasPrice, to = uint64(1337), FloatToBigInt(11.55), []byte("test data"), float64(16438), big.NewInt(63992), HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")

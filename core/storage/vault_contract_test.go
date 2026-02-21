@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/config"
 )
 
 // createTestConfig создает тестовую конфигурацию

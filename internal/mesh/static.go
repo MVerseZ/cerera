@@ -6,7 +6,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/cerera/internal/cerera/config"
+	"github.com/cerera/config"
 )
 
 var meshLogger = log.New(os.Stdout, "[mesh] ", log.LstdFlags|log.Lmicroseconds)

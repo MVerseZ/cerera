@@ -5,7 +5,7 @@ package chain
 // 	"time"
 
 // 	"github.com/cerera/internal/cerera/block"
-// 	"github.com/cerera/internal/cerera/common"
+// 	"github.com/cerera/core/types/common"
 // 	"github.com/cerera/internal/cerera/config"
 // 	"github.com/cerera/internal/cerera/types"
 // )

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 func CreateTestStateAccount() StateAccount {

@@ -7,7 +7,7 @@ package storage
 // 	"sync"
 // 	"testing"
 
-// 	"github.com/cerera/internal/cerera/common"
+// 	"github.com/cerera/core/types/common"
 // 	"github.com/cerera/internal/cerera/config"
 // 	"github.com/cerera/internal/cerera/types"
 // 	"github.com/cerera/internal/coinbase"

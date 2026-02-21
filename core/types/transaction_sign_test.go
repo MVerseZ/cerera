@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 )
 
 func TestSigningTx(t *testing.T) {

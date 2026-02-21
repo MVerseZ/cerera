@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/common"
 	"golang.org/x/crypto/blake2b"
 )
 

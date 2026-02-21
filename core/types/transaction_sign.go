@@ -8,7 +8,9 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/cerera/internal/cerera/common"
+	"github.com/cerera/core/address"
+	"github.com/cerera/core/common"
+	"github.com/cerera/core/crypto"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -58,12 +60,12 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, e
 	}
 	if sc := tx.from.Load(); sc != nil {
 		sigCache := sc.(sigCache)
-		sigCache.from = PrivKeyToAddress(*prv)
+		sigCache.from = crypto.PrivKeyToAddress(*prv)
 		sigCache.signer = s
 		tx.from.Store(sigCache)
 	} else {
 		var sgCache = sigCache{
-			from: PrivKeyToAddress(*prv),
+			from: crypto.PrivKeyToAddress(*prv),
 		}
 		sgCache.signer = s
 		tx.from.Store(sgCache)
@@ -163,12 +165,12 @@ func crvHash(x interface{}) (h common.Hash) {
 
 func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error) {
 	// Use the same slice range as PubkeyToAddress and PrivKeyToAddress
-	pubBytes := FromECDSAPub(&ecdsa.PublicKey{
-		Curve: chainElliptic,
+	pubBytes := crypto.FromECDSAPub(&ecdsa.PublicKey{
+		Curve: crypto.ChainElliptic(),
 		X:     R,
 		Y:     S,
 	})
-	return BytesToAddress(INRISeq(pubBytes[1:])[32:]), nil
+	return address.BytesToAddress(crypto.INRISeq(pubBytes[1:])[32:]), nil
 }
 
 // removed custom pubkey extraction; legacy recovery kept
