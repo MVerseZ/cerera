@@ -87,18 +87,17 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 
 		method = request.Method
 
-		// reg, err := service.GetRegistry()
-		// if err != nil {
-		// 	http.Error(w, "Service registry not available", http.StatusInternalServerError)
-		// 	return
-		// }
-		var response = types.Response{
-			Result: Execute(request.Method, request.Params),
-			// Result: reg.Execute(request.Method, request.Params),
+		result := Execute(request.Method, request.Params)
+		response := types.Response{
+			JSONRPC: "2.0",
+			ID:      request.ID,
 		}
-
-		response.JSONRPC = "2.0"
-		response.ID = request.ID
+		if err, ok := result.(error); ok && err != nil {
+			response.Error = &types.Error{Code: -32603, Message: err.Error()}
+			// JSON-RPC 2.0: omit result when error is present
+		} else {
+			response.Result = result
+		}
 
 		responseData, err := json.Marshal(response)
 		if err != nil {

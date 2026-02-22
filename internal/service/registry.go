@@ -26,12 +26,14 @@ type StoppableService interface {
 }
 
 type Registry struct {
-	services map[string]Service
-	status   [32]byte
-	mu       sync.Mutex
+	services      map[string]Service
+	servicesBloom map[string]byte
+	status        [32]byte
+	mu            sync.Mutex
 }
 
 func Exec(method string, params []any) any {
+
 	registry, err := GetRegistry()
 	if err != nil {
 		return err
@@ -41,6 +43,9 @@ func Exec(method string, params []any) any {
 	if !ok {
 		return fmt.Errorf("service %s not found", cmp)
 	}
+	//mb := ParseMethodBytes(method)
+	//fmt.Printf("[REGISTRY] Executing method: %x with params: %+v\n", mb, params)
+	registryLogger().Infow("[REGISTRY] Executing method", "method", m, "params", params)
 	return service.Exec(m, params)
 }
 
@@ -67,8 +72,9 @@ func GetRegistry() (*Registry, error) {
 func NewRegistry() (*Registry, error) {
 	registryLogger().Info("[REGISTRY] Creating new registry")
 	R = &Registry{
-		services: make(map[string]Service),
-		status:   [32]byte{},
+		services:      make(map[string]Service),
+		status:        [32]byte{},
+		servicesBloom: make(map[string]byte),
 	}
 	return R, nil
 }
@@ -78,27 +84,35 @@ func (r *Registry) GetService(name string) (Service, bool) {
 		return nil, false
 	}
 	var srvName = name
+	var serviceBloom byte
 	if name == "account" {
+		serviceBloom = 0x01
 		srvName = VAULT_SERVICE_NAME
 	}
 	if name == "chain" {
+		serviceBloom = 0x02
 		srvName = CHAIN_SERVICE_NAME
 	}
 	if name == "pool" {
+		serviceBloom = 0x04
 		srvName = POOL_SERVICE_NAME
 	}
 	if name == "transaction" || name == "validator" {
+		serviceBloom = 0x08
 		srvName = VALIDATOR_SERVICE_NAME
 	}
 	if name == "ice" {
+		serviceBloom = 0x10
 		srvName = ICE_SERVICE_NAME
 	}
 	if name == "miner" {
+		serviceBloom = 0x20
 		srvName = MINER_SERVICE_NAME
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s, ok := r.services[srvName]
+	r.servicesBloom[srvName] = serviceBloom
 	return s, ok
 }
 
@@ -157,4 +171,18 @@ func ParseMethod(method string) (string, string) {
 		return parts[0], parts[1]
 	}
 	return method, method
+}
+
+func ParseMethodBytes(method string) []byte {
+	// EX: cerera.account.getAll or miner.status
+	parts := strings.Split(method, ".")
+	if parts[0] == "cerera" && len(parts) == 3 {
+		// EX: cerera.account.getAll -> return account, getAll
+		return []byte(parts[1] + parts[2])
+	}
+	if len(parts) == 2 {
+		// EX: miner.status -> return miner, status
+		return []byte(parts[0] + parts[1])
+	}
+	return []byte{}
 }

@@ -62,7 +62,7 @@ type Vault interface {
 	Put(address types.Address, acc *types.StateAccount)
 	Get(types.Address) *types.StateAccount
 	GetCount() int
-	GetAll() interface{}
+	GetAll() any
 	GetKey(signKey string) []byte
 	GetOwner() *types.StateAccount
 	Size() int64
@@ -70,7 +70,7 @@ type Vault interface {
 	Sync(saBytes []byte)
 	Status() byte
 	VerifyAccount(address types.Address, pass string) (types.Address, error)
-	Exec(method string, params []interface{}) interface{}
+	Exec(method string, params []any) any
 	Close() error
 	// Contract code storage methods
 	StoreContractCode(address types.Address, code []byte) error
@@ -1053,20 +1053,23 @@ func (v *D5Vault) GetStorage(address types.Address, key *big.Int) (*big.Int, err
 	return value, nil
 }
 
-func (v *D5Vault) Exec(method string, params []interface{}) interface{} {
+func (v *D5Vault) Exec(method string, params []any) any {
 	switch method {
 	case "getAll":
 		return v.GetAll()
 	case "getCount":
 		return v.GetCount()
 	case "create":
+		if params == nil || len(params) < 1 {
+			return fmt.Errorf("%w: passphrase required", ErrErrorParsingParameters)
+		}
 		passphraseStr, ok1 := params[0].(string)
 		if !ok1 {
-			return nil
+			return fmt.Errorf("%w: passphrase must be a string", ErrErrorParsingParameters)
 		}
 		mk, pk, m, addr, err := v.Create(passphraseStr)
 		if err != nil {
-			return nil
+			return err
 		}
 		type res struct {
 			Address  *types.Address `json:"address,omitempty"`
