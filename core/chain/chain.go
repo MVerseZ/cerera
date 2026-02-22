@@ -173,10 +173,6 @@ type Chain struct {
 	cancelCh     chan struct{}
 }
 
-var (
-	BLOCKTIMER = time.Duration(30 * time.Second)
-)
-
 func Mold(cfg *config.Config) (*Chain, error) {
 	metrics := NewChainMetrics()
 	storage := &fileBlockStorage{}

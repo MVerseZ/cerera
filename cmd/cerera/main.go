@@ -111,6 +111,8 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		registry.Register("ice", ice) // Also register with short name
 	}
 
+	ice.SetServiceProvider(service.GetServiceProvider())
+
 	return &Cerera{
 		bc:       chain,
 		g:        &validator,

@@ -1,0 +1,134 @@
+<mxfile host="65bd71144e">
+    <diagram id="rpc-architecture" name="RPC Registry Architecture">
+        <mxGraphModel dx="1044" dy="1129" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="Архитектура RPC: Registry и виртуальная машина исполнения" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="450" y="20" width="500" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="client" value="RPC Client&#10;POST /app&#10;{ &quot;method&quot;: &quot;cerera.account.getAll&quot;, &quot;params&quot;: [], &quot;id&quot;: 1 }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="950" y="60" width="250" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="handler" value="1. HTTP Handler&#10;internal/network/handler.go&#10;HandleRequest() → service.Exec(method, params)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="450" y="150" width="250" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="registry" value="2. Service Registry&#10;internal/service/registry.go&#10;ParseMethod() → (component, method)&#10;GetService(component) → Service&#10;Алиасы: account→Vault, chain→Chain, pool→Pool, transaction→Validator, ice→Ice" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="390" y="260" width="350" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="vm" value="3. Виртуальная машина (VM)&#10;Связующее звено между компонентами и байтами&#10;Exec(method, params) → switch(method) → нативный вызов" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+                    <mxGeometry x="390" y="428" width="300" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="components-label" value="4. Компоненты" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;" vertex="1" parent="1">
+                    <mxGeometry x="450" y="498" width="120" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="vault" value="Vault&#10;(account)&#10;vault.go&#10;getAll, create, faucet..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="600" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="chain" value="Chain&#10;chain.go&#10;getInfo, height, getBlock..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="280" y="640" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="validator" value="Validator&#10;(transaction)&#10;validator.go&#10;_create, send, get" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="470" y="640" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool" value="Pool&#10;pool.go&#10;getInfo, minGas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="660" y="620" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="ice" value="Ice&#10;ice.go&#10;broadcastBlock, getStatus..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="790" y="530" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="vault-db" value="Vault DB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="760" width="80" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="chain-blocks" value="Chain Blocks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="280" y="810" width="80" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="exec-tx" value="ExecuteTx" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="790" width="80" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="mempool" value="MemPool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="780" width="80" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2p" value="P2P Net" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="810" y="690" width="80" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="storage-label" value="5. Байты (нативное исполнение)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="600" y="630" width="200" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="response" value="6. Ответ&#10;{ &quot;jsonrpc&quot;: &quot;2.0&quot;, &quot;result&quot;: {...}, &quot;id&quot;: 1 }&#10;VM → Registry → Handler → Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="800" y="960" width="300" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="client" target="handler" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1l" value="HTTP Request" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" parent="e1" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="handler" target="registry" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2l" value="Exec(method, params)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" parent="e2" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="registry" target="vm">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2bl" value="(component, method)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" connectable="0" vertex="1" parent="e2b">
+                    <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.2;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="vm" target="vault" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.4;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="vm" target="chain" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="vm" target="validator" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.6;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="vm" target="pool" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.8;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="vm" target="ice" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="vault" target="vault-db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="chain" target="chain-blocks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="validator" target="exec-tx" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="pool" target="mempool" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="ice" target="p2p" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="exec-tx" target="response" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e13l" value="result" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" parent="e13" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=blockThin;endFill=1;dashed=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" parent="1" source="response" target="client" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e14l" value="JSON Response" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" parent="e14" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

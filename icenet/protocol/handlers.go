@@ -115,8 +115,8 @@ func (h *Handler) handleStatusStream(s network.Stream) {
 
 	// Create and send response
 	genesisHash := common.Hash{}
-	if h.serviceProvider != nil {
-		genesisHash = h.serviceProvider.GenesisHash()
+	if b := h.serviceProvider.GetBlockByHeight(0); b != nil {
+		genesisHash = b.Hash
 	}
 
 	// Check chain compatibility
@@ -392,7 +392,9 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 	genesisHash := common.Hash{}
 	chainID := 0
 	if h.serviceProvider != nil {
-		genesisHash = h.serviceProvider.GenesisHash()
+		if b := h.serviceProvider.GetBlockByHeight(0); b != nil {
+			genesisHash = b.Hash
+		}
 		chainID = h.serviceProvider.GetChainID()
 	}
 
