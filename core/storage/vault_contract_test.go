@@ -57,13 +57,10 @@ func TestD5Vault_StoreContractCode(t *testing.T) {
 		t.Fatalf("StoreContractCode failed: %v", err)
 	}
 
-	// Проверяем, что аккаунт создан и имеет CodeHash
+	// Проверяем, что аккаунт создан
 	account := d5Vault.Get(address)
 	if account == nil {
 		t.Fatal("Account was not created")
-	}
-	if len(account.CodeHash) == 0 {
-		t.Error("CodeHash was not set")
 	}
 
 	// Проверяем, что HasContractCode возвращает true
@@ -245,7 +242,10 @@ func TestD5Vault_StoreContractCode_UpdateExisting(t *testing.T) {
 		t.Fatalf("StoreContractCode failed: %v", err)
 	}
 
-	firstCodeHash := d5Vault.Get(address).CodeHash
+	firstCodeRetrieved, err := d5Vault.GetContractCode(address)
+	if err != nil || len(firstCodeRetrieved) == 0 {
+		t.Fatalf("GetContractCode failed or returned empty: %v", err)
+	}
 
 	// Сохраняем второй код
 	secondCode := []byte{0x60, 0x01, 0x52, 0x60, 0x20}
@@ -254,14 +254,14 @@ func TestD5Vault_StoreContractCode_UpdateExisting(t *testing.T) {
 		t.Fatalf("StoreContractCode failed on update: %v", err)
 	}
 
-	secondCodeHash := d5Vault.Get(address).CodeHash
-
-	// Проверяем, что хеш изменился
-	if len(firstCodeHash) == 0 || len(secondCodeHash) == 0 {
-		t.Error("CodeHash should not be empty")
+	secondCodeRetrieved, err := d5Vault.GetContractCode(address)
+	if err != nil || len(secondCodeRetrieved) == 0 {
+		t.Fatalf("GetContractCode failed or returned empty after update: %v", err)
 	}
-	if string(firstCodeHash) == string(secondCodeHash) {
-		t.Error("CodeHash should change when code is updated")
+
+	// Проверяем, что код изменился
+	if string(firstCodeRetrieved) == string(secondCodeRetrieved) {
+		t.Error("Contract code should change when code is updated")
 	}
 
 	// Проверяем, что полученный код соответствует второму
@@ -317,12 +317,6 @@ func TestD5Vault_DeleteContractCode(t *testing.T) {
 	// Проверяем, что код удален
 	if d5Vault.HasContractCode(address) {
 		t.Error("HasContractCode should return false after deletion")
-	}
-
-	// Проверяем, что CodeHash очищен
-	account := d5Vault.Get(address)
-	if account != nil && len(account.CodeHash) > 0 {
-		t.Error("CodeHash should be empty after deletion")
 	}
 
 	// Проверяем, что получение кода возвращает ошибку

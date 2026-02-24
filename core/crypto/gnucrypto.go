@@ -147,6 +147,14 @@ func PublicKeyFromString(s string) (*ecdsa.PublicKey, error) {
 	return publicKey, nil
 }
 
+func EncodePublicKeyToString(publicKey *ecdsa.PublicKey) string {
+	curve := chainElliptic
+	x := publicKey.X
+	y := publicKey.Y
+	encoded := elliptic.Marshal(curve, x, y)
+	return hex.EncodeToString(encoded)
+}
+
 func PublicKeyToString(publicKey *ecdsa.PublicKey) (string, error) {
 	curve := chainElliptic
 	if curve == nil {

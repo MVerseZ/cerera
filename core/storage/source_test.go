@@ -35,25 +35,21 @@ func createTestStateAccountForSource(balance float64) *types.StateAccount {
 	privateKey, _ := types.GenerateAccount()
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
-	derBytes := types.EncodePrivateKeyToByte(privateKey)
 
-	var mpub [78]byte
-	copy(mpub[:], []byte("test_mpub"))
 	testStateAccount := &types.StateAccount{
 		StateAccountData: types.StateAccountData{
-			Address: address,
-			Nonce:   1,
-			Root:    common.Hash{},
+			Address:       address,
+			Nonce:         1,
+			Root:          common.Hash{},
+			PublicKeyHash: common.Hash(address.Bytes()),
 		},
-		CodeHash: derBytes,
-		Status:   0, // 0: OP_ACC_NEW
-		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Status: 0, // 0: OP_ACC_NEW
+		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &types.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte("test_pass")),
-		MPub:       mpub,
 	}
 	testStateAccount.SetBalance(balance)
 	return testStateAccount

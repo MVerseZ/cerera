@@ -519,8 +519,8 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 		valSignError.Inc()
 		return errors.New("empty signing key id")
 	}
-	var vlt = storage.GetVault()
-	var signBytes = vlt.GetKey(signKey)
+	// var vlt = storage.GetVault()
+	var signBytes = []byte{} //vlt.GetKey(signKey)
 	// fmt.Printf("signBytes: %x\n", signBytes)
 	if len(signBytes) == 0 {
 		valSignError.Inc()

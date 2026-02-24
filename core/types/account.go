@@ -25,23 +25,24 @@ type Input struct {
 const DEBUG = false
 
 type StateAccountData struct {
-	Address address.Address
-	Nonce   uint64
-	Root    common.Hash // merkle root of the storage trie
+	Address       address.Address
+	Nonce         uint64
+	Root          common.Hash // merkle root of the storage trie
+	PublicKeyHash common.Hash // hash of the public key
 }
 
 type StateAccount struct {
 	StateAccountData
-	balance    *big.Int `json:"-"` // не сериализуем balance в JSON
-	Bloom      []byte
-	CodeHash   []byte
-	Inputs     *Input      `json:"-"` // не сериализуем Inputs в JSON из-за mutex
+	Bloom []byte
+	// CodeHash   []byte
 	Status     byte        // 0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID
 	Type       byte        // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
 	Passphrase common.Hash // hash of password
-	// bip32 data
-	MPub [78]byte
-	// MPriv    *bip32.Key
+
+	// MPub       [78]byte
+	// non serialized fields
+	balance *big.Int `json:"-"` // не сериализуем balance в JSON
+	Inputs  *Input   `json:"-"` // не сериализуем Inputs в JSON из-за mutex
 }
 
 // TODO
@@ -169,13 +170,13 @@ func (sa *StateAccount) Bytes() []byte {
 		fmt.Printf("Buffer length after passphrase: %d\n", buf.Len())
 	}
 	// Write MPub
-	mpubBytes := sa.MPub[:]
-	binary.Write(&buf, binary.LittleEndian, uint32(len(mpubBytes)))
-	buf.Write(mpubBytes)
-	// fmt.Printf("Buffer after mpub: %x\n", buf.Bytes())
-	if DEBUG {
-		fmt.Printf("Buffer length after mpub: %d\n", buf.Len())
-	}
+	// mpubBytes := sa.MPub[:]
+	// binary.Write(&buf, binary.LittleEndian, uint32(len(mpubBytes)))
+	// buf.Write(mpubBytes)
+	// // fmt.Printf("Buffer after mpub: %x\n", buf.Bytes())
+	// if DEBUG {
+	// 	fmt.Printf("Buffer length after mpub: %d\n", buf.Len())
+	// }
 	// Write Bloom
 	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.Bloom)))
 	buf.Write(sa.Bloom)
@@ -184,13 +185,13 @@ func (sa *StateAccount) Bytes() []byte {
 		fmt.Printf("Buffer length after bloom: %d\n", buf.Len())
 	}
 	// Write CodeHash
-	if sa.Address == address.HexToAddress(BaseAddressHex) || sa.Address == address.HexToAddress(FaucetAddressHex) || sa.Address == address.HexToAddress(CoreStakingAddressHex) {
-		zeroBuf := make([]byte, 4)
-		buf.Write(zeroBuf)
-	} else {
-		binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
-		buf.Write(sa.CodeHash)
-	}
+	// if sa.Address == address.HexToAddress(BaseAddressHex) || sa.Address == address.HexToAddress(FaucetAddressHex) || sa.Address == address.HexToAddress(CoreStakingAddressHex) {
+	// 	zeroBuf := make([]byte, 4)
+	// 	buf.Write(zeroBuf)
+	// } else {
+	// 	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
+	// 	buf.Write(sa.CodeHash)
+	// }
 	// fmt.Printf("Buffer after code hash: %x\n", buf.Bytes())
 	if DEBUG {
 		fmt.Printf("Buffer length after code hash: %d\n", buf.Len())
@@ -300,17 +301,17 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	sa.Passphrase = common.Hash(passphraseBytes)
 
 	// Read MPub
-	var mpubLen uint32
-	if err := binary.Read(buf, binary.LittleEndian, &mpubLen); err != nil {
-		return nil
-	}
-	mpubBytes := make([]byte, mpubLen)
-	if mpubLen > 0 {
-		if _, err := io.ReadFull(buf, mpubBytes); err != nil {
-			return nil
-		}
-	}
-	copy(sa.MPub[:], mpubBytes)
+	// var mpubLen uint32
+	// if err := binary.Read(buf, binary.LittleEndian, &mpubLen); err != nil {
+	// 	return nil
+	// }
+	// mpubBytes := make([]byte, mpubLen)
+	// if mpubLen > 0 {
+	// 	if _, err := io.ReadFull(buf, mpubBytes); err != nil {
+	// 		return nil
+	// 	}
+	// }
+	// copy(sa.MPub[:], mpubBytes)
 
 	// Read Bloom
 	var bloomLen uint32
@@ -325,18 +326,18 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	}
 
 	// Read CodeHash
-	var codeHashLen uint32
-	if err := binary.Read(buf, binary.LittleEndian, &codeHashLen); err != nil {
-		return nil
-	}
-	if codeHashLen > 0 {
-		sa.CodeHash = make([]byte, codeHashLen)
-		if _, err := io.ReadFull(buf, sa.CodeHash); err != nil {
-			return nil
-		}
-	} else {
-		sa.CodeHash = make([]byte, 0)
-	}
+	// var codeHashLen uint32
+	// if err := binary.Read(buf, binary.LittleEndian, &codeHashLen); err != nil {
+	// 	return nil
+	// }
+	// if codeHashLen > 0 {
+	// 	sa.CodeHash = make([]byte, codeHashLen)
+	// 	if _, err := io.ReadFull(buf, sa.CodeHash); err != nil {
+	// 		return nil
+	// 	}
+	// } else {
+	// 	sa.CodeHash = make([]byte, 0)
+	// }
 
 	// Read Nonce
 	if err := binary.Read(buf, binary.LittleEndian, &sa.Nonce); err != nil {
