@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -348,6 +347,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 	masterKeyBytes, _ := masterKey.Serialize()
 	masterKeyHash := common.BytesToHash(masterKeyBytes)
+	publicKeyBytes := crypto.EncodePublicKeyToByte(&privateKey.PublicKey)
 
 	etaKeyBytes := crypto.EncodePrivateKeyToByte(privateKey)
 
@@ -360,6 +360,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 			Root:    v.rootHash,
 			KeyHash: masterKeyHash,
 			Data:    xorResult,
+			Pub:     publicKeyBytes,
 		},
 		// CodeHash: codeHash,
 		Status: 0, // 0: OP_ACC_NEW
@@ -425,7 +426,10 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
 	}
 
-	var publicKey *ecdsa.PublicKey
+	publicKey, err := crypto.DecodeByteToPublicKey(account.Pub)
+	if err != nil {
+		return types.EmptyAddress(), "", fmt.Errorf("failed to decode public key: %w", err)
+	}
 
 	privateKeyBytes := crypto.RXor(masterKey, publicKey, account.Data)
 	privateKey, err := crypto.DecodeBytesToPrivateKey(privateKeyBytes)
@@ -1079,7 +1083,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 	case "getCount":
 		return v.GetCount()
 	case "create":
-		if params == nil || len(params) < 1 {
+		if len(params) < 1 {
 			return fmt.Errorf("%w: passphrase required", ErrErrorParsingParameters)
 		}
 		passphraseStr, ok1 := params[0].(string)
