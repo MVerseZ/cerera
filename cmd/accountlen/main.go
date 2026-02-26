@@ -10,10 +10,10 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/cerera/core/account"
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/crypto"
-	"github.com/cerera/core/types"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -36,15 +36,15 @@ func main() {
 
 	// 2) Системные адреса (Base, Faucet, CoreStaking) — тоже через GenerateAccount
 	baseAcc := makeMinimalAccount(TypeNormal, "")
-	baseAcc.Address = address.HexToAddress(types.BaseAddressHex)
+	baseAcc.Address = address.HexToAddress(account.BaseAddressHex)
 	printRow("Base-адрес (0xf..0f)", baseAcc)
 
 	faucetAcc := makeMinimalAccount(TypeFaucet, "")
-	faucetAcc.Address = address.HexToAddress(types.FaucetAddressHex)
+	faucetAcc.Address = address.HexToAddress(account.FaucetAddressHex)
 	printRow("Faucet (0xf..0a)", faucetAcc)
 
 	coreStakingAcc := makeMinimalAccount(TypeStaking, "")
-	coreStakingAcc.Address = address.HexToAddress(types.CoreStakingAddressHex)
+	coreStakingAcc.Address = address.HexToAddress(account.CoreStakingAddressHex)
 	printRow("CoreStaking (0xf..0b)", coreStakingAcc)
 
 	// 4) Разные типы с одинаковым «телом»
@@ -59,10 +59,10 @@ func main() {
 	realAcc := makeRealisticAccount()
 	printRow("Реальный (GenerateAccount)", realAcc)
 
-	// 6) Vault-style (bip39 + PublicKeyHash, как в vault.Create)
+	// 6) Vault-style (bip39 + KeyHash, как в vault.Create)
 	vaultAcc := makeVaultStyleAccount()
 	if vaultAcc != nil {
-		printRow("Vault-style (bip39+PublicKeyHash)", vaultAcc)
+		printRow("Vault-style (bip39+KeyHash)", vaultAcc)
 	}
 
 	// 7) Разный размер Bloom
@@ -80,7 +80,7 @@ func main() {
 	fmt.Println("  Bloom: 4 (len) + 10 байт (фиксированная)")
 	fmt.Println("  Nonce: 8 байт")
 	fmt.Println("  Root: 32 байт")
-	fmt.Println("  PublicKeyHash: 32 байт (в StateAccountData)")
+	fmt.Println("  KeyHash: 32 байт (в StateAccountData)")
 	fmt.Println("  Status: 1 байт")
 	fmt.Println("  Balance: 4 (len) + N байт")
 
@@ -180,7 +180,7 @@ func typeName(t byte) string {
 	}
 }
 
-func makeMinimalAccount(accType byte, _ string) *types.StateAccount {
+func makeMinimalAccount(accType byte, _ string) *account.StateAccount {
 	priv, err := crypto.GenerateAccount()
 	if err != nil {
 		panic(err)
@@ -189,48 +189,48 @@ func makeMinimalAccount(accType byte, _ string) *types.StateAccount {
 	return makeMinimalAccountWithAddress(accType, addr)
 }
 
-func makeMinimalAccountWithAddress(accType byte, addr address.Address) *types.StateAccount {
-	acc := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
-			Address:       addr,
-			Nonce:         1,
-			Root:          common.Hash{},
-			PublicKeyHash: common.Hash{},
+func makeMinimalAccountWithAddress(accType byte, addr address.Address) *account.StateAccount {
+	acc := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
+			Address: addr,
+			Nonce:   1,
+			Root:    common.Hash{},
+			KeyHash: common.Hash{},
 		},
 		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Status:     0,
 		Type:       accType,
 		Passphrase: common.Hash{},
-		Inputs:     &types.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+		Inputs:     &account.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	acc.SetBalance(0)
 	return acc
 }
 
-func makeRealisticAccount() *types.StateAccount {
+func makeRealisticAccount() *account.StateAccount {
 	priv, err := crypto.GenerateAccount()
 	if err != nil {
 		panic(err)
 	}
 	addr := crypto.PubkeyToAddress(priv.PublicKey)
-	acc := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
-			Address:       addr,
-			Nonce:         1,
-			Root:          common.Hash(addr.Bytes()),
-			PublicKeyHash: common.Hash{},
+	acc := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
+			Address: addr,
+			Nonce:   1,
+			Root:    common.Hash(addr.Bytes()),
+			KeyHash: common.Hash{},
 		},
 		Bloom:      []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
 		Status:     0,
 		Type:       TypeNormal,
 		Passphrase: common.BytesToHash([]byte("test_pass")),
-		Inputs:     &types.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+		Inputs:     &account.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	acc.SetBalance(0)
 	return acc
 }
 
-func makeVaultStyleAccount() *types.StateAccount {
+func makeVaultStyleAccount() *account.StateAccount {
 	entropy, err := bip39.NewEntropy(256)
 	if err != nil {
 		return nil
@@ -257,18 +257,18 @@ func makeVaultStyleAccount() *types.StateAccount {
 	}
 	addr := crypto.PubkeyToAddress(priv.PublicKey)
 
-	acc := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
-			Address:       addr,
-			Nonce:         1,
-			Root:          common.Hash(addr.Bytes()),
-			PublicKeyHash: masterKeyHash,
+	acc := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
+			Address: addr,
+			Nonce:   1,
+			Root:    common.Hash(addr.Bytes()),
+			KeyHash: masterKeyHash,
 		},
 		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Status:     0,
 		Type:       TypeNormal,
 		Passphrase: common.BytesToHash([]byte(pass)),
-		Inputs:     &types.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+		Inputs:     &account.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	acc.SetBalance(0)
 	return acc
@@ -281,7 +281,7 @@ func shortHex(s string, head, tail int) string {
 	return s[:head+2] + ".." + s[len(s)-tail:]
 }
 
-func printRow(desc string, acc *types.StateAccount) {
+func printRow(desc string, acc *account.StateAccount) {
 	data := acc.Bytes()
 	addr := shortHex(acc.Address.Hex(), 6, 6) // 0x1234..5678
 	fmt.Printf("  %-28s %4d B\n", desc, len(data))

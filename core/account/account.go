@@ -1,4 +1,4 @@
-package types
+package account
 
 import (
 	"bytes"
@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"strconv"
 	"sync"
 
 	"github.com/cerera/core/address"
@@ -25,10 +24,11 @@ type Input struct {
 const DEBUG = false
 
 type StateAccountData struct {
-	Address       address.Address
-	Nonce         uint64
-	Root          common.Hash // merkle root of the storage trie
-	PublicKeyHash common.Hash // hash of the public key
+	Address address.Address
+	Nonce   uint64
+	Root    common.Hash // merkle root of the storage trie
+	KeyHash common.Hash // hash of the public key
+	Data    []byte      // data of the account
 }
 
 type StateAccount struct {
@@ -53,7 +53,7 @@ func NewStateAccount(address address.Address, balance float64, root common.Hash)
 			Nonce:   1,
 			Root:    root,
 		},
-		balance: FloatToBigInt(balance),
+		balance: common.FloatToBigInt(balance),
 		Bloom:   []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Status:  0,
 		Type:    0,
@@ -69,7 +69,7 @@ func (sa *StateAccount) GetBalance() float64 {
 }
 
 func (sa *StateAccount) SetBalance(balance float64) {
-	sa.balance = FloatToBigInt(balance)
+	sa.balance = common.FloatToBigInt(balance)
 }
 
 // GetBalanceBI returns a copy of the current balance as big.Int.
@@ -259,12 +259,11 @@ func (sa *StateAccount) Bytes() []byte {
 	return buf.Bytes()
 }
 
-// FromBytes creates StateAccount from custom binary format
-func BytesToStateAccount(data []byte) *StateAccount {
+// FromBytes creates StateAccount from custom binary format (same as types.BytesToStateAccount).
+func FromBytes(data []byte) *StateAccount {
 	sa := &StateAccount{}
 	buf := bytes.NewReader(data)
 
-	// Read Type (added to serialization in newer versions)
 	firstByte, err := buf.ReadByte()
 	if err != nil {
 		return nil
@@ -272,15 +271,12 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	if firstByte <= 4 {
 		sa.Type = firstByte
 	} else {
-		// Older serialized accounts did not include Type,
-		// rewind and treat the byte as part of the address length.
 		sa.Type = 0
 		if _, err := buf.Seek(0, io.SeekStart); err != nil {
 			return nil
 		}
 	}
 
-	// Read Address
 	var addressLen uint32
 	if err := binary.Read(buf, binary.LittleEndian, &addressLen); err != nil {
 		return nil
@@ -293,27 +289,12 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	}
 	sa.Address = address.BytesToAddress(addressBytes)
 
-	// Read Passphrase (32 bytes, no length prefix)
-	passphraseBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
+	passphraseBytes := make([]byte, 32)
 	if _, err := io.ReadFull(buf, passphraseBytes); err != nil {
 		return nil
 	}
 	sa.Passphrase = common.Hash(passphraseBytes)
 
-	// Read MPub
-	// var mpubLen uint32
-	// if err := binary.Read(buf, binary.LittleEndian, &mpubLen); err != nil {
-	// 	return nil
-	// }
-	// mpubBytes := make([]byte, mpubLen)
-	// if mpubLen > 0 {
-	// 	if _, err := io.ReadFull(buf, mpubBytes); err != nil {
-	// 		return nil
-	// 	}
-	// }
-	// copy(sa.MPub[:], mpubBytes)
-
-	// Read Bloom
 	var bloomLen uint32
 	if err := binary.Read(buf, binary.LittleEndian, &bloomLen); err != nil {
 		return nil
@@ -325,40 +306,21 @@ func BytesToStateAccount(data []byte) *StateAccount {
 		}
 	}
 
-	// Read CodeHash
-	// var codeHashLen uint32
-	// if err := binary.Read(buf, binary.LittleEndian, &codeHashLen); err != nil {
-	// 	return nil
-	// }
-	// if codeHashLen > 0 {
-	// 	sa.CodeHash = make([]byte, codeHashLen)
-	// 	if _, err := io.ReadFull(buf, sa.CodeHash); err != nil {
-	// 		return nil
-	// 	}
-	// } else {
-	// 	sa.CodeHash = make([]byte, 0)
-	// }
-
-	// Read Nonce
 	if err := binary.Read(buf, binary.LittleEndian, &sa.Nonce); err != nil {
 		return nil
 	}
-
-	// Read Root (32 bytes, no length prefix)
-	rootBytes := make([]byte, 32) // Assuming common.Hash is 32 bytes
+	rootBytes := make([]byte, 32)
 	if _, err := io.ReadFull(buf, rootBytes); err != nil {
 		return nil
 	}
 	sa.Root = common.Hash(rootBytes)
 
-	// Read Status (1 byte, no length prefix)
 	statusByte, err := buf.ReadByte()
 	if err != nil {
 		return nil
 	}
 	sa.Status = statusByte
 
-	// Read balance as big.Int bytes
 	var balanceLen uint32
 	if err := binary.Read(buf, binary.LittleEndian, &balanceLen); err != nil {
 		return nil
@@ -369,34 +331,25 @@ func BytesToStateAccount(data []byte) *StateAccount {
 			return nil
 		}
 	}
-	sa.balance = new(big.Int).SetBytes(balanceBytes)
+	sa.SetBalanceBI(new(big.Int).SetBytes(balanceBytes))
 
-	// Initialize Inputs (not serialized, but must be initialized to avoid nil pointer)
 	sa.Inputs = &Input{
 		RWMutex: &sync.RWMutex{},
 		M:       make(map[common.Hash]*big.Int),
 	}
 
-	// Read Inputs map
 	var inputsCount uint32
 	if err := binary.Read(buf, binary.LittleEndian, &inputsCount); err != nil {
-		// Если не удалось прочитать (старая версия без инпутов), просто возвращаем
-		// Inputs уже инициализирован пустым
 		return sa
 	}
-
-	// Читаем каждую пару (hash, value)
 	sa.Inputs.Lock()
 	for i := uint32(0); i < inputsCount; i++ {
-		// Читаем hash (32 bytes)
 		hashBytes := make([]byte, 32)
 		if _, err := io.ReadFull(buf, hashBytes); err != nil {
 			sa.Inputs.Unlock()
 			return nil
 		}
 		txHash := common.Hash(hashBytes)
-
-		// Читаем значение big.Int
 		var valLen uint32
 		if err := binary.Read(buf, binary.LittleEndian, &valLen); err != nil {
 			sa.Inputs.Unlock()
@@ -415,15 +368,4 @@ func BytesToStateAccount(data []byte) *StateAccount {
 	sa.Inputs.Unlock()
 
 	return sa
-}
-
-func FloatToBigInt(val float64) *big.Int {
-	// Convert float to decimal string, then use exact decimal -> wei converter
-	// to avoid binary FP artifacts like ...0005
-	s := strconv.FormatFloat(val, 'f', -1, 64)
-	wei, err := common.DecimalStringToWei(s)
-	if err != nil {
-		return big.NewInt(0)
-	}
-	return wei
 }

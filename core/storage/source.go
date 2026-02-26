@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/akrylysov/pogreb"
+	"github.com/cerera/core/account"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
 )
@@ -99,7 +100,7 @@ func getPogrebDB(vaultPath string) (*pogreb.DB, error) {
 	return db, nil
 }
 
-func InitSecureVault(rootSa *types.StateAccount, vaultPath string) error {
+func InitSecureVault(rootSa *account.StateAccount, vaultPath string) error {
 	// Get pogreb database from vault
 	db, err := getPogrebDB(vaultPath)
 	if err != nil {

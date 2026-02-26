@@ -109,7 +109,7 @@ func (s TxByNonce) Less(i, j int) bool { return s[i].Nonce() < s[j].Nonce() }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 func (tx *GTransaction) Cost() *big.Int {
-	gasAsInt := FloatToBigInt(tx.Gas())
+	gasAsInt := common.FloatToBigInt(tx.Gas())
 	total := new(big.Int).Mul(tx.GasPrice(), gasAsInt)
 	return total
 }
@@ -124,7 +124,7 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas float
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
-		FloatToBigInt(count),
+		common.FloatToBigInt(count),
 		gas,
 		big.NewInt(0),
 		[]byte(message),
@@ -136,7 +136,7 @@ func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
-		FloatToBigInt(count),
+		common.FloatToBigInt(count),
 		gas,
 		big.NewInt(0),
 		[]byte(message),

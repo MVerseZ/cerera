@@ -6,23 +6,24 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cerera/core/types"
+	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/types"
 )
 
 // FuzzStateAccountBytes tests the serialization/deserialization of StateAccount
 func FuzzStateAccountBytes(f *testing.F) {
 	// Add seed values
-	testAccount := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
-			Address:       types.BytesToAddress([]byte("test_address_123456789012345678901234567890")),
-			Nonce:         1,
-			Root:          common.Hash{},
-			PublicKeyHash: common.Hash{},
+	testAccount := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
+			Address: types.BytesToAddress([]byte("test_address_123456789012345678901234567890")),
+			Nonce:   1,
+			Root:    common.Hash{},
+			KeyHash: common.Hash{},
 		},
 		Status: 0, // 0: OP_ACC_NEW
 		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs: &types.Input{
+		Inputs: &account.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
@@ -38,11 +39,11 @@ func FuzzStateAccountBytes(f *testing.F) {
 		}
 
 		// Try to deserialize
-		account := types.BytesToStateAccount(data)
+		acc := types.BytesToStateAccount(data)
 
 		// If we got a valid account, try to serialize it back
-		if account != nil {
-			serialized := account.Bytes()
+		if acc != nil {
+			serialized := acc.Bytes()
 
 			// Basic sanity check: serialized data should not be empty
 			if len(serialized) == 0 {
@@ -79,16 +80,16 @@ func FuzzAccountsTrieAppend(f *testing.F) {
 		}
 
 		// Create a minimal StateAccount
-		account := &types.StateAccount{
-			StateAccountData: types.StateAccountData{
-				Address:       addr,
-				Nonce:         1,
-				Root:          common.Hash{},
-				PublicKeyHash: common.BytesToHash(data),
+		account := &account.StateAccount{
+			StateAccountData: account.StateAccountData{
+				Address: addr,
+				Nonce:   1,
+				Root:    common.Hash{},
+				KeyHash: common.BytesToHash(data),
 			},
 			Status: 0, // 0: OP_ACC_NEW
 			Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-			Inputs: &types.Input{
+			Inputs: &account.Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
 			},
@@ -115,16 +116,16 @@ func FuzzAccountsTrieGet(f *testing.F) {
 		var addr types.Address
 		copy(addr[:], addrBytes)
 
-		account := &types.StateAccount{
-			StateAccountData: types.StateAccountData{
+		account := &account.StateAccount{
+			StateAccountData: account.StateAccountData{
 				Address:       addr,
 				Nonce:         1,
 				Root:          common.Hash{},
-				PublicKeyHash: common.Hash{},
+				KeyHash: common.Hash{},
 			},
 			Status: 0, // 0: OP_ACC_NEW
 			Bloom:  []byte{0xf, 0xf, 0xf, 0x1},
-			Inputs: &types.Input{
+			Inputs: &account.Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
 			},
@@ -155,16 +156,16 @@ func FuzzAccountsTrieSize(f *testing.F) {
 		// Add some accounts
 		for i := 0; i < numAccounts; i++ {
 			addr := types.BytesToAddress([]byte(strings.Repeat("a", 40)))
-			account := &types.StateAccount{
-				StateAccountData: types.StateAccountData{
+			account := &account.StateAccount{
+				StateAccountData: account.StateAccountData{
 					Address:       addr,
 					Nonce:         1,
 					Root:          common.Hash{},
-					PublicKeyHash: common.Hash{},
+					KeyHash: common.Hash{},
 				},
 				Status: 0, // 0: OP_ACC_NEW
 				Bloom:  []byte{0xf, 0xf, 0xf, 0x1},
-				Inputs: &types.Input{
+				Inputs: &account.Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
 				},
@@ -193,16 +194,16 @@ func FuzzAccountsTrieGetAll(f *testing.F) {
 		// Add some accounts with balances
 		for i := 0; i < numAccounts; i++ {
 			addr := types.BytesToAddress([]byte(strings.Repeat(string(rune(i%26+97)), 40)))
-			account := &types.StateAccount{
-				StateAccountData: types.StateAccountData{
+			account := &account.StateAccount{
+				StateAccountData: account.StateAccountData{
 					Address:       addr,
 					Nonce:         1,
 					Root:          common.Hash{},
-					PublicKeyHash: common.Hash{},
+					KeyHash: common.Hash{},
 				},
 				Status: 0, // 0: OP_ACC_NEW
 				Bloom:  []byte{0xf, 0xf, 0xf, 0x1},
-				Inputs: &types.Input{
+				Inputs: &account.Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
 				},
@@ -241,16 +242,16 @@ func FuzzAccountsTrieClear(f *testing.F) {
 		// Add some accounts
 		for i := 0; i < numAccounts; i++ {
 			addr := types.BytesToAddress([]byte(strings.Repeat("b", 40)))
-			account := &types.StateAccount{
-				StateAccountData: types.StateAccountData{
+			account := &account.StateAccount{
+				StateAccountData: account.StateAccountData{
 					Address:       addr,
 					Nonce:         1,
 					Root:          common.Hash{},
-					PublicKeyHash: common.Hash{},
+					KeyHash: common.Hash{},
 				},
 				Status: 0, // 0: OP_ACC_NEW
 				Bloom:  []byte{0xf, 0xf, 0xf, 0x1},
-				Inputs: &types.Input{
+				Inputs: &account.Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
 				},

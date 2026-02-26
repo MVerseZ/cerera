@@ -14,6 +14,8 @@ import (
 
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/common"
+	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -197,6 +199,16 @@ func EncodePrivateKeyToByte(pk *ecdsa.PrivateKey) []byte {
 	return pemEncoded
 }
 
+func DecodeBytesToPrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("failed to decode PEM block containing private key")
+	}
+	x509Encoded := block.Bytes
+	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
+	return privateKey, nil
+}
+
 func EncodePublicKeyToByte(pub *ecdsa.PublicKey) []byte {
 	x509Encoded, _ := x509.MarshalPKIXPublicKey(pub)
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509Encoded})
@@ -239,4 +251,43 @@ func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.
 	publicKey := genericPublicKey.(*ecdsa.PublicKey)
 
 	return privateKey, publicKey
+}
+
+func Xor(privateKey *ecdsa.PrivateKey, masterKey *bip32.Key) []byte {
+	// Выполняем побитовый XOR для приватных ключей: privateKey и masterKey
+	privateKeyBytes := EncodePrivateKeyToByte(privateKey)
+	masterKeyBytes, _ := masterKey.Serialize()
+	//master key + public ecdsa xor private key (178+82 xor 221+offset (39))
+	xorLen := len(masterKeyBytes) + len(EncodePublicKeyToByte(&privateKey.PublicKey))
+	if len(privateKeyBytes) < xorLen {
+		// add ending bytes
+		offset := make([]byte, xorLen-len(privateKeyBytes))
+		privateKeyBytes = append(privateKeyBytes, offset...)
+	}
+	masterKeyBytes = append(masterKeyBytes, EncodePublicKeyToByte(&privateKey.PublicKey)...)
+	xorResult := make([]byte, xorLen)
+	for i := range xorLen {
+		xorResult[i] = privateKeyBytes[i] ^ masterKeyBytes[i]
+	}
+	return xorResult
+}
+
+func RXor(masterKey *bip32.Key, pub *ecdsa.PublicKey, data []byte) []byte {
+	masterKeyBytes, _ := masterKey.Serialize()
+	masterKeyBytes = append(masterKeyBytes, EncodePublicKeyToByte(pub)...)
+	restoredPrivateKey := make([]byte, len(data))
+	for i := range len(data) {
+		restoredPrivateKey[i] = data[i] ^ masterKeyBytes[i]
+	}
+	// trim offset from restored private key
+	restoredPrivateKey = restoredPrivateKey[:len(restoredPrivateKey)-39]
+	return restoredPrivateKey
+}
+
+func GenerateMasterKey(pass string) (*bip32.Key, string, error) {
+	entropy, _ := bip39.NewEntropy(256)
+	mnemonic, _ := bip39.NewMnemonic(entropy)
+	seed := bip39.NewSeed(mnemonic, pass)
+	masterKey, _ := bip32.NewMasterKey(seed)
+	return masterKey, mnemonic, nil
 }

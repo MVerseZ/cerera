@@ -161,7 +161,7 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
 	// Configure min gas price from config
-	v.(*CoreValidator).minGasPrice = types.FloatToBigInt(cfg.POOL.MinGas)
+	v.(*CoreValidator).minGasPrice = common.FloatToBigInt(cfg.POOL.MinGas)
 	return v, nil
 }
 
@@ -477,7 +477,7 @@ func (v *CoreValidator) ServiceName() string {
 
 func (v *CoreValidator) SetUp(chainId *big.Int) {
 	// default min gas price; can be overridden from config in NewValidator
-	v.minGasPrice = types.FloatToBigInt(0.000001)
+	v.minGasPrice = common.FloatToBigInt(0.000001)
 	v.signer = types.NewSimpleSigner(chainId)
 	if v.Chain == nil {
 		return
