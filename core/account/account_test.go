@@ -1241,6 +1241,8 @@ func TestStateAccount_Size_WithDifferentBloomSizes(t *testing.T) {
 func TestStateAccount_Size_Consistency(t *testing.T) {
 	sa := CreateTestStateAccount()
 	sa.SetBalance(123.456)
+	sa.AddInput(common.Hash{0x1}, big.NewInt(100))
+	sa.AddInput(common.Hash{0x2}, big.NewInt(200))
 
 	// Сериализуем
 	data1 := sa.Bytes()

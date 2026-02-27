@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -226,10 +227,6 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 			Nonce:   1,
 			Root:    vlt.rootHash,
 		},
-		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
-		// CodeHash: types.EncodePrivateKeyToByte(
-		// 	types.DecodePrivKey(cfg.NetCfg.PRIV),
-		// ),
 		Status: 3, // 3: OP_ACC_NODE
 		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Inputs: &account.Input{
@@ -347,7 +344,6 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 	masterKeyBytes, _ := masterKey.Serialize()
 	masterKeyHash := common.BytesToHash(masterKeyBytes)
-	publicKeyBytes := crypto.EncodePublicKeyToByte(&privateKey.PublicKey)
 
 	etaKeyBytes := crypto.EncodePrivateKeyToByte(privateKey)
 
@@ -360,7 +356,6 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 			Root:    v.rootHash,
 			KeyHash: masterKeyHash,
 			Data:    xorResult,
-			Pub:     publicKeyBytes,
 		},
 		// CodeHash: codeHash,
 		Status: 0, // 0: OP_ACC_NEW
@@ -426,10 +421,7 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
 	}
 
-	publicKey, err := crypto.DecodeByteToPublicKey(account.Pub)
-	if err != nil {
-		return types.EmptyAddress(), "", fmt.Errorf("failed to decode public key: %w", err)
-	}
+	var publicKey *ecdsa.PublicKey
 
 	privateKeyBytes := crypto.RXor(masterKey, publicKey, account.Data)
 	privateKey, err := crypto.DecodeBytesToPrivateKey(privateKeyBytes)

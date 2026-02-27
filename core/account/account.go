@@ -29,7 +29,6 @@ type StateAccountData struct {
 	Root    common.Hash // merkle root of the storage trie
 	KeyHash common.Hash // hash of the public key
 	Data    []byte      // data of the account
-	Pub     []byte      // public key of the account
 }
 
 type StateAccount struct {

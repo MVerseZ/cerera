@@ -3,7 +3,6 @@ package validator
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -510,6 +509,7 @@ func (v *CoreValidator) Signer() types.Signer {
 	return v.signer
 }
 
+// signkey is string representation of ecdsa private key
 func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKey string) error {
 	// get for tx
 	v.balance.Add(v.balance, big.NewInt(int64(tx.Gas())))
@@ -519,34 +519,15 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 		valSignError.Inc()
 		return errors.New("empty signing key id")
 	}
-	// var vlt = storage.GetVault()
-	var signBytes = []byte{} //vlt.GetKey(signKey)
-	// fmt.Printf("signBytes: %x\n", signBytes)
-	if len(signBytes) == 0 {
-		valSignError.Inc()
-		return errors.New("signing key not found in vault")
-	}
-	pemBlock, _ := pem.Decode([]byte(signBytes))
+
+	pemBlock, _ := pem.Decode([]byte(signKey))
 	if pemBlock == nil || len(pemBlock.Bytes) == 0 {
 		valSignError.Inc()
 		return errors.New("invalid PEM block for private key")
 	}
+
 	var aKey *ecdsa.PrivateKey
-	if k, err := x509.ParseECPrivateKey(pemBlock.Bytes); err == nil {
-		aKey = k
-	} else {
-		if anyKey, err2 := x509.ParsePKCS8PrivateKey(pemBlock.Bytes); err2 == nil {
-			if ecKey, ok := anyKey.(*ecdsa.PrivateKey); ok {
-				aKey = ecKey
-			} else {
-				valSignError.Inc()
-				return errors.New("PKCS8 key is not ECDSA private key")
-			}
-		} else {
-			valSignError.Inc()
-			return errors.New("unable to parse ECDSA private key: not EC or PKCS8 ECDSA")
-		}
-	}
+	aKey = crypto.DecodePrivKey(signKey)
 	// fmt.Printf("Sing tx: %s\r\n", tx.Hash())
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
 	if err2 != nil {
@@ -573,6 +554,10 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 
 	// 19.12.2025 by gnupunk
 	// ValidateTransaction deprecated
+
+	// 27.02.2026 by gnupunk
+	// Sign tx with private key, not public
+	// Validator check-compare signature with public key in storage.
 
 	return nil
 }

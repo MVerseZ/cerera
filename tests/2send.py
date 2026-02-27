@@ -6,7 +6,7 @@ import random
 from typing import Dict
 
 class CereraStressTester:
-    def __init__(self, api_url: str = "http://localhost:1337/"):
+    def __init__(self, api_url: str = "http://localhost:1337/app"):
         self.api_url = api_url
         self.accounts: Dict[str, Dict] = {}
         
@@ -45,7 +45,7 @@ class CereraStressTester:
             "method": "cerera.transaction.send",
             "jsonrpc": "2.0",
             "id": random.randint(1000, 9999),
-            "params": [sender['pub'], to_addr, amount, gas_limit, message]
+            "params": [sender['priv'], to_addr, amount, gas_limit, message]
         }
         
         try:
