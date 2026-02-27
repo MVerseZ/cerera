@@ -3,6 +3,8 @@ package types
 import (
 	"math/big"
 	"time"
+
+	"github.com/cerera/core/common"
 )
 
 type CBTransaction struct {
@@ -159,7 +161,7 @@ func NewFaucetTransaction(nonce uint64, to Address, amount *big.Int) *GTransacti
 		Value:    amount,
 		Time:     time.Now(),
 		Gas:      1000.0,
-		GasPrice: FloatToBigInt(1000.0),
+		GasPrice: common.FloatToBigInt(1000.0),
 	})
 }
 

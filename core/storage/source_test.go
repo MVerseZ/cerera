@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/core/types"
+	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/types"
 )
 
 // closeTestDB closes the database after test
@@ -31,29 +32,25 @@ func closeTestDB(t *testing.T) {
 }
 
 // createTestStateAccount creates a test StateAccount for testing
-func createTestStateAccountForSource(balance float64) *types.StateAccount {
+func createTestStateAccountForSource(balance float64) *account.StateAccount {
 	privateKey, _ := types.GenerateAccount()
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
-	derBytes := types.EncodePrivateKeyToByte(privateKey)
 
-	var mpub [78]byte
-	copy(mpub[:], []byte("test_mpub"))
-	testStateAccount := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
+	testStateAccount := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
 			Address: address,
 			Nonce:   1,
 			Root:    common.Hash{},
+			KeyHash: common.Hash(address.Bytes()),
 		},
-		CodeHash: derBytes,
-		Status:   0, // 0: OP_ACC_NEW
-		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs: &types.Input{
+		Status: 0, // 0: OP_ACC_NEW
+		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Inputs: &account.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte("test_pass")),
-		MPub:       mpub,
 	}
 	testStateAccount.SetBalance(balance)
 	return testStateAccount

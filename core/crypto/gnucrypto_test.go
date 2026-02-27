@@ -7,9 +7,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/cerera/core/common"
+	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
 )
 
 func TestKxAddress(t *testing.T) {
@@ -420,5 +423,260 @@ func TestPublicKeyToStringError(t *testing.T) {
 	}
 	if result == "" {
 		t.Error("PublicKeyToString should return non-empty string")
+	}
+}
+
+// TestChainElliptic tests ChainElliptic returns valid curve
+func TestChainElliptic(t *testing.T) {
+	curve := ChainElliptic()
+	if curve == nil {
+		t.Fatal("ChainElliptic should not return nil")
+	}
+	if curve != elliptic.P256() {
+		t.Error("ChainElliptic should return P256")
+	}
+}
+
+// TestSignatureLength tests SignatureLength constant
+func TestSignatureLength(t *testing.T) {
+	if SignatureLength != 65 {
+		t.Errorf("SignatureLength = %d, want 65", SignatureLength)
+	}
+}
+
+// TestEncodePublicKeyToString tests EncodePublicKeyToString
+func TestEncodePublicKeyToString(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	result := EncodePublicKeyToString(&privateKey.PublicKey)
+	if result == "" {
+		t.Fatal("EncodePublicKeyToString should return non-empty string")
+	}
+	// Should be hex encoded, even length
+	if len(result)%2 != 0 {
+		t.Error("EncodePublicKeyToString should return even-length hex string")
+	}
+}
+
+// TestPublicKeyRoundTrip tests PublicKeyFromString and PublicKeyToString round-trip
+func TestPublicKeyRoundTrip(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	encoded, err := PublicKeyToString(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("PublicKeyToString failed: %v", err)
+	}
+
+	decoded, err := PublicKeyFromString(encoded)
+	if err != nil {
+		t.Fatalf("PublicKeyFromString failed: %v", err)
+	}
+
+	if !privateKey.PublicKey.Equal(decoded) {
+		t.Fatal("Round-trip public key should match original")
+	}
+}
+
+// TestDecodeBytesToPrivateKey tests DecodeBytesToPrivateKey
+func TestDecodeBytesToPrivateKey(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	encoded := EncodePrivateKeyToByte(privateKey)
+	decoded, err := DecodeBytesToPrivateKey(encoded)
+	if err != nil {
+		t.Fatalf("DecodeBytesToPrivateKey failed: %v", err)
+	}
+	if decoded == nil {
+		t.Fatal("DecodeBytesToPrivateKey should not return nil")
+	}
+	if !privateKey.Equal(decoded) {
+		t.Fatal("Decoded private key should match original")
+	}
+
+	// Test with invalid data
+	_, err = DecodeBytesToPrivateKey([]byte("invalid pem"))
+	if err == nil {
+		t.Error("DecodeBytesToPrivateKey should error on invalid PEM")
+	}
+
+	// Test with wrong block type
+	wrongBlock := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("invalid")})
+	_, err = DecodeBytesToPrivateKey(wrongBlock)
+	if err == nil {
+		t.Error("DecodeBytesToPrivateKey should error on wrong block type")
+	}
+}
+
+// TestGenerateMasterKey tests GenerateMasterKey
+func TestGenerateMasterKey(t *testing.T) {
+	masterKey, mnemonic, err := GenerateMasterKey("test_password")
+	if err != nil {
+		t.Fatalf("GenerateMasterKey failed: %v", err)
+	}
+	if masterKey == nil {
+		t.Fatal("GenerateMasterKey should not return nil key")
+	}
+	if mnemonic == "" {
+		t.Fatal("GenerateMasterKey should return non-empty mnemonic")
+	}
+	// Mnemonic should have 24 words (256 bits entropy)
+	wordCount := 0
+	for _, r := range mnemonic {
+		if r == ' ' {
+			wordCount++
+		}
+	}
+	wordCount++ // last word
+	if wordCount != 24 {
+		t.Errorf("Mnemonic should have 24 words, got %d", wordCount)
+	}
+}
+
+// TestXorRXorRoundTrip tests Xor and RXor round-trip
+func TestXorRXorRoundTrip(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		t.Fatalf("NewEntropy failed: %v", err)
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		t.Fatalf("NewMnemonic failed: %v", err)
+	}
+	seed := bip39.NewSeed(mnemonic, "test_pass")
+	masterKey, err := bip32.NewMasterKey(seed)
+	if err != nil {
+		t.Fatalf("NewMasterKey failed: %v", err)
+	}
+
+	xorData := Xor(privateKey, masterKey)
+	if len(xorData) == 0 {
+		t.Fatal("Xor should return non-empty data")
+	}
+
+	restored := RXor(masterKey, &privateKey.PublicKey, xorData)
+	if len(restored) == 0 {
+		t.Fatal("RXor should return non-empty data")
+	}
+
+	// Restored should be valid PEM-encoded private key
+	decoded, err := DecodeBytesToPrivateKey(restored)
+	if err != nil {
+		t.Fatalf("Decoded restored key failed: %v", err)
+	}
+	if !privateKey.Equal(decoded) {
+		t.Fatal("Restored private key should match original")
+	}
+}
+
+// TestPubkeyToAddressDeterministic tests that same key gives same address
+func TestPubkeyToAddressDeterministic(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	addr1 := PubkeyToAddress(privateKey.PublicKey)
+	addr2 := PubkeyToAddress(privateKey.PublicKey)
+	if addr1 != addr2 {
+		t.Errorf("PubkeyToAddress should be deterministic: %s != %s", addr1.Hex(), addr2.Hex())
+	}
+}
+
+// TestPrivKeyToAddressMatchesPubkey tests PrivKeyToAddress matches PubkeyToAddress
+func TestPrivKeyToAddressMatchesPubkey(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	addrPub := PubkeyToAddress(privateKey.PublicKey)
+	addrPriv := PrivKeyToAddress(*privateKey)
+	if addrPub != addrPriv {
+		t.Errorf("PrivKeyToAddress should match PubkeyToAddress: %s != %s", addrPub.Hex(), addrPriv.Hex())
+	}
+}
+
+// TestFromECDSAPubWithNilX tests FromECDSAPub with key having nil X
+func TestFromECDSAPubWithNilX(t *testing.T) {
+	pub := &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     nil,
+		Y:     new(big.Int).SetInt64(1),
+	}
+	result := FromECDSAPub(pub)
+	if result != nil {
+		t.Error("FromECDSAPub with nil X should return nil")
+	}
+}
+
+// TestINRISeqDeterministic tests INRISeq returns same result for same input
+func TestINRISeqDeterministic(t *testing.T) {
+	data := []byte("deterministic test")
+	r1 := INRISeq(data)
+	r2 := INRISeq(data)
+	if len(r1) != len(r2) {
+		t.Fatalf("Length mismatch: %d vs %d", len(r1), len(r2))
+	}
+	for i := range r1 {
+		if r1[i] != r2[i] {
+			t.Errorf("INRISeq should be deterministic: differs at index %d", i)
+			break
+		}
+	}
+}
+
+// TestINRISeqHashDeterministic tests INRISeqHash returns same result for same input
+func TestINRISeqHashDeterministic(t *testing.T) {
+	data := []byte("hash deterministic")
+	h1 := INRISeqHash(data)
+	h2 := INRISeqHash(data)
+	if h1 != h2 {
+		t.Error("INRISeqHash should be deterministic")
+	}
+}
+
+// TestEncodeKeysRoundTrip tests EncodeKeys produces decodable output
+func TestEncodeKeysRoundTrip(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	privStr, pubStr := EncodeKeys(privateKey)
+	if privStr == "" || pubStr == "" {
+		t.Fatal("EncodeKeys should return non-empty strings")
+	}
+
+	// Decode private key via DecodePrivKey
+	decodedPriv := DecodePrivKey(privStr)
+	if decodedPriv == nil {
+		t.Fatal("DecodePrivKey should not return nil")
+	}
+	if !privateKey.Equal(decodedPriv) {
+		t.Fatal("Decoded private key should match")
+	}
+
+	// Decode public key via EncodePublicKeyToByte + DecodeByteToPublicKey (same path as EncodeKeys uses)
+	pubBytes := EncodePublicKeyToByte(&privateKey.PublicKey)
+	decodedPub, err := DecodeByteToPublicKey(pubBytes)
+	if err != nil {
+		t.Fatalf("DecodeByteToPublicKey failed: %v", err)
+	}
+	if !privateKey.PublicKey.Equal(decodedPub) {
+		t.Fatal("Decoded public key should match")
 	}
 }

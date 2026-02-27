@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -13,7 +14,9 @@ import (
 	"time"
 
 	"github.com/cerera/config"
+	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/crypto"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/logger"
@@ -40,6 +43,7 @@ const VAULT_SERVICE_NAME = "D5_VAULT_CERERA_001_1_7"
 var (
 	ErrMnemonicEmpty             = errors.New("mnemonic phrase cannot be empty")
 	ErrFailedCreateMasterKey     = errors.New("failed to create master key")
+	ErrFailedSerializePublicKey  = errors.New("failed to serialize public key")
 	ErrAccountNotFound           = errors.New("account not found")
 	ErrFaucetAccountNotFound     = errors.New("faucet account not found")
 	ErrFaucetInsufficientBalance = errors.New("faucet insufficient balance")
@@ -58,13 +62,13 @@ type Vault interface {
 	Create(pass string) (string, string, string, *types.Address, error)
 	Clear() error
 	Prepare()
-	Restore(mnemonic string, pass string) (types.Address, string, string, error)
-	Put(address types.Address, acc *types.StateAccount)
-	Get(types.Address) *types.StateAccount
+	Restore(mnemonic string, pass string) (types.Address, string, error)
+	Put(address types.Address, acc *account.StateAccount)
+	Get(types.Address) *account.StateAccount
 	GetCount() int
 	GetAll() any
-	GetKey(signKey string) []byte
-	GetOwner() *types.StateAccount
+	// GetKey(signKey string) []byte
+	GetOwner() *account.StateAccount
 	Size() int64
 	ServiceName() string
 	Sync(saBytes []byte)
@@ -85,7 +89,7 @@ type Vault interface {
 
 type D5Vault struct {
 	accounts  *AccountsTrie
-	initiator *types.StateAccount
+	initiator *account.StateAccount
 	path      string
 	rootHash  common.Hash
 	inMem     bool
@@ -185,7 +189,7 @@ func (v *D5Vault) updateSupplyMetrics() {
 
 // NewD5Vault initializes and returns a new vault instance.
 func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
-	gob.Register(types.StateAccount{})
+	gob.Register(account.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
 	vlt = D5Vault{
@@ -217,23 +221,19 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	SetKeys(masterKey, publicKey)
 	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
-	rootSA := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
+	rootSA := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
 			Address: rootHashAddress,
 			Nonce:   1,
 			Root:    vlt.rootHash,
 		},
-		// Balance:  types.FloatToBigInt(coinbase.InitialNodeBalance),
-		CodeHash: types.EncodePrivateKeyToByte(
-			types.DecodePrivKey(cfg.NetCfg.PRIV),
-		),
 		Status: 3, // 3: OP_ACC_NODE
 		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs: &types.Input{
+		Inputs: &account.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
-		MPub: mpub,
+		// MPub: mpub,
 	}
 	rootSA.SetBalance(coinbase.InitialNodeBalance)
 
@@ -330,12 +330,7 @@ func (v *D5Vault) Clear() error {
 //	args: name:string, pass:string
 //	return: master key:string, public key:string, mnemonic phrase:string, address:types.Address, error:error
 func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, error) {
-	entropy, _ := bip39.NewEntropy(256)
-	mnemonic, _ := bip39.NewMnemonic(entropy)
-	seed := bip39.NewSeed(mnemonic, pass)
-	masterKey, _ := bip32.NewMasterKey(seed)
-	publicKey := masterKey.PublicKey()
-
+	masterKey, mnemonic, err := crypto.GenerateMasterKey(pass)
 	privateKey, err := types.GenerateAccount()
 	if err != nil {
 		return "", "", "", nil, err
@@ -343,37 +338,34 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(*pubkey)
 
-	privateKey, err = types.GenerateAccount()
-	if err != nil {
-		return "", "", "", nil, err
-	}
-	pubkey = &privateKey.PublicKey
-	address = types.PubkeyToAddress(*pubkey)
-
 	// Проверяем, не существует ли уже аккаунт с таким адресом
 	if existing := v.accounts.GetAccount(address); existing != nil {
 		return "", "", "", nil, fmt.Errorf("%w: %s", ErrAddressAlreadyExists, address.Hex())
 	}
+	masterKeyBytes, _ := masterKey.Serialize()
+	masterKeyHash := common.BytesToHash(masterKeyBytes)
 
-	codeHash := types.EncodePrivateKeyToByte(privateKey)
-	var mpub [78]byte
-	pubKeyStr := publicKey.B58Serialize()
-	copy(mpub[:], []byte(pubKeyStr))
-	newAccount := &types.StateAccount{
-		StateAccountData: types.StateAccountData{
+	etaKeyBytes := crypto.EncodePrivateKeyToByte(privateKey)
+
+	xorResult := crypto.Xor(privateKey, masterKey)
+
+	newAccount := &account.StateAccount{
+		StateAccountData: account.StateAccountData{
 			Address: address,
 			Nonce:   1,
 			Root:    v.rootHash,
+			KeyHash: masterKeyHash,
+			Data:    xorResult,
 		},
-		CodeHash: codeHash,
-		Status:   0, // 0: OP_ACC_NEW
-		Bloom:    []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs: &types.Input{
+		// CodeHash: codeHash,
+		Status: 0, // 0: OP_ACC_NEW
+		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Inputs: &account.Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte(pass)),
-		MPub:       mpub,
+		// MPub:       mpub,
 	}
 	newAccount.SetBalance(0.0)
 	v.accounts.Append(address, newAccount)
@@ -391,47 +383,60 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		vltlogger().Infow("Account saved to vault", "address", address.Hex())
 	}
 
-	return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
+	restoredPrivateKey := crypto.RXor(masterKey, &privateKey.PublicKey, xorResult)
+	vltlogger().Infow("Account created", "restored private key without offset", restoredPrivateKey)
+	vltlogger().Infow("Account created", "keys equality", bytes.Equal(restoredPrivateKey, etaKeyBytes))
+
+	return crypto.EncodePrivateKeyToToString(privateKey), crypto.EncodePublicKeyToString(&privateKey.PublicKey), mnemonic, &address, nil
+
+	// return masterKey.B58Serialize(), publicKey.B58Serialize(), mnemonic, &address, nil
 }
 
 // Restore - restore account by mnemonic phrase, return B58Serialized credentials
 //
 //	args: mnemonic:string, pass:string (see Create, not required)
 //	return: address:types.Address, master key:string, public key:string, error:error
-func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, string, error) {
+func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, error) {
 	// Validate input parameters
 	if mnemonic == "" {
-		return types.EmptyAddress(), "", "", ErrMnemonicEmpty
+		return types.EmptyAddress(), "", ErrMnemonicEmpty
 	}
 
 	// Sync vault from database if not in memory mode
 	if !v.inMem && v.db != nil {
 		if err := v.SyncFromDB(); err != nil {
-			return types.EmptyAddress(), "", "", fmt.Errorf("failed to sync vault: %w", err)
+			return types.EmptyAddress(), "", fmt.Errorf("failed to sync vault: %w", err)
 		}
 	}
-
 	// entropy := bip39.EntropyFromMnemonic(mnemonic)
 	seed := bip39.NewSeed(mnemonic, pass)
 	masterKey, err := bip32.NewMasterKey(seed)
 	if err != nil {
-		return types.EmptyAddress(), "", "", fmt.Errorf("%w: %v", ErrFailedCreateMasterKey, err)
+		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrFailedCreateMasterKey, err)
 	}
-	publicKey := masterKey.PublicKey()
 
-	addr, err := v.accounts.FindAddrByPub(publicKey.B58Serialize())
+	masterKeyBytes, _ := masterKey.Serialize()
+	account, err := v.accounts.FindByKeyHash(common.BytesToHash(masterKeyBytes))
 	if err != nil {
-		return types.EmptyAddress(), "", "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
+		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
 	}
 
-	return addr, masterKey.B58Serialize(), publicKey.B58Serialize(), nil
+	var publicKey *ecdsa.PublicKey
+
+	privateKeyBytes := crypto.RXor(masterKey, publicKey, account.Data)
+	privateKey, err := crypto.DecodeBytesToPrivateKey(privateKeyBytes)
+	if err != nil {
+		return types.EmptyAddress(), "", fmt.Errorf("failed to decode private key: %w", err)
+	}
+
+	return account.Address, crypto.EncodePrivateKeyToToString(privateKey), nil
 }
 
 // Get - get account by address
 //
 //	args: address:types.Address
 //	return: account:types.StateAccount
-func (v *D5Vault) Get(addr types.Address) *types.StateAccount {
+func (v *D5Vault) Get(addr types.Address) *account.StateAccount {
 	return v.accounts.GetAccount(addr)
 }
 
@@ -439,7 +444,7 @@ func (v *D5Vault) Get(addr types.Address) *types.StateAccount {
 //
 //	args: index:int64
 //	return: account:types.StateAccount
-func (v *D5Vault) GetPos(pos int64) *types.StateAccount {
+func (v *D5Vault) GetPos(pos int64) *account.StateAccount {
 	return v.accounts.GetByIndex(pos)
 }
 
@@ -447,25 +452,26 @@ func (v *D5Vault) GetPos(pos int64) *types.StateAccount {
 //
 //	args: public key:string
 //	return: bytes representation of public key:[]byte
-func (v *D5Vault) GetKey(signKey string) []byte {
-	pubKey, err := bip32.B58Deserialize(signKey)
-	if err != nil || pubKey == nil {
-		vltlogger().Warnw("GetKey: failed to deserialize public key",
-			"signKey", signKey,
-			"err", err,
-		)
-		return []byte{0x0, 0x0, 0xf, 0xf}
-	}
+// func (v *D5Vault) GetKey(signKey string) []byte {
+// 	pubKey, err := bip32.B58Deserialize(signKey)
+// 	if err != nil || pubKey == nil {
+// 		vltlogger().Warnw("GetKey: failed to deserialize public key",
+// 			"signKey", signKey,
+// 			"err", err,
+// 		)
+// 		return []byte{0x0, 0x0, 0xf, 0xf}
+// 	}
 
-	var fp = v.accounts.GetKBytes(pubKey)
+// 	var fp = v.accounts.GetKBytes(pubKey)
 
-	if fp != nil {
-		return fp
-	} else {
-		vltlogger().Warnw("GetKey: key not found in accounts", "signKey", signKey)
-		return []byte{0x0, 0x0, 0xf, 0xf}
-	}
-}
+// 	if fp != nil {
+// 		return fp
+// 	} else {
+// 		vltlogger().Warnw("GetKey: key not found in accounts", "signKey", signKey)
+// 		return []byte{0x0, 0x0, 0xf, 0xf}
+// 	}
+// }
+
 func (v *D5Vault) GetAll() interface{} {
 	// refactor
 	// this function returns all active (register) addressses with balance
@@ -477,7 +483,7 @@ func (v *D5Vault) GetAll() interface{} {
 	return v.accounts.GetAll()
 }
 
-func (v *D5Vault) Put(address types.Address, acc *types.StateAccount) {
+func (v *D5Vault) Put(address types.Address, acc *account.StateAccount) {
 	if v.accounts.GetAccount(address) == nil {
 		v.accounts.Append(address, acc)
 		vaultAccountsTotal.Set(float64(v.accounts.Size()))
@@ -496,7 +502,7 @@ func (v *D5Vault) EnsureAccount(addr types.Address) {
 	if v.accounts.GetAccount(addr) != nil {
 		return
 	}
-	acc := types.NewStateAccount(addr, 0, v.rootHash)
+	acc := account.NewStateAccount(addr, 0, v.rootHash)
 	v.accounts.Append(addr, acc)
 	vaultAccountsTotal.Set(float64(v.accounts.Size()))
 	if !v.inMem && v.db != nil {
@@ -540,7 +546,7 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 
 	var saDest = v.Get(to)
 	if saDest == nil {
-		saDest = types.NewStateAccount(to, 0, v.rootHash)
+		saDest = account.NewStateAccount(to, 0, v.rootHash)
 		v.accounts.Append(to, saDest)
 	}
 
@@ -569,7 +575,7 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	vaultTransfersTotal.Inc()
 }
 
-func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash common.Hash) (*types.StateAccount, error) {
+func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash common.Hash) (*account.StateAccount, error) {
 	if cnt == nil || cnt.Sign() <= 0 {
 		return nil, ErrInvalidMintAmount
 	}
@@ -579,7 +585,7 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 
 	var saDest = v.Get(to)
 	if saDest == nil {
-		saDest = types.NewStateAccount(to, 0, v.rootHash)
+		saDest = account.NewStateAccount(to, 0, v.rootHash)
 		v.accounts.Append(to, saDest)
 		vaultAccountsTotal.Set(float64(v.accounts.Size()))
 	}
@@ -667,7 +673,7 @@ func (v *D5Vault) GetCount() int {
 	return v.accounts.Size()
 }
 
-func (v *D5Vault) GetOwner() *types.StateAccount {
+func (v *D5Vault) GetOwner() *account.StateAccount {
 	return v.initiator
 }
 
@@ -789,19 +795,19 @@ func (v *D5Vault) StoreContractCode(address types.Address, code []byte) error {
 	codeHash := hash.Sum(nil)
 
 	// Обновляем CodeHash в StateAccount
-	account := v.Get(address)
-	if account == nil {
+	acc := v.Get(address)
+	if acc == nil {
 		// Создаем новый аккаунт для контракта
-		account = types.NewStateAccount(address, 0, v.rootHash)
-		account.CodeHash = codeHash
+		acc = account.NewStateAccount(address, 0, v.rootHash)
+		// account.CodeHash = codeHash
 		// Устанавливаем тип как контракт (Type = 5 для контракта, если нужно)
 		// Пока оставляем Type = 0, но CodeHash будет указывать на наличие кода
-		v.accounts.Append(address, account)
+		v.accounts.Append(address, acc)
 		vaultAccountsTotal.Set(float64(v.accounts.Size()))
 	} else {
 		// Обновляем CodeHash существующего аккаунта
-		account.CodeHash = codeHash
-		v.accounts.Append(address, account)
+		// account.CodeHash = codeHash
+		v.accounts.Append(address, acc)
 	}
 
 	// Сохраняем код в pogreb с префиксом "code:"
@@ -818,7 +824,7 @@ func (v *D5Vault) StoreContractCode(address types.Address, code []byte) error {
 
 		// Также сохраняем обновленный аккаунт
 		accountKey := address.Bytes()
-		if err := v.db.Put(accountKey, account.Bytes()); err != nil {
+		if err := v.db.Put(accountKey, acc.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update account with code hash", "address", address.Hex(), "err", err)
 			return fmt.Errorf("failed to update account: %w", err)
 		}
@@ -832,10 +838,10 @@ func (v *D5Vault) StoreContractCode(address types.Address, code []byte) error {
 // GetContractCode получает байткод контракта из хранилища
 func (v *D5Vault) GetContractCode(address types.Address) ([]byte, error) {
 	// Проверяем, есть ли CodeHash в аккаунте
-	account := v.Get(address)
-	if account == nil || len(account.CodeHash) == 0 {
-		return nil, fmt.Errorf("contract code not found for address %s", address.Hex())
-	}
+	// account := v.Get(address)
+	// if account == nil || len(account.CodeHash) == 0 {
+	// 	return nil, fmt.Errorf("contract code not found for address %s", address.Hex())
+	// }
 
 	// Если in-memory режим, код должен быть в памяти (но у нас нет такого хранилища)
 	// Для in-memory нужно будет добавить отдельное хранилище
@@ -877,25 +883,34 @@ func (v *D5Vault) GetContractCode(address types.Address) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create hash: %w", err)
 	}
 	hash.Write(code)
-	computedHash := hash.Sum(nil)
+	// computedHash := hash.Sum(nil)
 
 	// Сравниваем с сохраненным хешем
-	if len(account.CodeHash) > 0 {
-		if !bytes.Equal(computedHash, account.CodeHash) {
-			vltlogger().Warnw("Contract code hash mismatch", "address", address.Hex(),
-				"expected", fmt.Sprintf("%x", account.CodeHash),
-				"computed", fmt.Sprintf("%x", computedHash))
-			// Не возвращаем ошибку, но логируем предупреждение
-		}
-	}
+	// if len(account.CodeHash) > 0 {
+	// 	if !bytes.Equal(computedHash, account.CodeHash) {
+	// 		vltlogger().Warnw("Contract code hash mismatch", "address", address.Hex(),
+	// 			"expected", fmt.Sprintf("%x", account.CodeHash),
+	// 			"computed", fmt.Sprintf("%x", computedHash))
+	// 		// Не возвращаем ошибку, но логируем предупреждение
+	// 	}
+	// }
 
 	return code, nil
 }
 
 // HasContractCode проверяет, есть ли код контракта для данного адреса
 func (v *D5Vault) HasContractCode(address types.Address) bool {
-	account := v.Get(address)
-	return account != nil && len(account.CodeHash) > 0
+	if v.inMem {
+		return false // in-memory mode не хранит код контрактов
+	}
+	if v.db == nil {
+		return false
+	}
+	v.dbMu.RLock()
+	defer v.dbMu.RUnlock()
+	key := append([]byte("code:"), address.Bytes()...)
+	has, err := v.db.Has(key)
+	return err == nil && has
 }
 
 // DeleteContractCode удаляет байткод контракта из хранилища
@@ -903,10 +918,10 @@ func (v *D5Vault) HasContractCode(address types.Address) bool {
 func (v *D5Vault) DeleteContractCode(address types.Address) error {
 	if v.inMem {
 		// В in-memory режиме просто очищаем CodeHash в аккаунте
-		account := v.Get(address)
-		if account != nil {
-			account.CodeHash = nil
-			v.accounts.Append(address, account)
+		acc := v.Get(address)
+		if acc != nil {
+			// account.CodeHash = nil
+			v.accounts.Append(address, acc)
 		}
 		return nil
 	}
@@ -926,14 +941,14 @@ func (v *D5Vault) DeleteContractCode(address types.Address) error {
 	}
 
 	// Очищаем CodeHash в аккаунте
-	account := v.Get(address)
-	if account != nil {
-		account.CodeHash = nil
-		v.accounts.Append(address, account)
+	acc := v.Get(address)
+	if acc != nil {
+		// account.CodeHash = nil
+		v.accounts.Append(address, acc)
 
 		// Обновляем аккаунт в базе данных
 		accountKey := address.Bytes()
-		if err := v.db.Put(accountKey, account.Bytes()); err != nil {
+		if err := v.db.Put(accountKey, acc.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update account after code deletion", "address", address.Hex(), "err", err)
 			return fmt.Errorf("failed to update account: %w", err)
 		}
@@ -954,11 +969,11 @@ func (v *D5Vault) SetStorage(address types.Address, key *big.Int, value *big.Int
 	}
 
 	// Получаем или создаем аккаунт контракта
-	account := v.Get(address)
-	if account == nil {
+	acc := v.Get(address)
+	if acc == nil {
 		// Создаем новый аккаунт для контракта
-		account = types.NewStateAccount(address, 0, v.rootHash)
-		v.accounts.Append(address, account)
+		acc = account.NewStateAccount(address, 0, v.rootHash)
+		v.accounts.Append(address, acc)
 		vaultAccountsTotal.Set(float64(v.accounts.Size()))
 	}
 
@@ -1060,7 +1075,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 	case "getCount":
 		return v.GetCount()
 	case "create":
-		if params == nil || len(params) < 1 {
+		if len(params) < 1 {
 			return fmt.Errorf("%w: passphrase required", ErrErrorParsingParameters)
 		}
 		passphraseStr, ok1 := params[0].(string)
@@ -1093,7 +1108,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 		if strings.Count(mnemonic, " ") != 23 {
 			return ErrWrongWordsCount.Error()
 		}
-		addr, mk, pk, err := vlt.Restore(mnemonic, pass)
+		addr, pk, err := vlt.Restore(mnemonic, pass)
 		if err != nil {
 			return err.Error()
 		}
@@ -1103,8 +1118,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 			Pub  string        `json:"pub,omitempty"`
 		}
 		Result := &res{
-			Priv: mk,
-			Pub:  pk,
+			Priv: pk,
 			Addr: addr,
 		}
 		return Result
@@ -1154,7 +1168,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 			}
 			amountBigInt = wei
 		} else if f, ok := params[1].(float64); ok {
-			amountBigInt = types.FloatToBigInt(f)
+			amountBigInt = common.FloatToBigInt(f)
 		} else {
 			return ErrErrorParsingAmount.Error()
 		}

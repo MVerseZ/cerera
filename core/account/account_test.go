@@ -1,4 +1,4 @@
-package types
+package account
 
 import (
 	"bytes"
@@ -7,42 +7,32 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cerera/core/address"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/crypto"
 )
 
 func CreateTestStateAccount() StateAccount {
 	var pass = "test_pass"
 
-	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
-	// seed := bip39.NewSeed(mnemonic, pass)
-
-	// masterKey, _ := bip32.NewMasterKey(seed)
-	// publicKey := masterKey.PublicKey()
-
-	privateKey, _ := GenerateAccount()
-
+	privateKey, _ := crypto.GenerateAccount()
 	pubkey := &privateKey.PublicKey
-	address := PubkeyToAddress(*pubkey)
-	derBytes := EncodePrivateKeyToByte(privateKey)
-	// derBytes, _ := x509.MarshalECPrivateKey(privateKey)
-	var mpub [78]byte
-	copy(mpub[:], []byte("test_public_key_placeholder_for_testing_purposes_only_78_bytes"))
+	address := crypto.PubkeyToAddress(*pubkey)
+
 	newAccount := StateAccount{
 		StateAccountData: StateAccountData{
 			Address: address,
 			Nonce:   1,
 			Root:    common.Hash(address.Bytes()),
+			KeyHash: common.Hash(address.Bytes()),
 		},
-		CodeHash: derBytes,
-		Status:   0, // 0: OP_ACC_NEW
-		Bloom:    []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
+		Status: 0, // 0: OP_ACC_NEW
+		Bloom:  []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
 		Passphrase: common.BytesToHash([]byte(pass)),
-		MPub:       mpub,
-		// MPriv:      masterKey,
 	}
 	newAccount.SetBalance(0.0)
 	return newAccount
@@ -86,41 +76,32 @@ func TestStateAccount_BloomDown(t *testing.T) {
 }
 
 func TestStateAccount_Bytes(t *testing.T) {
-	var mpub [78]byte
-	copy(mpub[:], []byte("public_key"))
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2, 0x3, 0x4},
+			Address: address.Address{0x1, 0x2, 0x3, 0x4},
 			Nonce:   42,
 			Root:    common.Hash{0x7, 0x8, 0x9},
+			KeyHash: common.Hash{0x1, 0x2, 0x3},
 		},
 		Bloom:      []byte{0x1, 0x2, 0x3},
-		CodeHash:   []byte{0x4, 0x5, 0x6},
 		Status:     1, // 1: OP_ACC_STAKE
 		Passphrase: common.Hash{0xa, 0xb, 0xc},
-		MPub:       mpub,
 		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	sa.SetBalance(100.0)
 
-	// Test JSON serialization (original Bytes method)
 	data := sa.Bytes()
 	if len(data) == 0 {
 		t.Fatal("Bytes failed: returned empty data")
 	}
 
-	// Test JSON deserialization
-	sa2 := BytesToStateAccount(data)
+	sa2 := FromBytes(data)
 
-	// Compare fields that are serialized in JSON
 	if !reflect.DeepEqual(sa.Address, sa2.Address) {
 		t.Errorf("Bytes failed: Address mismatch")
 	}
 	if !reflect.DeepEqual(sa.Bloom, sa2.Bloom) {
 		t.Errorf("Bytes failed: Bloom mismatch")
-	}
-	if !reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) {
-		t.Errorf("Bytes failed: CodeHash mismatch")
 	}
 	if sa.Nonce != sa2.Nonce {
 		t.Errorf("Bytes failed: Nonce mismatch")
@@ -134,11 +115,7 @@ func TestStateAccount_Bytes(t *testing.T) {
 	if sa.Passphrase != sa2.Passphrase {
 		t.Errorf("Bytes failed: Passphrase mismatch")
 	}
-	if !reflect.DeepEqual(sa.MPub, sa2.MPub) {
-		t.Errorf("Bytes failed: MPub mismatch")
-	}
 
-	// Verify Inputs is properly initialized (Inputs are not serialized, but should be initialized)
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
 		t.Errorf("Bytes failed: Inputs not properly initialized after binary deserialization")
 	}
@@ -165,81 +142,63 @@ func TestStateAccount_AddInput(t *testing.T) {
 	}
 }
 
-func TestBytesToStateAccount(t *testing.T) {
-	// Create a test account
-	var mpub [78]byte
-	copy(mpub[:], []byte("test_public_key"))
+func TestFromBytes(t *testing.T) {
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2, 0x3},
+			Address: address.Address{0x1, 0x2, 0x3},
 			Nonce:   123,
 			Root:    common.Hash{0xa, 0xb, 0xc},
+			KeyHash: common.Hash{0x7, 0x8, 0x9},
 		},
 		Bloom:      []byte{0x4, 0x5, 0x6},
-		CodeHash:   []byte{0x7, 0x8, 0x9},
 		Status:     2, // 2: OP_ACC_F
 		Passphrase: common.Hash{0xd, 0xe, 0xf},
-		MPub:       mpub,
 		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
 	}
 	sa.SetBalance(50.5)
 
-	// Convert to binary bytes using custom serialization
 	data := sa.Bytes()
 	if len(data) == 0 {
-		t.Fatal("TestBytesToStateAccount failed: returned empty data")
+		t.Fatal("TestFromBytes failed: returned empty data")
 	}
 
-	// Convert back using BytesToStateAccount
-	sa2 := BytesToStateAccount(data)
+	sa2 := FromBytes(data)
 
-	// Verify all serializable fields
 	if !reflect.DeepEqual(sa.Address, sa2.Address) {
-		t.Errorf("TestBytesToStateAccount failed: Address mismatch")
+		t.Errorf("TestFromBytes failed: Address mismatch")
 	}
 	if !reflect.DeepEqual(sa.Bloom, sa2.Bloom) {
-		t.Errorf("TestBytesToStateAccount failed: Bloom mismatch")
-	}
-	if !reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) {
-		t.Errorf("TestBytesToStateAccount failed: CodeHash mismatch")
+		t.Errorf("TestFromBytes failed: Bloom mismatch")
 	}
 	if sa.Nonce != sa2.Nonce {
-		t.Errorf("TestBytesToStateAccount failed: Nonce mismatch")
+		t.Errorf("TestFromBytes failed: Nonce mismatch")
 	}
 	if sa.Root != sa2.Root {
-		t.Errorf("TestBytesToStateAccount failed: Root mismatch")
+		t.Errorf("TestFromBytes failed: Root mismatch")
 	}
 	if sa.Status != sa2.Status {
-		t.Errorf("TestBytesToStateAccount failed: Status mismatch")
+		t.Errorf("TestFromBytes failed: Status mismatch")
 	}
 	if sa.Passphrase != sa2.Passphrase {
-		t.Errorf("TestBytesToStateAccount failed: Passphrase mismatch")
-	}
-	if !reflect.DeepEqual(sa.MPub, sa2.MPub) {
-		t.Errorf("TestBytesToStateAccount failed: MPub mismatch")
+		t.Errorf("TestFromBytes failed: Passphrase mismatch")
 	}
 
-	// Verify Inputs is properly initialized (Inputs are not serialized, but should be initialized)
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
-		t.Errorf("TestBytesToStateAccount failed: Inputs not properly initialized after binary deserialization")
+		t.Errorf("TestFromBytes failed: Inputs not properly initialized after binary deserialization")
 	}
 }
 
 func TestStateAccount_ToBytes(t *testing.T) {
-	// Create a test StateAccount with some data
-	var mpub [78]byte
-	copy(mpub[:], []byte("public_key_string"))
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2, 0x3, 0x4},
+			Address: address.Address{0x1, 0x2, 0x3, 0x4},
 			Nonce:   42,
 			Root:    common.Hash{0x7, 0x8, 0x9},
+			KeyHash: common.Hash{0x1, 0x2, 0x3},
 		},
 		Bloom:      []byte{0x1, 0x2, 0x3},
-		CodeHash:   []byte{0x4, 0x5, 0x6},
 		Status:     1, // 1: OP_ACC_STAKE
 		Passphrase: common.Hash{0xa, 0xb, 0xc},
-		MPub:       mpub,
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -260,7 +219,7 @@ func TestStateAccount_ToBytes(t *testing.T) {
 	}
 
 	// Convert back from bytes
-	sa2 := BytesToStateAccount(data)
+	sa2 := FromBytes(data)
 
 	// Compare the fields
 	if !reflect.DeepEqual(sa.Address, sa2.Address) {
@@ -273,10 +232,6 @@ func TestStateAccount_ToBytes(t *testing.T) {
 
 	if !reflect.DeepEqual(sa.Bloom, sa2.Bloom) {
 		t.Errorf("ToBytes/FromBytes failed: Bloom mismatch. Got: %v, Want: %v", sa2.Bloom, sa.Bloom)
-	}
-
-	if !reflect.DeepEqual(sa.CodeHash, sa2.CodeHash) {
-		t.Errorf("ToBytes/FromBytes failed: CodeHash mismatch. Got: %v, Want: %v", sa2.CodeHash, sa.CodeHash)
 	}
 
 	if sa.Nonce != sa2.Nonce {
@@ -295,10 +250,6 @@ func TestStateAccount_ToBytes(t *testing.T) {
 		t.Errorf("ToBytes/FromBytes failed: Passphrase mismatch. Got: %v, Want: %v", sa2.Passphrase, sa.Passphrase)
 	}
 
-	if !reflect.DeepEqual(sa.MPub, sa2.MPub) {
-		t.Errorf("ToBytes/FromBytes failed: MPub mismatch. Got: %v, Want: %v", sa2.MPub, sa.MPub)
-	}
-
 	// Inputs are not serialized, so we only verify they are initialized
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
 		t.Errorf("ToBytes/FromBytes failed: Inputs not properly initialized after binary deserialization")
@@ -306,20 +257,16 @@ func TestStateAccount_ToBytes(t *testing.T) {
 }
 
 func TestStateAccount_ToBytes_EmptyInputs(t *testing.T) {
-	// Test with empty Inputs map
-	var mpub [78]byte
-	copy(mpub[:], []byte("test_key"))
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2},
+			Address: address.Address{0x1, 0x2},
 			Nonce:   1,
 			Root:    common.Hash{0x5},
+			KeyHash: common.Hash{0x3, 0x4},
 		},
 		Bloom:      []byte{0x1, 0x2},
-		CodeHash:   []byte{0x3, 0x4},
 		Status:     0, // 0: OP_ACC_NEW
 		Passphrase: common.Hash{0x6},
-		MPub:       mpub,
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -329,9 +276,9 @@ func TestStateAccount_ToBytes_EmptyInputs(t *testing.T) {
 
 	// Convert to bytes and back
 	data := sa.Bytes()
-	sa2 := BytesToStateAccount(data)
+	sa2 := FromBytes(data)
 	if sa2 == nil {
-		t.Fatalf("BytesToStateAccount returned nil")
+		t.Fatalf("FromBytes returned nil")
 	}
 
 	// Verify basic fields
@@ -486,7 +433,7 @@ func TestStateAccount_GetAllInputs_NilInputs(t *testing.T) {
 }
 
 func TestNewStateAccount(t *testing.T) {
-	address := Address{0x1, 0x2, 0x3, 0x4}
+	address := address.Address{0x1, 0x2, 0x3, 0x4}
 	balance := 100.5
 	root := common.Hash{0x5, 0x6, 0x7}
 
@@ -649,21 +596,17 @@ func TestStateAccount_StatusTypes(t *testing.T) {
 
 	for _, status := range statuses {
 		for _, accType := range types {
-			var mpub [78]byte
-			copy(mpub[:], []byte("test_key"))
-
 			sa := &StateAccount{
 				StateAccountData: StateAccountData{
-					Address: Address{0x1, 0x2},
+					Address: address.Address{0x1, 0x2},
 					Nonce:   1,
 					Root:    common.Hash{0x5},
+					KeyHash: common.Hash{0x3, 0x4},
 				},
 				Status:     status,
 				Type:       accType,
 				Bloom:      []byte{0x1, 0x2},
-				CodeHash:   []byte{0x3, 0x4},
 				Passphrase: common.Hash{0x6},
-				MPub:       mpub,
 				Inputs: &Input{
 					RWMutex: &sync.RWMutex{},
 					M:       make(map[common.Hash]*big.Int),
@@ -673,7 +616,7 @@ func TestStateAccount_StatusTypes(t *testing.T) {
 
 			// Сериализуем и десериализуем
 			data := sa.Bytes()
-			sa2 := BytesToStateAccount(data)
+			sa2 := FromBytes(data)
 
 			if sa2.Status != status {
 				t.Errorf("Status serialization failed: expected %d, got %d", status, sa2.Status)
@@ -698,21 +641,18 @@ func TestStateAccount_SpecialAddresses(t *testing.T) {
 	}
 
 	for _, addrHex := range specialAddresses {
-		addr := HexToAddress(addrHex)
-		var mpub [78]byte
-		copy(mpub[:], []byte("special_key"))
+		addr := address.HexToAddress(addrHex)
 
 		sa := &StateAccount{
 			StateAccountData: StateAccountData{
 				Address: addr,
 				Nonce:   1,
 				Root:    common.Hash{0x5},
+				KeyHash: common.Hash{0x3, 0x4, 0x5},
 			},
 			Bloom:      []byte{0x1, 0x2},
-			CodeHash:   []byte{0x3, 0x4, 0x5}, // Должен быть обнулен для специальных адресов
 			Status:     0,
 			Passphrase: common.Hash{0x6},
-			MPub:       mpub,
 			Inputs: &Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
@@ -720,18 +660,11 @@ func TestStateAccount_SpecialAddresses(t *testing.T) {
 		}
 		sa.SetBalance(100.0)
 
-		// Сериализуем
 		data := sa.Bytes()
-		sa2 := BytesToStateAccount(data)
+		sa2 := FromBytes(data)
 
 		if sa2.Address != addr {
 			t.Errorf("Special address serialization failed for %s", addrHex)
-		}
-
-		// CodeHash должен быть обнулен для специальных адресов при сериализации
-		// (но при десериализации он будет пустым)
-		if len(sa2.CodeHash) != 0 {
-			t.Errorf("Special address CodeHash should be empty for %s, got %v", addrHex, sa2.CodeHash)
 		}
 	}
 }
@@ -744,20 +677,16 @@ func TestStateAccount_Nonce(t *testing.T) {
 	nonces := []uint64{0, 1, 100, 1000, 999999999}
 
 	for _, nonce := range nonces {
-		var mpub [78]byte
-		copy(mpub[:], []byte("test_key"))
-
 		sa := &StateAccount{
 			StateAccountData: StateAccountData{
-				Address: Address{0x1, 0x2},
+				Address: address.Address{0x1, 0x2},
 				Nonce:   nonce,
 				Root:    common.Hash{0x5},
+				KeyHash: common.Hash{0x3, 0x4},
 			},
 			Bloom:      []byte{0x1, 0x2},
-			CodeHash:   []byte{0x3, 0x4},
 			Status:     0,
 			Passphrase: common.Hash{0x6},
-			MPub:       mpub,
 			Inputs: &Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
@@ -766,7 +695,7 @@ func TestStateAccount_Nonce(t *testing.T) {
 		sa.SetBalance(100.0)
 
 		data := sa.Bytes()
-		sa2 := BytesToStateAccount(data)
+		sa2 := FromBytes(data)
 
 		if sa2.Nonce != nonce {
 			t.Errorf("Nonce serialization failed: expected %d, got %d", nonce, sa2.Nonce)
@@ -787,20 +716,16 @@ func TestStateAccount_Root(t *testing.T) {
 	}
 
 	for _, root := range roots {
-		var mpub [78]byte
-		copy(mpub[:], []byte("test_key"))
-
 		sa := &StateAccount{
 			StateAccountData: StateAccountData{
-				Address: Address{0x1, 0x2},
+				Address: address.Address{0x1, 0x2},
 				Root:    root,
 				Nonce:   1,
+				KeyHash: common.Hash{0x3, 0x4},
 			},
 			Bloom:      []byte{0x1, 0x2},
-			CodeHash:   []byte{0x3, 0x4},
 			Status:     0,
 			Passphrase: common.Hash{0x6},
-			MPub:       mpub,
 			Inputs: &Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
@@ -809,54 +734,10 @@ func TestStateAccount_Root(t *testing.T) {
 		sa.SetBalance(100.0)
 
 		data := sa.Bytes()
-		sa2 := BytesToStateAccount(data)
+		sa2 := FromBytes(data)
 
 		if sa2.Root != root {
 			t.Errorf("Root serialization failed: expected %v, got %v", root, sa2.Root)
-		}
-	}
-}
-
-// ============================================================
-// Тесты для CodeHash
-// ============================================================
-
-func TestStateAccount_CodeHash(t *testing.T) {
-	codeHashes := [][]byte{
-		{},
-		{0x1},
-		{0x1, 0x2, 0x3, 0x4},
-		[]byte("test_code_hash"),
-		make([]byte, 100),
-	}
-
-	for _, codeHash := range codeHashes {
-		var mpub [78]byte
-		copy(mpub[:], []byte("test_key"))
-
-		sa := &StateAccount{
-			StateAccountData: StateAccountData{
-				Address: Address{0x1, 0x2}, // Не специальный адрес
-				Nonce:   1,
-				Root:    common.Hash{0x5},
-			},
-			CodeHash:   codeHash,
-			Bloom:      []byte{0x1, 0x2},
-			Status:     0,
-			Passphrase: common.Hash{0x6},
-			MPub:       mpub,
-			Inputs: &Input{
-				RWMutex: &sync.RWMutex{},
-				M:       make(map[common.Hash]*big.Int),
-			},
-		}
-		sa.SetBalance(100.0)
-
-		data := sa.Bytes()
-		sa2 := BytesToStateAccount(data)
-
-		if !reflect.DeepEqual(sa2.CodeHash, codeHash) {
-			t.Errorf("CodeHash serialization failed: expected %v, got %v", codeHash, sa2.CodeHash)
 		}
 	}
 }
@@ -875,20 +756,16 @@ func TestStateAccount_Passphrase(t *testing.T) {
 	}
 
 	for _, passphrase := range passphrases {
-		var mpub [78]byte
-		copy(mpub[:], []byte("test_key"))
-
 		sa := &StateAccount{
 			StateAccountData: StateAccountData{
-				Address: Address{0x1, 0x2},
+				Address: address.Address{0x1, 0x2},
 				Nonce:   1,
 				Root:    common.Hash{0x5},
+				KeyHash: common.Hash{0x3, 0x4},
 			},
 			Passphrase: passphrase,
 			Bloom:      []byte{0x1, 0x2},
-			CodeHash:   []byte{0x3, 0x4},
 			Status:     0,
-			MPub:       mpub,
 			Inputs: &Input{
 				RWMutex: &sync.RWMutex{},
 				M:       make(map[common.Hash]*big.Int),
@@ -897,51 +774,10 @@ func TestStateAccount_Passphrase(t *testing.T) {
 		sa.SetBalance(100.0)
 
 		data := sa.Bytes()
-		sa2 := BytesToStateAccount(data)
+		sa2 := FromBytes(data)
 
 		if sa2.Passphrase != passphrase {
 			t.Errorf("Passphrase serialization failed: expected %v, got %v", passphrase, sa2.Passphrase)
-		}
-	}
-}
-
-// ============================================================
-// Тесты для MPub
-// ============================================================
-
-func TestStateAccount_MPub(t *testing.T) {
-	mpubValues := [][78]byte{
-		{},
-		{0xff, 0xff, 0xff, 0xff},
-	}
-
-	// Заполняем второй массив
-	copy(mpubValues[1][:], []byte("test_public_key_string_for_testing_purposes_78_bytes_long"))
-
-	for _, mpub := range mpubValues {
-		sa := &StateAccount{
-			StateAccountData: StateAccountData{
-				Address: Address{0x1, 0x2},
-				Nonce:   1,
-				Root:    common.Hash{0x5},
-			},
-			MPub:       mpub,
-			Bloom:      []byte{0x1, 0x2},
-			CodeHash:   []byte{0x3, 0x4},
-			Status:     0,
-			Passphrase: common.Hash{0x6},
-			Inputs: &Input{
-				RWMutex: &sync.RWMutex{},
-				M:       make(map[common.Hash]*big.Int),
-			},
-		}
-		sa.SetBalance(100.0)
-
-		data := sa.Bytes()
-		sa2 := BytesToStateAccount(data)
-
-		if !reflect.DeepEqual(sa2.MPub, mpub) {
-			t.Errorf("MPub serialization failed: expected %v, got %v", mpub, sa2.MPub)
 		}
 	}
 }
@@ -1054,12 +890,12 @@ func TestStateAccount_BalanceEdgeCases(t *testing.T) {
 func TestStateAccount_SerializationWithInputs(t *testing.T) {
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2, 0x3},
+			Address: address.Address{0x1, 0x2, 0x3},
 			Nonce:   42,
 			Root:    common.Hash{0x5, 0x6},
+			KeyHash: common.Hash{0x3, 0x4},
 		},
 		Bloom:      []byte{0x1, 0x2},
-		CodeHash:   []byte{0x3, 0x4},
 		Status:     1,
 		Passphrase: common.Hash{0x7, 0x8},
 		Inputs: &Input{
@@ -1080,10 +916,10 @@ func TestStateAccount_SerializationWithInputs(t *testing.T) {
 
 	// Сериализуем
 	data := sa.Bytes()
-	sa2 := BytesToStateAccount(data)
+	sa2 := FromBytes(data)
 
 	if sa2 == nil {
-		t.Fatal("BytesToStateAccount returned nil")
+		t.Fatal("FromBytes returned nil")
 	}
 
 	// Проверяем что инпуты восстановлены
@@ -1116,26 +952,26 @@ func TestStateAccount_SerializationWithInputs(t *testing.T) {
 func TestStateAccount_SerializationWithEmptyInputs(t *testing.T) {
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2},
+			Address: address.Address{0x1, 0x2},
 			Nonce:   1,
 			Root:    common.Hash{0x5},
+			KeyHash: common.Hash{0x3, 0x4},
 		},
 		Bloom:      []byte{0x1, 0x2},
-		CodeHash:   []byte{0x3, 0x4},
 		Status:     0,
 		Passphrase: common.Hash{0x6},
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int), // Пустая map
+			M:       make(map[common.Hash]*big.Int),
 		},
 	}
 	sa.SetBalance(100.0)
 
 	data := sa.Bytes()
-	sa2 := BytesToStateAccount(data)
+	sa2 := FromBytes(data)
 
 	if sa2 == nil {
-		t.Fatal("BytesToStateAccount returned nil")
+		t.Fatal("FromBytes returned nil")
 	}
 
 	sa2.Inputs.RLock()
@@ -1201,16 +1037,15 @@ func TestStateAccount_BloomEdgeCases(t *testing.T) {
 func TestStateAccount_Size_Minimal(t *testing.T) {
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{},
+			Address: address.Address{},
 			Nonce:   0,
 			Root:    common.Hash{},
+			KeyHash: common.Hash{},
 		},
 		Bloom:      []byte{},
-		CodeHash:   []byte{},
 		Status:     0,
 		Type:       0,
 		Passphrase: common.Hash{},
-		MPub:       [78]byte{},
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -1221,12 +1056,9 @@ func TestStateAccount_Size_Minimal(t *testing.T) {
 	data := sa.Bytes()
 	minSize := len(data)
 
-	// Минимальный размер должен включать:
-	// 1 byte (Type) + 4 bytes (address len) + 0 bytes (address) + 32 bytes (Passphrase) +
-	// 4 bytes (MPub len) + 78 bytes (MPub) + 4 bytes (Bloom len) + 0 bytes (Bloom) +
-	// 4 bytes (CodeHash len) + 0 bytes (CodeHash) + 8 bytes (Nonce) + 32 bytes (Root) +
-	// 1 byte (Status) + 4 bytes (balance len) + 0 bytes (balance) + 4 bytes (inputs count)
-	expectedMinSize := 1 + 4 + 0 + 32 + 4 + 78 + 4 + 0 + 4 + 0 + 8 + 32 + 1 + 4 + 0 + 4
+	// Минимальный размер: 1 (Type) + 4 (addr len) + 0 (addr) + 32 (Passphrase) +
+	// 4 (Bloom len) + 0 (Bloom) + 8 (Nonce) + 32 (Root) + 1 (Status) + 4 (balance len) + 0 (balance) + 4 (inputs count)
+	expectedMinSize := 1 + 4 + 0 + 32 + 4 + 0 + 8 + 32 + 1 + 4 + 0 + 4
 	if minSize < expectedMinSize {
 		t.Errorf("Minimal size too small: got %d, expected at least %d", minSize, expectedMinSize)
 	}
@@ -1235,20 +1067,17 @@ func TestStateAccount_Size_Minimal(t *testing.T) {
 
 // TestStateAccount_Size_WithData проверяет размер аккаунта с данными
 func TestStateAccount_Size_WithData(t *testing.T) {
-	var mpub [78]byte
-	copy(mpub[:], []byte("test_public_key_placeholder_for_testing_purposes_only_78_bytes"))
 	sa := &StateAccount{
 		StateAccountData: StateAccountData{
-			Address: Address{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20},
+			Address: address.Address{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20},
 			Nonce:   12345,
 			Root:    common.Hash{0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00},
+			KeyHash: common.Hash{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
 		},
 		Bloom:      []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa},
-		CodeHash:   []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
 		Status:     1,
 		Type:       0,
 		Passphrase: common.Hash{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00},
-		MPub:       mpub,
 		Inputs: &Input{
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
@@ -1259,18 +1088,13 @@ func TestStateAccount_Size_WithData(t *testing.T) {
 	data := sa.Bytes()
 	sizeWithData := len(data)
 
-	// Размер должен быть больше минимального
-	minSize := 1 + 4 + 0 + 32 + 4 + 78 + 4 + 0 + 4 + 0 + 8 + 32 + 1 + 4 + 0 + 4
+	minSize := 1 + 4 + 0 + 32 + 4 + 0 + 8 + 32 + 1 + 4 + 0 + 4
 	if sizeWithData <= minSize {
 		t.Errorf("Size with data should be larger than minimal: got %d, expected > %d", sizeWithData, minSize)
 	}
 
-	// Проверяем, что размер включает все данные
-	// Address: 32 bytes + 4 bytes (len)
-	// Bloom: 10 bytes + 4 bytes (len)
-	// CodeHash: 6 bytes + 4 bytes (len)
-	// Balance: несколько байт + 4 bytes (len)
-	expectedMinWithData := minSize + 32 + 10 + 6 + 4 // минимум для balance
+	// Address: 32 + 4, Bloom: 10 + 4, Balance: несколько байт + 4
+	expectedMinWithData := minSize + 32 + 10 + 4
 	if sizeWithData < expectedMinWithData {
 		t.Errorf("Size with data too small: got %d, expected at least %d", sizeWithData, expectedMinWithData)
 	}
@@ -1343,37 +1167,24 @@ func TestStateAccount_Size_WithLargeBalance(t *testing.T) {
 
 // TestStateAccount_Size_WithSpecialAddresses проверяет размер для специальных адресов
 func TestStateAccount_Size_WithSpecialAddresses(t *testing.T) {
-	// Обычный адрес
 	sa1 := CreateTestStateAccount()
 	data1 := sa1.Bytes()
 	size1 := len(data1)
 
-	// BaseAddressHex
 	sa2 := CreateTestStateAccount()
-	sa2.Address = HexToAddress(BaseAddressHex)
-	sa2.CodeHash = []byte{0x1, 0x2, 0x3} // Обычно для специальных адресов CodeHash = 0
+	sa2.Address = address.HexToAddress(BaseAddressHex)
 	data2 := sa2.Bytes()
 	size2 := len(data2)
 
-	// FaucetAddressHex
 	sa3 := CreateTestStateAccount()
-	sa3.Address = HexToAddress(FaucetAddressHex)
-	sa3.CodeHash = []byte{0x1, 0x2, 0x3}
+	sa3.Address = address.HexToAddress(FaucetAddressHex)
 	data3 := sa3.Bytes()
 	size3 := len(data3)
 
-	// CoreStakingAddressHex
 	sa4 := CreateTestStateAccount()
-	sa4.Address = HexToAddress(CoreStakingAddressHex)
-	sa4.CodeHash = []byte{0x1, 0x2, 0x3}
+	sa4.Address = address.HexToAddress(CoreStakingAddressHex)
 	data4 := sa4.Bytes()
 	size4 := len(data4)
-
-	// Для специальных адресов CodeHash записывается как 4 нулевых байта вместо длины + данных
-	// Поэтому размер должен быть меньше, если CodeHash был непустым
-	if size2 > size1+10 { // допускаем небольшую разницу
-		t.Logf("Special address size difference: BaseAddress %d vs normal %d", size2, size1)
-	}
 
 	t.Logf("Normal address size: %d bytes", size1)
 	t.Logf("BaseAddressHex size: %d bytes", size2)
@@ -1426,39 +1237,6 @@ func TestStateAccount_Size_WithDifferentBloomSizes(t *testing.T) {
 	t.Logf("Account size with large Bloom (100 bytes): %d bytes", size3)
 }
 
-// TestStateAccount_Size_WithDifferentCodeHashSizes проверяет размер с разными размерами CodeHash
-func TestStateAccount_Size_WithDifferentCodeHashSizes(t *testing.T) {
-	sa1 := CreateTestStateAccount()
-	sa1.CodeHash = []byte{} // Пустой CodeHash
-	data1 := sa1.Bytes()
-	size1 := len(data1)
-
-	sa2 := CreateTestStateAccount()
-	sa2.CodeHash = []byte{0x1, 0x2, 0x3} // Маленький CodeHash
-	data2 := sa2.Bytes()
-	size2 := len(data2)
-
-	sa3 := CreateTestStateAccount()
-	sa3.CodeHash = make([]byte, 64) // Большой CodeHash (например, hash контракта)
-	for i := range sa3.CodeHash {
-		sa3.CodeHash[i] = byte(i % 256)
-	}
-	data3 := sa3.Bytes()
-	size3 := len(data3)
-
-	// Размер должен увеличиваться с размером CodeHash
-	if size2 <= size1 {
-		t.Errorf("Size with small CodeHash should be larger: got %d, expected > %d", size2, size1)
-	}
-	if size3 <= size2 {
-		t.Errorf("Size with large CodeHash should be larger: got %d, expected > %d", size3, size2)
-	}
-
-	t.Logf("Account size with empty CodeHash: %d bytes", size1)
-	t.Logf("Account size with small CodeHash (3 bytes): %d bytes", size2)
-	t.Logf("Account size with large CodeHash (64 bytes): %d bytes", size3)
-}
-
 // TestStateAccount_Size_Consistency проверяет консистентность размера при сериализации/десериализации
 func TestStateAccount_Size_Consistency(t *testing.T) {
 	sa := CreateTestStateAccount()
@@ -1471,9 +1249,9 @@ func TestStateAccount_Size_Consistency(t *testing.T) {
 	size1 := len(data1)
 
 	// Десериализуем
-	sa2 := BytesToStateAccount(data1)
+	sa2 := FromBytes(data1)
 	if sa2 == nil {
-		t.Fatal("BytesToStateAccount returned nil")
+		t.Fatal("FromBytes returned nil")
 	}
 
 	// Сериализуем снова
