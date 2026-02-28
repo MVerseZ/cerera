@@ -61,7 +61,7 @@ func (h *Handler) RegisterHandlers() {
 	h.host.SetStreamHandler(ConsensusProtocolID, h.handleConsensusStream)
 	h.host.SetStreamHandler(PingProtocolID, h.handlePingStream)
 
-	protocolLogger().Infow("Protocol handlers registered",
+	protocolLogger().Debugw("Protocol handlers registered",
 		"protocols", AllProtocols(),
 	)
 }
@@ -114,39 +114,36 @@ func (h *Handler) handleStatusStream(s network.Stream) {
 	}
 
 	// Create and send response
-	genesisHash := common.Hash{}
-	if b := h.serviceProvider.GetBlockByHeight(0); b != nil {
-		genesisHash = b.Hash
-	}
 
 	// Check chain compatibility
-	if statusReq.GenesisHash != genesisHash && genesisHash != (common.Hash{}) {
-		protocolLogger().Warnw("Incompatible chain",
-			"peer", remotePeer,
-			"peerGenesis", statusReq.GenesisHash,
-			"ourGenesis", genesisHash,
-		)
-	}
+	// if statusReq.GenesisHash != genesisHash && genesisHash != (common.Hash{}) {
+	// 	protocolLogger().Warnw("Incompatible chain",
+	// 		"peer", remotePeer,
+	// 		"peerGenesis", statusReq.GenesisHash,
+	// 	)
+	// }
 
 	height := 0
-	latestHash := common.Hash{}
 	chainID := statusReq.ChainID
 
 	if h.serviceProvider != nil {
 		height = h.serviceProvider.GetCurrentHeight()
-		latestHash = h.serviceProvider.GetLatestHash()
 		chainID = h.serviceProvider.GetChainID()
+	}
+
+	status, err := GetStatus(h.serviceProvider)
+	if err != nil {
+		protocolLogger().Warnw("Failed to get status", "error", err)
+		return
 	}
 
 	response := NewStatusResponse(
 		chainID,
 		h.version,
 		height,
-		latestHash,
-		genesisHash,
+		status,
 		h.nodeAddr,
 		len(h.host.Network().Peers()),
-		false, // TODO: implement syncing status
 	)
 
 	encoder := NewEncoder(s)
@@ -384,21 +381,17 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 		return nil, fmt.Errorf("failed to open status stream: %w", err)
 	}
 	defer s.Close()
+	protocolLogger().Debugw("Requesting status from peer", "peer", peerID)
 
 	if err := s.SetDeadline(time.Now().Add(HandshakeTimeout)); err != nil {
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
 	}
 
-	genesisHash := common.Hash{}
-	chainID := 0
-	if h.serviceProvider != nil {
-		if b := h.serviceProvider.GetBlockByHeight(0); b != nil {
-			genesisHash = b.Hash
-		}
-		chainID = h.serviceProvider.GetChainID()
-	}
+	genesisHash := h.serviceProvider.GetBlockByHeight(0).Hash
+	chainID := h.serviceProvider.GetChainID()
 
 	request := NewStatusRequest(chainID, h.version, genesisHash, h.nodeAddr)
+	protocolLogger().Debugw("Sending status request", "request", request)
 
 	encoder := NewEncoder(s)
 	if err := encoder.Encode(request); err != nil {
@@ -415,6 +408,8 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type: %T", msg)
 	}
+
+	protocolLogger().Debugw("Received status response", "response", response)
 
 	return response, nil
 }

@@ -145,7 +145,7 @@ func (m *Manager) checkAndSync() {
 	}
 
 	// Update peer tracker
-	m.peerTracker.UpdatePeer(bestPeer.ID, bestPeer.Height, common.Hash{})
+	m.peerTracker.UpdatePeer(bestPeer.ID, bestPeer.Height, protocol.Status{})
 
 	// Check if sync is needed
 	if bestPeer.Height <= currentHeight+MinBlocksAhead {
@@ -297,6 +297,7 @@ func (m *Manager) syncWithPeer(peerID peer.ID, startHeight, targetHeight int) {
 
 // HandleNewPeer handles a newly connected peer
 func (m *Manager) HandleNewPeer(peerID peer.ID) {
+
 	// Request status from the peer
 	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
@@ -308,13 +309,13 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 	}
 
 	// Update peer info
-	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.LatestHash.String(), status.NodeVersion, status.NodeAddress)
-	m.peerTracker.UpdatePeer(peerID, status.Height, status.LatestHash)
+	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.Status, status.NodeAddress)
+	m.peerTracker.UpdatePeer(peerID, status.Height, status.Status)
 
 	syncLogger().Infow("[SYNC] Peer status received",
 		"peer", peerID,
 		"height", status.Height,
-		"version", status.NodeVersion,
+		"version", status.Version,
 		"address", status.NodeAddress,
 	)
 

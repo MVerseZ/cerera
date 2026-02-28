@@ -171,7 +171,7 @@ func (v *CoreValidator) CheckAddress(addr types.Address) bool {
 
 func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas float64, message string) (*types.GTransaction, error) {
 	// here we create transaction by input values
-	tx, err := types.CreateUnbroadcastTransaction(nonce, addressTo, count, gas, message)
+	tx, err := types.CreateUnbroadcastTransaction(nonce, addressTo, count, gas, common.FloatToBigInt(3114000000000000), message) //TODO replace later with realization
 	if err != nil {
 		return nil, err
 	}
@@ -538,16 +538,7 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 		valSignError.Inc()
 		return errors.New("error while sign tx")
 	}
-	//var r, vv, s =
 	signTx.RawSignatureValues()
-	// fmt.Printf("Raw values:%d %d %d\r\n", r, s, vv)
-	// update tx in mempool if needed
-	// p.UpdateTx(signTx)
-
-	// p.memPool[i] = *signTx
-	// network.PublishData("OP_TX_SIGNED", tx)
-	// fmt.Printf("Now tx %s isSigned status: %t\r\n", signTx.Hash(), signTx.IsSigned())
-	// check existing inputs
 
 	// Signing does not perform balance/gas affordability checks.
 	// Validation is handled separately in ValidateTransaction.
@@ -597,7 +588,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 				if err != nil {
 					return err
 				}
-				tx, err := types.CreateUnbroadcastTransactionWei(p.Nonce, p.To, wei, p.Gas, p.Msg)
+				tx, err := types.CreateUnbroadcastTransactionWei(p.Nonce, p.To, wei, p.Gas, common.FloatToBigInt(3114000000000000), p.Msg) //TODO replace later with realization
 				if err != nil {
 					return err
 				}
@@ -620,7 +611,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 			return errors.New("parameter type mismatch for create")
 		}
-		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, gas, msg)
+		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, gas, common.FloatToBigInt(3114000000000000), msg) //TODO replace later with realization
 		if err != nil {
 			return err
 		}
@@ -641,7 +632,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 					return err
 				}
 				nonce := gigea.GetAndIncrementNonce()
-				tx, err := types.CreateUnbroadcastTransactionWei(nonce, addrTo, wei, p.Gas, p.Msg)
+				tx, err := types.CreateUnbroadcastTransactionWei(nonce, addrTo, wei, p.Gas, common.FloatToBigInt(3114000000000000), p.Msg)
 				if err != nil {
 					return err
 				}
@@ -672,7 +663,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 			return errors.New("parameter type mismatch for send")
 		}
 		var addrTo = types.HexToAddress(addrStr)
-		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, gas, msg)
+		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, gas, common.FloatToBigInt(3114000000000000), msg) // fix gas price
 		if err != nil {
 			return err.Error()
 		}

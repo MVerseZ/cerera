@@ -55,17 +55,15 @@ func NewStatusRequest(chainID int, version string, genesisHash common.Hash, node
 type StatusResponse struct {
 	BaseMessage
 	ChainID     int           `json:"chainId"`
-	NodeVersion string        `json:"nodeVersion"`
+	Version     string        `json:"version"`
 	Height      int           `json:"height"`
-	LatestHash  common.Hash   `json:"latestHash"`
-	GenesisHash common.Hash   `json:"genesisHash"`
 	NodeAddress types.Address `json:"nodeAddress"`
 	PeerCount   int           `json:"peerCount"`
-	IsSyncing   bool          `json:"isSyncing"`
+	Status      Status        `json:"status"`
 }
 
 // NewStatusResponse creates a new status response message
-func NewStatusResponse(chainID int, nodeVersion string, height int, latestHash, genesisHash common.Hash, nodeAddr types.Address, peerCount int, isSyncing bool) *StatusResponse {
+func NewStatusResponse(chainID int, version string, height int, status Status, nodeAddr types.Address, peerCount int) *StatusResponse {
 	return &StatusResponse{
 		BaseMessage: BaseMessage{
 			MsgType:   MsgTypeStatusResponse,
@@ -73,13 +71,11 @@ func NewStatusResponse(chainID int, nodeVersion string, height int, latestHash, 
 			Version:   ProtocolVersion,
 		},
 		ChainID:     chainID,
-		NodeVersion: nodeVersion,
+		Version:     version,
 		Height:      height,
-		LatestHash:  latestHash,
-		GenesisHash: genesisHash,
 		NodeAddress: nodeAddr,
 		PeerCount:   peerCount,
-		IsSyncing:   isSyncing,
+		Status:      status,
 	}
 }
 

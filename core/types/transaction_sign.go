@@ -52,7 +52,6 @@ func Sign(msg []byte, privKey *ecdsa.PrivateKey) ([]byte, error) {
 }
 
 func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, error) {
-	// fmt.Printf("Sign tx %s with key: %s\r\n", tx.Hash(), prv.D)
 	h := s.Hash(tx)
 	sig, err := Sign(h[:], prv)
 	if err != nil {
@@ -71,11 +70,10 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, e
 		tx.from.Store(sgCache)
 	}
 	var signTx, errSign = tx.WithSignature(s, sig)
-	if err != nil {
-		fmt.Errorf("%s", errSign)
+	if errSign != nil {
 		fmt.Printf("Error while sign tx %s from: %s\r\n", tx.Hash(), tx.From())
+		return nil, fmt.Errorf("%s", errSign)
 	}
-	// fmt.Printf("Success sign tx %s from: %s\r\n", tx.Hash(), tx.From())
 	return signTx, nil
 }
 
@@ -129,7 +127,7 @@ func (fs SimpleSigner) Sender(tx *GTransaction) (Address, error) {
 	}
 	r, s, v := tx.RawSignatureValues()
 	if len(r.Bits()) > 0 && len(s.Bits()) > 0 {
-		return recoverPlain(fs.Hash(tx), r, s, v, false)
+		return recoverPlain(r, s, v)
 	} else {
 		return Address{}, ErrInvalidSig
 	}
@@ -163,7 +161,7 @@ func crvHash(x interface{}) (h common.Hash) {
 	return h
 }
 
-func recoverPlain(sighash common.Hash, R, S, V *big.Int, a bool) (Address, error) {
+func recoverPlain(R, S, _ *big.Int) (Address, error) {
 	// Use the same slice range as PubkeyToAddress and PrivKeyToAddress
 	pubBytes := crypto.FromECDSAPub(&ecdsa.PublicKey{
 		Curve: crypto.ChainElliptic(),

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cerera/core/types"
+	"github.com/cerera/icenet/protocol"
 	"github.com/cerera/internal/logger"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -30,17 +31,18 @@ func peersLogger() *zap.SugaredLogger {
 
 // PeerInfo contains information about a connected peer
 type PeerInfo struct {
-	ID           peer.ID       `json:"id"`
-	Address      types.Address `json:"address,omitempty"` // Cerera address
-	Height       int           `json:"height"`
-	BestHash     string        `json:"bestHash,omitempty"`
-	Version      string        `json:"version,omitempty"`
-	FirstSeen    time.Time     `json:"firstSeen"`
-	LastSeen     time.Time     `json:"lastSeen"`
-	LastPingTime time.Duration `json:"lastPingTime,omitempty"`
-	Score        float64       `json:"score"`
-	IsSyncing    bool          `json:"isSyncing"`
-	Direction    string        `json:"direction"` // "inbound" or "outbound"
+	ID           peer.ID         `json:"id"`
+	Address      types.Address   `json:"address,omitempty"` // Cerera address
+	Height       int             `json:"height"`
+	BestHash     string          `json:"bestHash,omitempty"`
+	Version      string          `json:"version,omitempty"`
+	FirstSeen    time.Time       `json:"firstSeen"`
+	LastSeen     time.Time       `json:"lastSeen"`
+	LastPingTime time.Duration   `json:"lastPingTime,omitempty"`
+	Score        float64         `json:"score"`
+	IsSyncing    bool            `json:"isSyncing"`
+	Direction    string          `json:"direction"` // "inbound" or "outbound"
+	Status       protocol.Status `json:"status"`
 }
 
 // Manager manages peer connections and information
@@ -225,14 +227,13 @@ func (m *Manager) cleanup() {
 }
 
 // UpdatePeerInfo updates information about a peer
-func (m *Manager) UpdatePeerInfo(peerID peer.ID, height int, bestHash string, version string, address types.Address) {
+func (m *Manager) UpdatePeerInfo(peerID peer.ID, height int, status protocol.Status, address types.Address) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if info, exists := m.peers[peerID]; exists {
 		info.Height = height
-		info.BestHash = bestHash
-		info.Version = version
+		info.Status = status
 		info.Address = address
 		info.LastSeen = time.Now()
 	}
