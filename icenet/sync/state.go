@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cerera/core/common"
+	"github.com/cerera/icenet/protocol"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -214,7 +215,7 @@ func (p *SyncProgress) IsSyncing() bool {
 type PeerSyncState struct {
 	PeerID         peer.ID
 	Height         int
-	BestHash       common.Hash
+	Status         protocol.Status
 	LastSyncTime   time.Time
 	BlocksReceived int
 	FailureCount   int
@@ -236,19 +237,19 @@ func NewPeerSyncTracker() *PeerSyncTracker {
 }
 
 // UpdatePeer updates or adds a peer's sync state
-func (t *PeerSyncTracker) UpdatePeer(peerID peer.ID, height int, bestHash common.Hash) {
+func (t *PeerSyncTracker) UpdatePeer(peerID peer.ID, height int, status protocol.Status) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if state, exists := t.peers[peerID]; exists {
 		state.Height = height
-		state.BestHash = bestHash
+		state.Status = status
 		state.LastSyncTime = time.Now()
 	} else {
 		t.peers[peerID] = &PeerSyncState{
 			PeerID:       peerID,
 			Height:       height,
-			BestHash:     bestHash,
+			Status:       status,
 			LastSyncTime: time.Now(),
 			IsUsable:     true,
 		}

@@ -36,7 +36,7 @@ func FuzzValidateRawTransaction(f *testing.F) {
 
 	// Create seed transactions
 	addr2 := types.EmptyAddress()
-	tx1, _ := types.CreateUnbroadcastTransaction(1, addr2, 10.0, 0.001, "test")
+	tx1, _ := types.CreateUnbroadcastTransaction(1, addr2, 10.0, 0.001, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
 	f.Add(tx1.Hash().Bytes())
 
 	f.Fuzz(func(t *testing.T, hashBytes []byte) {
@@ -46,7 +46,7 @@ func FuzzValidateRawTransaction(f *testing.F) {
 		}
 
 		var addr types.Address
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, 0.001, "test")
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, 0.001, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
 
 		result := validator.ValidateRawTransaction(tx)
 		// Just check that it doesn't panic
@@ -138,7 +138,7 @@ func FuzzTransactionValue(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, 0.001, "test")
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, 0.001, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
 
 		result := tx.Value()
 		if result == nil {
@@ -162,7 +162,7 @@ func FuzzTransactionCost(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, gasLimit, "test")
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, gasLimit, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
 
 		cost := tx.Cost()
 		if cost == nil {
@@ -185,7 +185,7 @@ func FuzzTransactionGas(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, gasLimit, "test")
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, gasLimit, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
 
 		gas := tx.Gas()
 		// Gas should match or be close to gasLimit
@@ -207,7 +207,7 @@ func FuzzTransactionHash(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(nonceRaw, addr, value, 0.001, string(messageRaw))
+		tx, _ := types.CreateUnbroadcastTransaction(nonceRaw, addr, value, 0.001, common.FloatToBigInt(3114000000000000), string(messageRaw)) //TODO replace later with realization
 
 		hash := tx.Hash()
 		if hash == (common.Hash{}) {

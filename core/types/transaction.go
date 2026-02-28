@@ -132,26 +132,26 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas float
 	return tx, nil
 }
 
-func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas float64, message string) (*GTransaction, error) {
+func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas float64, gasPrice *big.Int, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
 		common.FloatToBigInt(count),
 		gas,
-		big.NewInt(0),
+		gasPrice,
 		[]byte(message),
 	)
 	return tx, nil
 }
 
 // CreateUnbroadcastTransactionWei creates a transaction using exact wei amount (no float conversion).
-func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas float64, message string) (*GTransaction, error) {
+func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas float64, gasPrice *big.Int, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
 		new(big.Int).Set(amountWei),
 		gas,
-		big.NewInt(0),
+		gasPrice,
 		[]byte(message),
 	)
 	return tx, nil
