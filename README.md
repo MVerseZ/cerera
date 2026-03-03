@@ -7,8 +7,6 @@
 [![GitHub stars](https://img.shields.io/github/stars/MVerseZ/cerera?style=flat)](https://github.com/MVerseZ/cerera/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/MVerseZ/cerera?style=flat)](https://github.com/MVerseZ/cerera/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/MVerseZ/cerera)](https://github.com/MVerseZ/cerera/issues)
-[![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MVerseZ/cerera/issues)
-[![HitCount](https://hits.dwyl.com/MVerseZ/cerera.svg)](https://hits.dwyl.com/MVerseZ/cerera)
 ![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-lightgrey)
 
 Cerera is a high-performance blockchain platform built in Go, designed for scalability, security, and developer-friendly features.
