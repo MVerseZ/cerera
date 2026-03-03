@@ -70,7 +70,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	registry.Register(validator.ServiceName(), validator)
 
 	// инициализация пула
-	mempool, err := pool.InitPool(cfg.POOL.MinGas, cfg.POOL.MaxSize)
+	mempool, err := pool.InitPool(cfg.POOL.MaxSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init pool: %w", err)
 	}

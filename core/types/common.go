@@ -32,6 +32,7 @@ var (
 func FloatToBigInt(f float64) *big.Int              { return common.FloatToBigInt(f) }
 func BigIntToFloat(bi *big.Int) float64             { return common.BigIntToFloat(bi) }
 func DecimalStringToWei(s string) (*big.Int, error) { return common.DecimalStringToWei(s) }
+func Uint64ToBigInt(u uint64) *big.Int              { return common.Uint64ToBigInt(u) }
 
 // Re-exports from crypto package
 var (

@@ -9,6 +9,7 @@ import (
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/observer"
+	"github.com/cerera/pallada"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -71,20 +72,20 @@ type MemPoolInfo struct {
 	Txs              []types.GTransaction
 }
 
+// for simplification of mining, pool sort transactions by gas*gasPrice with coefficient of payload
+//
+// @author gnupunk 28.02.2026
 type Pool struct {
-	Funnel      chan []*types.GTransaction // input funnel
 	Listen      chan []*types.GTransaction // outbound channel
 	DataChannel chan []byte                // ws channel
 
 	NewTxEventChannel chan *types.GTransaction
 	maxSize           int
-	minGas            float64
 	memPool           map[common.Hash]types.GTransaction
 	maintainTicker    *time.Ticker
 
 	Status   byte
 	Prepared []*types.GTransaction
-	Executed []types.GTransaction
 
 	observers []observer.Observer
 
@@ -112,18 +113,15 @@ type TxPool interface {
 	ServiceName() string
 }
 
-func InitPool(minGas float64, maxSize int) (TxPool, error) {
+func InitPool(maxSize int) (TxPool, error) {
 	mPool := make(map[common.Hash]types.GTransaction)
 	var p = &Pool{
 		memPool:        mPool,
 		maintainTicker: time.NewTicker(1500 * time.Millisecond),
 		maxSize:        maxSize,
-		minGas:         minGas,
 
 		Prepared: make([]*types.GTransaction, 0),
-		Executed: make([]types.GTransaction, 0),
 
-		Funnel:      make(chan []*types.GTransaction),
 		Listen:      make(chan []*types.GTransaction),
 		DataChannel: make(chan []byte),
 		Status:      0xa,
@@ -131,8 +129,6 @@ func InitPool(minGas float64, maxSize int) (TxPool, error) {
 		observers: make([]observer.Observer, 0),
 	}
 	pLogger.Infow("Init pool",
-		"minGas", p.minGas,
-		"minGasBI", types.FloatToBigInt(p.minGas),
 		"maxSize", p.maxSize,
 	)
 	p.Info = MemPoolInfo{
@@ -140,7 +136,6 @@ func InitPool(minGas float64, maxSize int) (TxPool, error) {
 		Bytes:            0,
 		Usage:            0,
 		MaxMempool:       p.maxSize,
-		Mempoolminfee:    int(p.minGas),
 		UnbroadCastCount: 0,
 		Hashes:           make([]common.Hash, 0),
 		Txs:              make([]types.GTransaction, 0),
@@ -155,6 +150,7 @@ func InitPool(minGas float64, maxSize int) (TxPool, error) {
 	return GPool, nil
 }
 
+// remove observer from pool observers list, common method
 func removeFromslice(observerList []observer.Observer, observerToRemove observer.Observer) []observer.Observer {
 	observerListLength := len(observerList)
 	for i, observer := range observerList {
@@ -166,6 +162,9 @@ func removeFromslice(observerList []observer.Observer, observerToRemove observer
 	return observerList
 }
 
+// add transaction to pool
+// tx validate by gas, size, etc..
+
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -175,7 +174,6 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 		// Transaction already exists, skip or update
 		return
 	}
-
 	// Check if transaction already exists in Prepared to avoid duplicates
 	for _, preparedTx := range p.Prepared {
 		if preparedTx.Hash() == tx.Hash() {
@@ -183,8 +181,13 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 			return
 		}
 	}
-
-	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+	// init vm for precalculate gas for transaction
+	minGas, err := pallada.NewVM(tx.Data(), nil).PreCompile(tx.Data())
+	if err != nil {
+		pLogger.Errorw("Error precompile transaction", "error", err)
+		return
+	}
+	if len(p.memPool) < p.maxSize && minGas <= tx.Gas() {
 		p.memPool[tx.Hash()] = *tx
 		p.Prepared = append(p.Prepared, tx)
 		p.NotifyAll(tx)
@@ -196,6 +199,7 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 	}
 }
 
+// clear pool (for testing purposes)
 func (p *Pool) Clear() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -205,6 +209,7 @@ func (p *Pool) Clear() {
 	p.calcInfo()
 }
 
+// calculate pool info (for internal use)
 func (p *Pool) calcInfo() {
 
 	var txPoolSize = 0
@@ -224,7 +229,7 @@ func (p *Pool) calcInfo() {
 		Usage:            0, // Можно рассчитать если нужно
 		UnbroadCastCount: len(hashes),
 		MaxMempool:       p.maxSize,
-		Mempoolminfee:    int(p.minGas),
+		Mempoolminfee:    0, //int(p.minGas),
 		Hashes:           hashes,
 		Txs:              cp,
 	}
@@ -234,6 +239,7 @@ func (p *Pool) calcInfo() {
 	poolBytes.Set(float64(result.Bytes))
 }
 
+// get pool info (for internal use)
 func (p *Pool) GetInfo() MemPoolInfo {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -241,10 +247,12 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	return p.Info
 }
 
-func (p *Pool) GetMinimalGasValue() float64 {
-	return p.minGas
+// get minimal gas value (for internal use)
+func (p *Pool) GetMinimalGasValue() uint64 {
+	return 0
 }
 
+// get pending transactions (for internal use)
 func (p *Pool) GetPendingTransactions() []types.GTransaction {
 	start := time.Now()
 	defer func() {
@@ -261,11 +269,18 @@ func (p *Pool) GetPendingTransactions() []types.GTransaction {
 	return result
 }
 
-func (p *Pool) GetRawMemPool() []interface{} {
+// get raw mempool (hashes of transactions in mempool)
+func (p *Pool) GetRawMemPool() []any {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Seconds()
+		poolGetPendingDurationSeconds.Observe(duration)
+	}()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	var result []interface{}
+	var result []any
 	for i := range p.memPool {
 		var tx = p.memPool[i]
 		result = append(result, tx.Hash())
@@ -274,10 +289,12 @@ func (p *Pool) GetRawMemPool() []interface{} {
 	return result
 }
 
+// add transaction to pool queue (wrapper for AddRawTransaction)
 func (p *Pool) QueueTransaction(tx *types.GTransaction) {
 	p.AddRawTransaction(tx)
 }
 
+// get transaction by hash (for internal use)
 func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -288,12 +305,14 @@ func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	return nil
 }
 
+// notify all observers (for internal use)
 func (p *Pool) NotifyAll(tx *types.GTransaction) {
 	for _, observer := range p.observers {
 		observer.Update(tx)
 	}
 }
 
+// pool service loop (for internal use)
 func (p *Pool) PoolServiceLoop() {
 	var errc chan error
 	for errc == nil {
@@ -301,51 +320,11 @@ func (p *Pool) PoolServiceLoop() {
 		case <-p.maintainTicker.C:
 			// fmt.Printf("Pool maintain loop\r\n")
 			// p.mu.Lock()
-			// if p.Prepared == nil {
-			// 	p.Prepared = make([]*types.GTransaction, 0)
-			// }
-			// for _, tx := range p.memPool {
-			// 	var r, s, v = tx.RawSignatureValues()
-			// 	// fmt.Printf("%s to %s - signed %t \r\n", tx.Hash(), tx.To(), tx.IsSigned())
-			// 	// if tx signed - add it to block
-			// 	if big.NewInt(0).Cmp(r) != 0 && big.NewInt(0).Cmp(s) != 0 && big.NewInt(0).Cmp(v) != 0 {
-			// 		p.Prepared = append(p.Prepared, &tx)
-			// 	}
-			// 	for _, preparedTx := range p.Prepared {
-			// 		delete(p.memPool, preparedTx.Hash())
-			// 	}
-			// }
-			// p.mu.Unlock()
-			// fmt.Printf("Prepared for block txs count: %d\r\n", len(p.Prepared))
-			// fmt.Printf("Executed txs count: %d\r\n", len(p.Executed))
-			// fmt.Printf("Current pool size: %d\r\n", len(p.memPool))
-		case txs := <-p.Funnel:
-			// NEED TO REWRITE 13/04/25 gnupunk
-			// fmt.Printf("Funnel data arrive\r\n")
-			var txPoolSize = 0
-			for _, k := range p.memPool {
-				var txSize = k.Size()
-				txPoolSize += int(txSize)
-			}
-			for _, tx := range txs {
-				if txPoolSize+int(tx.Size()) < p.maxSize {
-					p.AddRawTransaction(tx)
-				} else {
-					break
-				}
-			}
-			// go func() { p.Listen <- txs }()
-
-			// case newBlock := <-gigea.E.BlockPipe:
-			// 	fmt.Println("POOL")
-			// 	for _, tx := range newBlock.Transactions {
-			// 		fmt.Println(tx.Hash())
-			// 		delete(p.memPool, tx.Hash())
-			// 	}
 		}
 	}
 }
 
+// register new observer (for internal use)
 func (p *Pool) Register(observer observer.Observer) {
 	pLogger.Infow("Register new pool observer", "observerID", observer.GetID())
 	p.observers = append(p.observers, observer)
@@ -371,10 +350,11 @@ func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 	return nil
 }
 
+// send transaction to pool (for internal use)
 func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.memPool) < p.maxSize && p.minGas <= tx.Gas() {
+	if len(p.memPool) < p.maxSize { //&& p.minGas <= tx.Gas() {
 		p.memPool[tx.Hash()] = tx
 		poolTxAddedTotal.Inc()
 		// Update metrics
@@ -386,23 +366,26 @@ func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 			"poolSize", len(p.memPool),
 			"maxSize", p.maxSize,
 			"gas", tx.Gas(),
-			"minGas", p.minGas,
+			//"minGas", p.minGas,
 		)
 		return tx.Hash(), errors.New("transaction rejected: pool full or gas too low")
 	}
 	return tx.Hash(), nil
 }
 
+// get service name (for internal use)
 func (p *Pool) ServiceName() string {
 	return POOL_SERVICE_NAME
 }
 
+// unregister observer (for internal use)
 func (p *Pool) UnRegister(observer observer.Observer) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.observers = removeFromslice(p.observers, observer)
 }
 
+// update transaction in pool, change gas or message (NOT VALUE, if we send 1,1 -> we will receive 1,1).
 func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -426,6 +409,7 @@ func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	}
 }
 
+// execute method (for internal use)
 func (p *Pool) Exec(method string, params []interface{}) interface{} {
 	switch method {
 	case "getInfo":

@@ -3,15 +3,17 @@ package types
 import (
 	"math/big"
 	"time"
+
+	"github.com/cerera/core/address"
 )
 
 type PGTransaction struct {
 	Status   TxStatus
 	ChainID  *big.Int
 	Nonce    uint64
-	GasPrice *big.Int // wei per gas
-	Gas      float64  // gas limit
-	To       *Address `rlp:"nil"` // nil means contract creation
+	GasPrice *big.Int         // wei per gas
+	Gas      uint64           // gas limit
+	To       *address.Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int
 	Data     []byte
 	R        *big.Int `json:"r" gencodec:"required"`
@@ -25,9 +27,9 @@ type PGTransaction struct {
 }
 
 func NewTransactionEnrich(nonce uint64,
-	to Address,
+	to address.Address,
 	amount *big.Int,
-	gasLimit float64,
+	gasLimit uint64,
 	gasPrice *big.Int,
 	data []byte,
 	payload []byte) *GTransaction {
@@ -45,9 +47,9 @@ func NewTransactionEnrich(nonce uint64,
 
 func NewTransaction(
 	nonce uint64,
-	to Address,
+	to address.Address,
 	amount *big.Int,
-	gasLimit float64,
+	gasLimit uint64,
 	gasPrice *big.Int,
 	data []byte) *GTransaction {
 	return NewTx(&PGTransaction{
@@ -108,7 +110,7 @@ func (tx *PGTransaction) nonce() uint64 {
 	return tx.Nonce
 }
 
-func (tx *PGTransaction) gas() float64 {
+func (tx *PGTransaction) gas() uint64 {
 	return tx.Gas
 }
 
@@ -132,7 +134,7 @@ func (tx *PGTransaction) data() []byte {
 	return tx.Data
 }
 
-func (tx *PGTransaction) to() *Address {
+func (tx *PGTransaction) to() *address.Address {
 	return tx.To
 }
 
@@ -151,11 +153,11 @@ func (tx *PGTransaction) time() time.Time {
 func (tx *PGTransaction) status() TxStatus {
 	return tx.Status
 }
-func copyAddressPtr(a *Address) *Address {
+func copyAddressPtr(a *address.Address) *address.Address {
 	if a == nil {
 		return nil
 	}
-	cpy := *a
+	cpy := address.Address(*a)
 	return &cpy
 }
 

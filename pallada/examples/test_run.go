@@ -393,6 +393,63 @@ func main() {
 	}
 
 	// ============================================================
+	// Пример 10: «Перевод» — взять из памяти (storage), вычесть у одного, прибавить другому, положить обратно
+	// ============================================================
+	printSeparator("Пример 10: Перевод (отправитель → получатель)")
+
+	// Storage: ключ 0 = баланс отправителя, ключ 1 = баланс получателя.
+	// Инициализация: 100 у отправителя, 0 у получателя. Переводим 50.
+	storageTransfer := newMockStorage()
+	storageTransfer.SetStorage(types.Address{}, big.NewInt(0), big.NewInt(100)) // отправитель: 100
+	storageTransfer.SetStorage(types.Address{}, big.NewInt(1), big.NewInt(0))   // получатель: 0
+
+	// Байткод: загрузить баланс отправителя (ключ 0), вычесть amount, сохранить;
+	// загрузить баланс получателя (ключ 1), прибавить amount, сохранить.
+	// В Pallada SUB = (below - top). Нужно [50, sender_bal]: делаем PUSH1 0, SLOAD → [100], PUSH1 50 → [50, 100]; SUB → 50.
+	// SSTORE: ключ сверху. После SUB [new_sender]; PUSH1 0 → [0, new_sender]; SSTORE.
+	code10 := []byte{
+		0x60, 0x00, // PUSH1 0 (ключ отправителя)
+		0x54,       // SLOAD → [sender_bal]
+		0x60, 0x32, // PUSH1 50 (сумма перевода) → [50, sender_bal]
+		0x03,       // SUB (below - top = sender_bal - 50)
+		0x60, 0x00, // PUSH1 0 → [0, new_sender]
+		0x55,       // SSTORE (новый баланс отправителя)
+		0x60, 0x32, // PUSH1 50 (сумма для получателя)
+		0x60, 0x01, // PUSH1 1 (ключ получателя)
+		0x54,       // SLOAD → [recv_bal, 50]
+		0x01,       // ADD (получатель + 50)
+		0x60, 0x01, // PUSH1 1 → [1, new_recv]
+		0x55,       // SSTORE (новый баланс получателя)
+		0x00,       // STOP
+	}
+
+	ctx10 := pallada.NewContextWithStorage(
+		types.Address{},
+		types.Address{},
+		big.NewInt(0),
+		nil,
+		100000,
+		big.NewInt(1),
+		blockInfo,
+		storageTransfer,
+	)
+
+	vm10 := pallada.NewVM(code10, ctx10)
+	_, err10 := vm10.Run()
+
+	if err10 != nil {
+		fmt.Printf("❌ Ошибка: %v\n", err10)
+	} else {
+		senderAfter, _ := storageTransfer.GetStorage(types.Address{}, big.NewInt(0))
+		receiverAfter, _ := storageTransfer.GetStorage(types.Address{}, big.NewInt(1))
+		fmt.Printf("✅ Выполнение успешно\n")
+		fmt.Printf("   Использовано газа: %d\n", vm10.GasUsed())
+		fmt.Printf("   Было:  отправитель=100, получатель=0. Перевод 50.\n")
+		fmt.Printf("   Стало: отправитель=%s, получатель=%s\n", senderAfter.String(), receiverAfter.String())
+		fmt.Printf("   (значение взяли из storage, вычли у одного, прибавили другому, положили обратно)\n")
+	}
+
+	// ============================================================
 	// Итоговая статистика
 	// ============================================================
 	printSeparator("Итоговая статистика")
@@ -407,5 +464,6 @@ func main() {
 	fmt.Println("   - REVERT: ✅")
 	fmt.Println("   - Сравнения: ✅")
 	fmt.Println("   - Побитовые операции: ✅")
+	fmt.Println("   - Перевод (load/sub/add/store): ✅")
 	fmt.Println("\n🎉 Pallada VM работает корректно!")
 }

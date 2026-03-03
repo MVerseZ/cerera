@@ -13,6 +13,7 @@ import (
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
+	"github.com/cerera/pallada"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,49 +78,49 @@ func TestGasValidation(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		gasLimit    float64
+		gasLimit    uint64
 		gasPrice    *big.Int
 		shouldPass  bool
 		description string
 	}{
 		{
 			name:        "Минимальная цена газа",
-			gasLimit:    3.0,
-			gasPrice:    types.FloatToBigInt(0.000001),
+			gasLimit:    3,
+			gasPrice:    types.FloatToBigInt(pallada.MinGasPrice()),
 			shouldPass:  true,
 			description: "Должна пройти валидацию",
 		},
 		{
 			name:        "Цена выше минимума",
-			gasLimit:    3.0,
-			gasPrice:    types.FloatToBigInt(0.000002),
+			gasLimit:    3,
+			gasPrice:    types.FloatToBigInt(pallada.MinGasPrice() * 2),
 			shouldPass:  true,
 			description: "Должна пройти валидацию",
 		},
 		{
 			name:        "Цена ниже минимума",
-			gasLimit:    3.0,
-			gasPrice:    types.FloatToBigInt(0.0000005),
+			gasLimit:    3,
+			gasPrice:    types.FloatToBigInt(pallada.MinGasPrice() / 2),
 			shouldPass:  false,
 			description: "Должна быть отклонена",
 		},
 		{
 			name:        "Нулевая цена газа",
-			gasLimit:    3.0,
+			gasLimit:    3,
 			gasPrice:    big.NewInt(0),
 			shouldPass:  true,
 			description: "Нулевая цена разрешена",
 		},
 		{
 			name:        "Стандартная транзакция",
-			gasLimit:    5.0,
+			gasLimit:    5,
 			gasPrice:    types.FloatToBigInt(0.000001),
 			shouldPass:  true,
 			description: "Стандартная транзакция должна пройти",
 		},
 		{
 			name:        "Высокий лимит газа",
-			gasLimit:    50000.0,
+			gasLimit:    50000,
 			gasPrice:    types.FloatToBigInt(0.000001),
 			shouldPass:  true,
 			description: "Высокий лимит должен пройти",
@@ -133,7 +134,7 @@ func TestGasValidation(t *testing.T) {
 				1, // nonce
 				types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
 				big.NewInt(1000000000000000000), // 1 CER
-				tt.gasLimit,
+				uint64(tt.gasLimit),
 				tt.gasPrice,
 				[]byte("test data"),
 			)
@@ -151,7 +152,7 @@ func TestGasValidation(t *testing.T) {
 					passesValidation, tt.shouldPass, tt.description)
 			}
 
-			t.Logf("Gas limit: %f, Gas price: %s wei, Cost: %s wei (%.6f CER), Validation: %v",
+			t.Logf("Gas limit: %d, Gas price: %s wei, Cost: %s wei (%.6f CER), Validation: %v",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), types.BigIntToFloat(cost), passesValidation)
 		})
 	}
@@ -162,7 +163,7 @@ func TestMinGasPrice(t *testing.T) {
 	validator := &CoreValidator{}
 	validator.SetUp(big.NewInt(11))
 
-	expectedMinGasPrice := types.FloatToBigInt(0.000001)
+	expectedMinGasPrice := types.FloatToBigInt(pallada.MinGasPrice())
 	actualMinGasPrice := validator.GasPrice()
 
 	if actualMinGasPrice.Cmp(expectedMinGasPrice) != 0 {
@@ -179,33 +180,33 @@ func TestGasCostCalculation(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		gasLimit float64
+		gasLimit uint64
 		gasPrice *big.Int
 		expected string
 	}{
 		{
 			name:     "Минимальная транзакция",
-			gasLimit: 3.0,
+			gasLimit: 3,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "3000000000000000000000000000000",
+			expected: "3000000000000",
 		},
 		{
 			name:     "Стандартная транзакция",
-			gasLimit: 5.0,
+			gasLimit: 5,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "5000000000000000000000000000000",
+			expected: "5000000000000",
 		},
 		{
 			name:     "Высокий лимит газа",
-			gasLimit: 50000.0,
+			gasLimit: 50000,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "50000000000000000000000000000000000",
+			expected: "50000000000000000",
 		},
 		{
 			name:     "Ethereum-совместимый лимит",
-			gasLimit: 21000.0,
+			gasLimit: 21000,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "21000000000000000000000000000000000",
+			expected: "21000000000000000",
 		},
 	}
 
@@ -228,7 +229,7 @@ func TestGasCostCalculation(t *testing.T) {
 			}
 
 			// Проверяем, что стоимость газа = gasPrice * gasLimit
-			expectedCost := new(big.Int).Mul(tt.gasPrice, types.FloatToBigInt(tt.gasLimit))
+			expectedCost := new(big.Int).Mul(tt.gasPrice, types.Uint64ToBigInt(tt.gasLimit))
 			if cost.Cmp(expectedCost) != 0 {
 				t.Errorf("Cost calculation mismatch: got %s, want %s", cost.String(), expectedCost.String())
 			}
@@ -240,7 +241,7 @@ func TestGasCostCalculation(t *testing.T) {
 					cost.String(), validator.GasPrice().String())
 			}
 
-			t.Logf("Gas limit: %f, Gas price: %s wei, Cost: %s wei (%.6f CER)",
+			t.Logf("Gas limit: %d, Gas price: %s wei, Cost: %s wei (%.6f CER)",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), types.BigIntToFloat(cost))
 		})
 	}
@@ -280,7 +281,7 @@ func TestValidateRawTransaction(t *testing.T) {
 		1,
 		types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
 		big.NewInt(1000),
-		3.0,
+		3,
 		big.NewInt(0),
 		[]byte("test"),
 	)
@@ -357,7 +358,7 @@ func TestCreateTransaction(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, tx)
 	assert.Equal(t, uint64(1), tx.Nonce())
-	assert.Equal(t, float64(3.0), tx.Gas())
+	assert.Equal(t, uint64(3), tx.Gas())
 }
 
 // TestValidateTransaction_InvalidAddress проверяет валидацию транзакций с несуществующим адресом

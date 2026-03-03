@@ -6,7 +6,7 @@ import (
 
 func TestGasMeter_ConsumeGas(t *testing.T) {
 	gasLimit := uint64(1000)
-	gm := NewGasMeter(gasLimit)
+	gm := NewGasMeterWithLimit(gasLimit)
 
 	// Потребляем часть газа
 	if err := gm.ConsumeGas(100, "test"); err != nil {
@@ -33,7 +33,7 @@ func TestGasMeter_ConsumeGas(t *testing.T) {
 
 func TestGasMeter_OutOfGas(t *testing.T) {
 	gasLimit := uint64(100)
-	gm := NewGasMeter(gasLimit)
+	gm := NewGasMeterWithLimit(gasLimit)
 
 	// Потребляем весь газ
 	if err := gm.ConsumeGas(100, "test"); err != nil {
@@ -56,7 +56,7 @@ func TestGasMeter_OutOfGas(t *testing.T) {
 
 func TestGasMeter_GasLimit(t *testing.T) {
 	gasLimit := uint64(5000)
-	gm := NewGasMeter(gasLimit)
+	gm := NewGasMeterWithLimit(gasLimit)
 
 	if gm.GasLimit() != gasLimit {
 		t.Errorf("Expected gas limit %d, got %d", gasLimit, gm.GasLimit())
