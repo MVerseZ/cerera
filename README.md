@@ -1,5 +1,10 @@
 # Cerera Blockchain
 
+![Go](https://github.com/MVerseZ/cerera/actions/workflows/go.yml/badge.svg)
+![Go Version](https://img.shields.io/badge/go-1.23-blue?logo=go)
+![License](https://img.shields.io/badge/license-GPL--v2-blue)
+![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-lightgrey)
+
 Cerera is a high-performance blockchain platform built in Go, designed for scalability, security, and developer-friendly features.
 
 ## 🚀 Features
@@ -227,7 +232,7 @@ go build ./cmd/cerera
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## 🆘 Support
 
