@@ -1,8 +1,14 @@
 # Cerera Blockchain
 
-![Go](https://github.com/MVerseZ/cerera/actions/workflows/go.yml/badge.svg)
-![Go Version](https://img.shields.io/badge/go-1.23-blue?logo=go)
-![License](https://img.shields.io/badge/license-GPL--v2-blue)
+[![Go](https://github.com/MVerseZ/cerera/actions/workflows/go.yml/badge.svg)](https://github.com/MVerseZ/cerera/actions/workflows/go.yml)
+[![Go Version](https://img.shields.io/badge/go-1.23-blue?logo=go)](https://golang.org/dl/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/MVerseZ/cerera)](https://goreportcard.com/report/github.com/MVerseZ/cerera)
+[![License: GPL v2](https://img.shields.io/badge/license-GPL--v2-blue)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
+[![GitHub stars](https://img.shields.io/github/stars/MVerseZ/cerera?style=flat)](https://github.com/MVerseZ/cerera/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/MVerseZ/cerera?style=flat)](https://github.com/MVerseZ/cerera/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/MVerseZ/cerera)](https://github.com/MVerseZ/cerera/issues)
+[![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MVerseZ/cerera/issues)
+[![HitCount](https://hits.dwyl.com/MVerseZ/cerera.svg)](https://hits.dwyl.com/MVerseZ/cerera)
 ![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-lightgrey)
 
 Cerera is a high-performance blockchain platform built in Go, designed for scalability, security, and developer-friendly features.
