@@ -11,7 +11,7 @@ import (
 	"github.com/cerera/core/common"
 )
 
-var nonce, txValue, txData, gasLimit, gasPrice, to = uint64(1337), FloatToBigInt(11.55), []byte("test data"), float64(16438), big.NewInt(63992), HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")
+var nonce, txValue, txData, gasLimit, gasPrice, to = uint64(1337), FloatToBigInt(11.55), []byte("test data"), uint64(56438), big.NewInt(63992), HexToAddress("0xe7925c3c6FC91Cc41319eE320D297549fF0a1Cfd16425e7ad95ED556337ea2873A1191717081c42F2575F09B6bc60206")
 
 func TestCreate(t *testing.T) {
 	dna := make([]byte, 0, 16)
@@ -36,7 +36,7 @@ func TestCreate(t *testing.T) {
 		t.Errorf("Different gas price! Have %d, want %d", itx.Value(), big.NewInt(15))
 	}
 	if itx.Gas() != 1000000 {
-		t.Errorf("Different gas price! Have %d, want %d", itx.Value(), big.NewInt(1000000))
+		t.Errorf("Different gas! Have %d, want %d", itx.Gas(), uint64(1000000))
 	}
 
 	var ttx, err = CreateTransaction(1337, to, BigIntToFloat(txValue), 100001, "test message")
@@ -65,9 +65,9 @@ func TestCost(t *testing.T) {
 	itx := NewTx(txs)
 
 	var calcCost = itx.Cost()
-	var expectedCost = big.NewInt(0).Mul(big.NewInt(15), big.NewInt(0).Mul(big.NewInt(1000000), big.NewInt(1000000000000000000))) // 15 * 1000000 * 10^18
+	var expectedCost = new(big.Int).Mul(big.NewInt(15), big.NewInt(1000000)) // 15 * 1000000
 	if calcCost.Cmp(expectedCost) != 0 {
-		t.Errorf("Differenet costs! Have %f, want %f", BigIntToFloat(calcCost), BigIntToFloat(expectedCost))
+		t.Errorf("Differenet costs! Have %s, want %s", calcCost.String(), expectedCost.String())
 	}
 }
 
@@ -122,7 +122,7 @@ func TestSerialize(t *testing.T) {
 	}
 
 	if tx.Gas() != 1000000 {
-		t.Errorf("Gas mismatch: got %f, want 1000000", tx.Gas())
+		t.Errorf("Gas mismatch: got %d, want 1000000", tx.Gas())
 	}
 
 	if tx.Nonce() != 0x1 {
@@ -205,7 +205,7 @@ func TestSize(t *testing.T) {
 }
 
 func TestCreateCoinbase(t *testing.T) {
-	NewCoinBaseTransaction(nonce, to, txValue, gasLimit, gasPrice, txData)
+	NewCoinBaseTransaction(nonce, to, txValue, uint64(gasLimit), gasPrice, txData)
 }
 
 func TestCreateFaucet(t *testing.T) {
@@ -228,37 +228,37 @@ func TestDna(t *testing.T) {
 func TestGasCostCalculation(t *testing.T) {
 	tests := []struct {
 		name     string
-		gasLimit float64
+		gasLimit uint64
 		gasPrice *big.Int
 		expected string
 	}{
 		{
 			name:     "Минимальная транзакция",
-			gasLimit: 3.0,
+			gasLimit: 3,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "3000000000000000000000000000000",
+			expected: "3000000000000",
 		},
 		{
 			name:     "Стандартная транзакция",
-			gasLimit: 5.0,
+			gasLimit: 5,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "5000000000000000000000000000000",
+			expected: "5000000000000",
 		},
 		{
 			name:     "Высокий лимит газа",
-			gasLimit: 50000.0,
+			gasLimit: 50000,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "50000000000000000000000000000000000",
+			expected: "50000000000000000",
 		},
 		{
 			name:     "Ethereum-совместимый лимит",
-			gasLimit: 21000.0,
+			gasLimit: 21000,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "21000000000000000000000000000000000",
+			expected: "21000000000000000",
 		},
 		{
 			name:     "Нулевой лимит газа",
-			gasLimit: 0.0,
+			gasLimit: 0,
 			gasPrice: FloatToBigInt(0.000001),
 			expected: "0",
 		},
@@ -283,7 +283,7 @@ func TestGasCostCalculation(t *testing.T) {
 			}
 
 			// Проверяем, что стоимость газа = gasPrice * gasLimit
-			expectedCost := new(big.Int).Mul(tt.gasPrice, FloatToBigInt(tt.gasLimit))
+			expectedCost := new(big.Int).Mul(tt.gasPrice, Uint64ToBigInt(tt.gasLimit))
 			if cost.Cmp(expectedCost) != 0 {
 				t.Errorf("Cost calculation mismatch: got %s, want %s", cost.String(), expectedCost.String())
 			}
@@ -297,35 +297,35 @@ func TestGasPriceValidation(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		gasLimit    float64
+		gasLimit    uint64
 		gasPrice    *big.Int
 		shouldPass  bool
 		description string
 	}{
 		{
 			name:        "Минимальная цена газа",
-			gasLimit:    3.0,
+			gasLimit:    3,
 			gasPrice:    minGasPrice,
 			shouldPass:  true,
 			description: "Должна пройти валидацию",
 		},
 		{
 			name:        "Цена выше минимума",
-			gasLimit:    3.0,
+			gasLimit:    3,
 			gasPrice:    FloatToBigInt(0.000002),
 			shouldPass:  true,
 			description: "Должна пройти валидацию",
 		},
 		{
 			name:        "Цена ниже минимума",
-			gasLimit:    3.0,
+			gasLimit:    3,
 			gasPrice:    FloatToBigInt(0.0000005),
 			shouldPass:  false,
 			description: "Должна быть отклонена",
 		},
 		{
 			name:        "Нулевая цена газа",
-			gasLimit:    3.0,
+			gasLimit:    3,
 			gasPrice:    big.NewInt(0),
 			shouldPass:  true,
 			description: "Нулевая цена разрешена",
@@ -366,27 +366,27 @@ func TestGasCostEdgeCases(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		gasLimit float64
+		gasLimit uint64
 		gasPrice *big.Int
 	}{
 		{
 			name:     "Очень маленький лимит газа",
-			gasLimit: 0.000001,
+			gasLimit: 1,
 			gasPrice: minGasPrice,
 		},
 		{
 			name:     "Очень большой лимит газа",
-			gasLimit: 1000000.0,
+			gasLimit: 1000000,
 			gasPrice: minGasPrice,
 		},
 		{
 			name:     "Очень маленькая цена газа",
-			gasLimit: 3.0,
+			gasLimit: 3,
 			gasPrice: FloatToBigInt(0.0000001),
 		},
 		{
 			name:     "Очень большая цена газа",
-			gasLimit: 3.0,
+			gasLimit: 3,
 			gasPrice: FloatToBigInt(1000.0),
 		},
 	}
@@ -410,12 +410,12 @@ func TestGasCostEdgeCases(t *testing.T) {
 			}
 
 			// Проверяем, что стоимость газа = gasPrice * gasLimit
-			expectedCost := new(big.Int).Mul(tt.gasPrice, FloatToBigInt(tt.gasLimit))
+			expectedCost := new(big.Int).Mul(tt.gasPrice, Uint64ToBigInt(tt.gasLimit))
 			if cost.Cmp(expectedCost) != 0 {
 				t.Errorf("Cost calculation mismatch: got %s, want %s", cost.String(), expectedCost.String())
 			}
 
-			t.Logf("Gas limit: %f, Gas price: %s wei, Cost: %s wei (%.6f CER)",
+			t.Logf("Gas limit: %d, Gas price: %s wei, Cost: %s wei (%.6f CER)",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), BigIntToFloat(cost))
 		})
 	}
@@ -427,7 +427,7 @@ func TestUpdateNonce(t *testing.T) {
 		1,
 		HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
 		big.NewInt(1000000000000000000),
-		3.0,
+		3,
 		FloatToBigInt(0.000001),
 		[]byte("test data"),
 	)

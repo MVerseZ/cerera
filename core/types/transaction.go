@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -45,7 +44,7 @@ type TxData interface {
 
 	// chainID() *big.Int
 	data() []byte
-	gas() float64
+	gas() uint64
 	gasPrice() *big.Int
 	value() *big.Int
 	nonce() uint64
@@ -109,7 +108,7 @@ func (s TxByNonce) Less(i, j int) bool { return s[i].Nonce() < s[j].Nonce() }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 func (tx *GTransaction) Cost() *big.Int {
-	gasAsInt := common.FloatToBigInt(tx.Gas())
+	gasAsInt := new(big.Int).SetUint64(tx.Gas())
 	total := new(big.Int).Mul(tx.GasPrice(), gasAsInt)
 	return total
 }
@@ -120,7 +119,7 @@ func NewTx(inner TxData) *GTransaction {
 	return tx
 }
 
-func CreateTransaction(nonce uint64, addressTo Address, count float64, gas float64, message string) (*GTransaction, error) {
+func CreateTransaction(nonce uint64, addressTo Address, count float64, gas uint64, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
@@ -132,7 +131,7 @@ func CreateTransaction(nonce uint64, addressTo Address, count float64, gas float
 	return tx, nil
 }
 
-func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas float64, gasPrice *big.Int, message string) (*GTransaction, error) {
+func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64, gas uint64, gasPrice *big.Int, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
@@ -145,7 +144,7 @@ func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64
 }
 
 // CreateUnbroadcastTransactionWei creates a transaction using exact wei amount (no float conversion).
-func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas float64, gasPrice *big.Int, message string) (*GTransaction, error) {
+func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas uint64, gasPrice *big.Int, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
@@ -238,7 +237,7 @@ func (tx *GTransaction) Nonce() uint64 {
 	return tx.inner.nonce()
 }
 
-func (tx *GTransaction) Gas() float64 {
+func (tx *GTransaction) Gas() uint64 {
 	return tx.inner.gas()
 }
 
@@ -378,7 +377,7 @@ func crvTxHash(t TxData) (h common.Hash) {
 	tNonce := make([]byte, 8)
 	tGas := make([]byte, 8)
 	binary.BigEndian.PutUint64(tNonce, t.nonce())
-	binary.BigEndian.PutUint64(tGas, math.Float64bits(t.gas()))
+	binary.BigEndian.PutUint64(tGas, t.gas())
 
 	hw.Write(h[:0])
 	hw.Write(t.data())

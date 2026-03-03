@@ -20,7 +20,12 @@ type VM struct {
 
 // NewVM создает новую виртуальную машину с указанным байткодом и контекстом
 func NewVM(code []byte, ctx *Context) *VM {
-	gasMeter := NewGasMeter(ctx.GasLimit)
+	var gasMeter GasMeter
+	if ctx == nil || ctx.GasLimit == 0 {
+		gasMeter = NewGasMeter()
+	} else {
+		gasMeter = NewGasMeterWithLimit(ctx.GasLimit)
+	}
 
 	return &VM{
 		code:         code,
@@ -97,6 +102,69 @@ func (vm *VM) Run() ([]byte, error) {
 
 	// Выполнение завершено без явного RETURN/STOP
 	return vm.returnData, nil
+}
+
+// PreCompile вычисляет стоимость газа для транзакции/контракта без выполнения
+func (vm *VM) PreCompile(code []byte) (uint64, error) {
+	var (
+		pc             = 0
+		gasUsed uint64 = 0
+	)
+
+	codeLen := len(code)
+	for pc < codeLen {
+		op := Opcode(code[pc])
+		pc++
+
+		// Базовый газ за каждую инструкцию
+		gasUsed += GasBase
+
+		switch {
+		// Арифметика, сравнения и простейшие операции
+		case op >= ADD && op <= SIGNEXTEND:
+			gasUsed += GasVeryLow
+		case op >= LT && op <= EQ:
+			gasUsed += GasVeryLow
+		case op >= ISZERO && op <= SAR:
+			gasUsed += GasVeryLow
+
+		// Стековые, память, storage
+		case op == MLOAD:
+			gasUsed += GasVeryLow
+		case op == MSTORE || op == MSTORE8:
+			gasUsed += GasVeryLow
+		case op == SLOAD:
+			gasUsed += GasSLoad
+		case op == SSTORE:
+			gasUsed += GasSStore
+		case op == POP || op == MSIZE:
+			// POP и MSIZE почти бесплатные
+			gasUsed += GasBase
+
+		// CALL инструкции
+		case op == CALL:
+			gasUsed += GasCall // + возможно, GasCallValue если value > 0
+
+		// PUSH
+		case op >= PUSH1 && op <= PUSH32:
+			pushBytes := int(op - PUSH1 + 1)
+			pc += pushBytes
+
+		// RETURN/REVERT
+		case op == RETURN || op == REVERT:
+			// RETURN/REVERT бесплатные сами по себе
+			// Можно оценить возврат/откат как GasReturn/GasRevert
+			gasUsed += GasReturn
+		}
+	}
+
+	// Проверка переполнения газа
+	if gasUsed > vm.gasMeter.GasLimit() {
+		return gasUsed, fmt.Errorf("estimated gas exceeds limit: %d > %d", gasUsed, vm.gasMeter.GasLimit())
+	}
+
+	return gasUsed, nil
+
 }
 
 // executeOpcode выполняет один опкод

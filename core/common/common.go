@@ -82,3 +82,7 @@ func BigIntToFloat(bi *big.Int) float64 {
 
 	return result
 }
+
+func Uint64ToBigInt(u uint64) *big.Int {
+	return new(big.Int).SetUint64(u)
+}

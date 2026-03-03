@@ -459,7 +459,7 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 	newBlock := block.NewBlock(newHeader)
 
 	// Фильтруем транзакции по GasLimit: добавляем только те, которые помещаются в лимит
-	var totalGasUsed float64
+	var totalGasUsed uint64
 	var selectedTxs []types.GTransaction
 
 	for _, tx := range transactions {
@@ -474,7 +474,7 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 
 		// Для обычных транзакций проверяем GasLimit
 		// Проверяем, не превысит ли добавление этой транзакции GasLimit
-		if float64(totalGasUsed)+txGas <= float64(newHeader.GasLimit) {
+		if totalGasUsed+txGas <= newHeader.GasLimit {
 			selectedTxs = append(selectedTxs, tx)
 			totalGasUsed += txGas
 		} else {

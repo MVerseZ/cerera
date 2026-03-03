@@ -73,7 +73,7 @@ type txJSONOutput struct {
 // MarshalJSON marshals as JSON with unified format (decimal strings for value/gasPrice, numbers for gas/nonce)
 func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 	var output txJSONOutput
-	
+
 	// Common fields for all transaction types
 	output.Hash = tx.Hash()
 	output.Type = uint64(tx.Type())
@@ -82,7 +82,7 @@ func (tx *GTransaction) MarshalJSON() ([]byte, error) {
 	if !from.IsEmpty() {
 		output.From = &from
 	}
-	
+
 	// Type-specific fields
 	switch itx := tx.inner.(type) {
 	case *PGTransaction:
@@ -140,7 +140,7 @@ type txJSONInput struct {
 	To       *Address       `json:"to,omitempty"`
 	From     *Address       `json:"from,omitempty"`
 	Nonce    *DecimalUint64 `json:"nonce,omitempty"`
-	Gas      *DecimalUint64 `json:"gas,omitempty"`
+	Gas      *uint64        `json:"gas,omitempty"`
 	GasPrice *DecimalBig    `json:"gasPrice,omitempty"`
 	Value    *DecimalBig    `json:"value,omitempty"`
 	Data     *common.Bytes  `json:"input,omitempty"`
@@ -181,7 +181,7 @@ func (tx *GTransaction) unmarshalFromNewFormat(dec txJSONInput) error {
 		if dec.Gas == nil {
 			return errors.New("missing required field 'gas' in transaction")
 		}
-		itx.Gas = float64(*dec.Gas)
+		itx.Gas = *dec.Gas
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
@@ -239,7 +239,7 @@ func (tx *GTransaction) unmarshalFromNewFormat(dec txJSONInput) error {
 		if dec.Gas == nil {
 			return errors.New("missing required field 'gas' in transaction")
 		}
-		itx.Gas = float64(*dec.Gas)
+		itx.Gas = *dec.Gas
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
@@ -272,7 +272,7 @@ func (tx *GTransaction) unmarshalFromNewFormat(dec txJSONInput) error {
 		if dec.Gas == nil {
 			return errors.New("missing required field 'gas' in transaction")
 		}
-		itx.Gas = float64(*dec.Gas)
+		itx.Gas = uint64(*dec.Gas)
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
@@ -359,7 +359,7 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 			return errors.New("missing required field 'gas' in transaction")
 		}
 		// JSON carries gas as uint64; convert to float64 for PGTransaction
-		itx.Gas = float64(*dec.Gas)
+		itx.Gas = uint64(*dec.Gas)
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
@@ -419,7 +419,7 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 			return errors.New("missing required field 'gas' in transaction")
 		}
 		// JSON carries gas as uint64; convert to float64 for PGTransaction
-		itx.Gas = float64(*dec.Gas)
+		itx.Gas = uint64(*dec.Gas)
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
@@ -449,7 +449,7 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 			return errors.New("missing required field 'gas' in transaction")
 		}
 		// JSON carries gas as uint64; convert to float64 for CBTransaction
-		itx.Gas = float64(*dec.Gas)
+		itx.Gas = uint64(*dec.Gas)
 
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")

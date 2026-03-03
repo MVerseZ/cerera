@@ -134,7 +134,7 @@ type BlockChainStatus struct {
 	Size       int64       `json:"size,omitempty"`
 	AvgTime    float64     `json:"avgTime,omitempty"`
 	Txs        uint64      `json:"txs,omitempty"`
-	Gas        float64     `json:"gas,omitempty"`
+	Gas        uint64      `json:"gas,omitempty"`
 	GasPrice   float64     `json:"gasPrice,omitempty"`
 	Difficulty uint64      `json:"difficulty,omitempty"`
 }
@@ -607,7 +607,7 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 	bc.info.AvgTime = bc.stats.avgTime
 	bc.info.Txs += uint64(len(newBlock.Transactions))
 
-	var blockGas float64
+	var blockGas uint64
 	for _, tx := range newBlock.Transactions {
 		if txType := tx.Type(); txType != types.CoinbaseTxType && txType != types.FaucetTxType {
 			gas := tx.Gas()
@@ -623,7 +623,7 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 
 	bc.metrics.blocksTotal.Inc()
 	bc.metrics.txsTotal.Add(float64(len(newBlock.Transactions)))
-	bc.metrics.gasTotal.Add(blockGas)
+	bc.metrics.gasTotal.Add(float64(blockGas))
 	bc.metrics.avgBlockTimeSeconds.Set(bc.stats.avgTime)
 	bc.metrics.difficultyGauge.Set(float64(bc.Difficulty))
 
@@ -632,7 +632,7 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 		blockSizeBytes := len(newBlock.ToBytes())
 		bc.metrics.blockSizeBytes.Observe(float64(blockSizeBytes))
 		bc.metrics.blockchainSizeBytes.Set(float64(bc.info.Size))
-		bc.metrics.blockGasUsed.Observe(float64(newBlock.Head.GasUsed))
+		bc.metrics.blockGasUsed.Observe(float64(newBlock.Head.GasUsed)) //TODO replace later with realization
 	}
 
 	// Persist block only when a storage backend and path are configured.

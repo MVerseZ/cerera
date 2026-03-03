@@ -20,6 +20,7 @@ import (
 	"github.com/cerera/gigea"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
+	"github.com/cerera/pallada"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -84,12 +85,12 @@ var v Validator
 
 type Validator interface {
 	// CheckAddress(addr types.Address) bool
-	GasPrice() *big.Int
+	// GasPrice() *big.Int
 	GetVersion() string
-	Exec(method string, params []interface{}) interface{}
+	Exec(method string, params []any) any
 	ExecuteTransaction(tx types.GTransaction) error
 	FindTransaction(hash common.Hash) *types.GTransaction
-	CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas float64, message string) (*types.GTransaction, error)
+	CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas uint64, message string) (*types.GTransaction, error)
 	SetUp(chainId *big.Int)
 	ServiceName() string
 	Signer() types.Signer
@@ -111,7 +112,6 @@ type CoreValidator struct {
 	balance        *big.Int
 	currentAddress types.Address
 	currentVersion string
-	minGasPrice    *big.Int
 }
 
 // Exec DTOs (typed request objects)
@@ -159,8 +159,6 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	ConfigChain(v)
 	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
-	// Configure min gas price from config
-	v.(*CoreValidator).minGasPrice = common.FloatToBigInt(cfg.POOL.MinGas)
 	return v, nil
 }
 
@@ -169,7 +167,7 @@ func (v *CoreValidator) CheckAddress(addr types.Address) bool {
 	return v.currentAddress != addr
 }
 
-func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas float64, message string) (*types.GTransaction, error) {
+func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas uint64, message string) (*types.GTransaction, error) {
 	// here we create transaction by input values
 	tx, err := types.CreateUnbroadcastTransaction(nonce, addressTo, count, gas, common.FloatToBigInt(3114000000000000), message) //TODO replace later with realization
 	if err != nil {
@@ -240,9 +238,24 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 			return NotEnoughtInputs
 		}
 
-		// Validate gas cost
-		if v.minGasPrice != nil && gasCost.Sign() > 0 && gasCost.Cmp(v.minGasPrice) < 0 {
-			return errors.New("gas cost below minimum")
+		// Validate gas limit against minimal required gas for bytecode
+		gasLimit := uint64(tx.Gas())
+		vmCtx := pallada.NewContextWithStorage(
+			types.Address{},
+			types.Address{},
+			big.NewInt(0),
+			tx.Data(),
+			gasLimit,
+			big.NewInt(0),
+			nil,
+			nil,
+		)
+		minGas, err := pallada.NewVM(tx.Data(), vmCtx).PreCompile(tx.Data())
+		if err != nil {
+			return err
+		}
+		if gasLimit > 0 && gasLimit < minGas {
+			return errors.New("gas limit below minimum")
 		}
 
 		// Deduct gas from sender (gas is burned)
@@ -271,7 +284,8 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 }
 
 func (v *CoreValidator) GasPrice() *big.Int {
-	return v.minGasPrice
+	// Default minimal gas price is defined by the Pallada VM
+	return common.FloatToBigInt(pallada.MinGasPrice())
 }
 
 func (v *CoreValidator) GetID() string {
@@ -476,7 +490,7 @@ func (v *CoreValidator) ServiceName() string {
 
 func (v *CoreValidator) SetUp(chainId *big.Int) {
 	// default min gas price; can be overridden from config in NewValidator
-	v.minGasPrice = common.FloatToBigInt(0.000001)
+	// v.minGasPrice = common.FloatToBigInt(0.000001)
 	v.signer = types.NewSimpleSigner(chainId)
 	if v.Chain == nil {
 		return
@@ -575,7 +589,7 @@ func (validator *CoreValidator) ValidateRawTransaction(tx *types.GTransaction) b
 	return true
 }
 
-func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
+func (v *CoreValidator) Exec(method string, params []any) any {
 	switch method {
 	case "_create":
 		// Prefer typed DTO in params[0]
@@ -588,7 +602,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 				if err != nil {
 					return err
 				}
-				tx, err := types.CreateUnbroadcastTransactionWei(p.Nonce, p.To, wei, p.Gas, common.FloatToBigInt(3114000000000000), p.Msg) //TODO replace later with realization
+				tx, err := types.CreateUnbroadcastTransactionWei(p.Nonce, p.To, wei, uint64(p.Gas), common.FloatToBigInt(3114000000000000), p.Msg) //TODO replace later with realization
 				if err != nil {
 					return err
 				}
@@ -611,7 +625,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 			return errors.New("parameter type mismatch for create")
 		}
-		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, gas, common.FloatToBigInt(3114000000000000), msg) //TODO replace later with realization
+		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, uint64(gas), common.FloatToBigInt(3114000000000000), msg) //TODO replace later with realization
 		if err != nil {
 			return err
 		}
@@ -632,7 +646,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 					return err
 				}
 				nonce := gigea.GetAndIncrementNonce()
-				tx, err := types.CreateUnbroadcastTransactionWei(nonce, addrTo, wei, p.Gas, common.FloatToBigInt(3114000000000000), p.Msg)
+				tx, err := types.CreateUnbroadcastTransactionWei(nonce, addrTo, wei, uint64(p.Gas), common.FloatToBigInt(3114000000000000), p.Msg)
 				if err != nil {
 					return err
 				}
@@ -663,7 +677,7 @@ func (v *CoreValidator) Exec(method string, params []interface{}) interface{} {
 			return errors.New("parameter type mismatch for send")
 		}
 		var addrTo = types.HexToAddress(addrStr)
-		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, gas, common.FloatToBigInt(3114000000000000), msg) // fix gas price
+		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gas), common.FloatToBigInt(3114000000000000), msg) // fix gas price
 		if err != nil {
 			return err.Error()
 		}

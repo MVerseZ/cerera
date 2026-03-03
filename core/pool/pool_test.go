@@ -124,7 +124,7 @@ var maxCap = 10
 
 // TestRaceConditionAddRawTransaction tests for race conditions when adding transactions concurrently
 func TestRaceConditionAddRawTransaction(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -167,7 +167,7 @@ func TestRaceConditionAddRawTransaction(t *testing.T) {
 
 // TestRaceConditionGetTransaction tests for race conditions when getting transactions concurrently
 func TestRaceConditionGetTransaction(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -210,7 +210,7 @@ func TestRaceConditionGetTransaction(t *testing.T) {
 
 // TestRaceConditionUpdateTx tests for race conditions when updating transactions concurrently
 func TestRaceConditionUpdateTx(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -257,7 +257,7 @@ func TestRaceConditionUpdateTx(t *testing.T) {
 
 // TestNoDuplicateInPrepared tests that transactions are not duplicated in Prepared
 func TestNoDuplicateInPrepared(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -282,7 +282,7 @@ func TestNoDuplicateInPrepared(t *testing.T) {
 
 // TestInfoMemoryLeak tests that Info is properly recalculated and doesn't leak memory
 func TestInfoMemoryLeak(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -327,7 +327,7 @@ func TestInfoMemoryLeak(t *testing.T) {
 
 // TestGetTransactionWithLock tests that GetTransaction works correctly with locking
 func TestGetTransactionWithLock(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -357,7 +357,7 @@ func TestGetTransactionWithLock(t *testing.T) {
 
 // TestSendTransactionUpdatesMetrics tests that SendTransaction updates metrics correctly
 func TestSendTransactionUpdatesMetrics(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 
@@ -384,7 +384,7 @@ func TestSendTransactionUpdatesMetrics(t *testing.T) {
 
 // TestUnRegisterWithLock tests that UnRegister works correctly with locking
 func TestUnRegisterWithLock(t *testing.T) {
-	tPool, err := InitPool(float64(minGas), maxCap*10)
+	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
 	require.NotNil(t, tPool)
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+const MAX_GAS_LIMIT = 100000000000
+
 // GasMeterImpl реализует интерфейс GasMeter
 // Принцип: Single Responsibility (SRP) - только управление газом
 type GasMeterImpl struct {
@@ -12,9 +14,16 @@ type GasMeterImpl struct {
 }
 
 // NewGasMeter создает новый счетчик газа
-func NewGasMeter(gasLimit uint64) *GasMeterImpl {
+func NewGasMeterWithLimit(gasLimit uint64) *GasMeterImpl {
 	return &GasMeterImpl{
 		gasLimit: gasLimit,
+		gasUsed:  0,
+	}
+}
+
+func NewGasMeter() *GasMeterImpl {
+	return &GasMeterImpl{
+		gasLimit: MAX_GAS_LIMIT,
 		gasUsed:  0,
 	}
 }
@@ -80,4 +89,8 @@ func CalculateMemoryGas(currentSize, newSize uint64) uint64 {
 	// Упрощенная формула для производительности
 	cost := (expansion * expansion / 512) + (expansion * GasExtByte)
 	return cost
+}
+
+func MinGasPrice() float64 {
+	return 0.0000001
 }
