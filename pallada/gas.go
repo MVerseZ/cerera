@@ -6,6 +6,15 @@ import (
 
 const MAX_GAS_LIMIT = 100000000000
 
+// MinTransferGas is the minimum gas required for a canonical value transfer.
+// Derived from precompiling the minimal transfer bytecode:
+//
+//	PUSH1+SLOAD+PUSH1+SUB+PUSH1+SSTORE (sender side)
+//	PUSH1+PUSH1+SLOAD+ADD+PUSH1+SSTORE (receiver side) + STOP
+//
+// = 632 gas units (1 gas unit = 1 DUST, 1 CER = 1,000,000 DUST).
+const MinTransferGas uint64 = 632
+
 // GasMeterImpl реализует интерфейс GasMeter
 // Принцип: Single Responsibility (SRP) - только управление газом
 type GasMeterImpl struct {
@@ -91,6 +100,9 @@ func CalculateMemoryGas(currentSize, newSize uint64) uint64 {
 	return cost
 }
 
+// MinGasPrice returns the minimum gas price expressed in CER.
+// 1 GAS UNIT = 1 DUST, 1 CER = 1,000,000 DUST → 1 DUST = 0.000001 CER.
+// FloatToBigInt(MinGasPrice()) == 1 DUST == 1 gas unit cost.
 func MinGasPrice() float64 {
-	return 0.0000001
+	return 0.000001 // 1 DUST per gas unit
 }

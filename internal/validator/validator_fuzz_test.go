@@ -37,7 +37,7 @@ func FuzzValidateRawTransaction(f *testing.F) {
 
 	// Create seed transactions
 	addr2 := types.EmptyAddress()
-	tx1, _ := types.CreateUnbroadcastTransaction(1, addr2, 10.0, 20000, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
+	tx1, _ := types.CreateUnbroadcastTransaction(1, addr2, 10.0, 20000, big.NewInt(1), "test")
 	f.Add(tx1.Hash().Bytes())
 
 	f.Fuzz(func(t *testing.T, hashBytes []byte) {
@@ -47,7 +47,7 @@ func FuzzValidateRawTransaction(f *testing.F) {
 		}
 
 		var addr types.Address
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, 2000, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, 2000, big.NewInt(1), "test")
 
 		result := validator.ValidateRawTransaction(tx)
 		// Just check that it doesn't panic
@@ -136,7 +136,7 @@ func FuzzTransactionValue(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, 2000, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, 2000, big.NewInt(1), "test")
 
 		result := tx.Value()
 		if result == nil {
@@ -157,7 +157,7 @@ func FuzzTransactionCost(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, gasLimit, common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, value, gasLimit, big.NewInt(1), "test")
 
 		cost := tx.Cost()
 		if cost == nil {
@@ -176,7 +176,7 @@ func FuzzTransactionGas(f *testing.F) {
 	f.Fuzz(func(t *testing.T, gasLimit uint64) {
 		// Limit gas to reasonable range
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, uint64(gasLimit), common.FloatToBigInt(3114000000000000), "test") //TODO replace later with realization
+		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, uint64(gasLimit), big.NewInt(1), "test")
 
 		gas := tx.Gas()
 		// Gas should match or be close to gasLimit
@@ -198,7 +198,7 @@ func FuzzTransactionHash(f *testing.F) {
 		}
 
 		addr := types.EmptyAddress()
-		tx, _ := types.CreateUnbroadcastTransaction(nonceRaw, addr, value, uint64(gasLimit), common.FloatToBigInt(3114000000000000), string(messageRaw)) //TODO replace later with realization
+		tx, _ := types.CreateUnbroadcastTransaction(nonceRaw, addr, value, uint64(gasLimit), big.NewInt(1), string(messageRaw))
 
 		hash := tx.Hash()
 		if hash == (common.Hash{}) {

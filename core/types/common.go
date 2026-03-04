@@ -29,10 +29,11 @@ var (
 )
 
 // Re-exports from common package (functions)
-func FloatToBigInt(f float64) *big.Int              { return common.FloatToBigInt(f) }
-func BigIntToFloat(bi *big.Int) float64             { return common.BigIntToFloat(bi) }
-func DecimalStringToWei(s string) (*big.Int, error) { return common.DecimalStringToWei(s) }
-func Uint64ToBigInt(u uint64) *big.Int              { return common.Uint64ToBigInt(u) }
+func FloatToBigInt(f float64) *big.Int               { return common.FloatToBigInt(f) }
+func BigIntToFloat(bi *big.Int) float64              { return common.BigIntToFloat(bi) }
+func DecimalStringToDust(s string) (*big.Int, error) { return common.DecimalStringToDust(s) }
+func DecimalStringToWei(s string) (*big.Int, error)  { return common.DecimalStringToDust(s) }
+func Uint64ToBigInt(u uint64) *big.Int               { return common.Uint64ToBigInt(u) }
 
 // Re-exports from crypto package
 var (

@@ -63,6 +63,28 @@ func TestGasMeter_GasLimit(t *testing.T) {
 	}
 }
 
+func TestMinTransferGas(t *testing.T) {
+	// MinTransferGas is the canonical cost for a simple value transfer in the Pallada VM.
+	// 1 CER = 1,000,000 DUST, 1 gas unit = 1 DUST.
+	if MinTransferGas != 632 {
+		t.Errorf("MinTransferGas = %d, want 632", MinTransferGas)
+	}
+
+	// Verify it converts to the expected CER price.
+	expectedCER := float64(MinTransferGas) / 1_000_000
+	if expectedCER != 0.000632 {
+		t.Errorf("MinTransferGas in CER = %f, want 0.000632", expectedCER)
+	}
+}
+
+func TestMinGasPrice(t *testing.T) {
+	// 1 DUST = 0.000001 CER
+	got := MinGasPrice()
+	if got != 0.000001 {
+		t.Errorf("MinGasPrice() = %f, want 0.000001", got)
+	}
+}
+
 func TestCalculateMemoryGas(t *testing.T) {
 	tests := []struct {
 		name     string

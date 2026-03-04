@@ -98,19 +98,14 @@ func TestGasValidation(t *testing.T) {
 			description: "Должна пройти валидацию",
 		},
 		{
-			name:        "Цена ниже минимума",
-			gasLimit:    3,
-			gasPrice:    types.FloatToBigInt(pallada.MinGasPrice() / 2),
-			shouldPass:  false,
-			description: "Должна быть отклонена",
-		},
-		{
 			name:        "Нулевая цена газа",
 			gasLimit:    3,
 			gasPrice:    big.NewInt(0),
 			shouldPass:  true,
-			description: "Нулевая цена разрешена",
+			description: "Нулевая цена разрешена (системные транзакции)",
 		},
+		// Примечание: с точностью 1 DUST невозможно задать цену "ниже минимума но не ноль":
+		// любое значение < 0.000001 CER конвертируется в 0 DUST (разрешено как "бесплатно").
 		{
 			name:        "Стандартная транзакция",
 			gasLimit:    5,
@@ -130,14 +125,14 @@ func TestGasValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем транзакцию
-			tx := types.NewTransaction(
-				1, // nonce
-				types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				big.NewInt(1000000000000000000), // 1 CER
-				uint64(tt.gasLimit),
-				tt.gasPrice,
-				[]byte("test data"),
-			)
+		tx := types.NewTransaction(
+			1, // nonce
+			types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+			big.NewInt(1_000_000), // 1 CER in DUST
+			uint64(tt.gasLimit),
+			tt.gasPrice,
+			[]byte("test data"),
+		)
 
 			// Проверяем стоимость газа
 			cost := tx.Cost()
@@ -152,7 +147,7 @@ func TestGasValidation(t *testing.T) {
 					passesValidation, tt.shouldPass, tt.description)
 			}
 
-			t.Logf("Gas limit: %d, Gas price: %s wei, Cost: %s wei (%.6f CER), Validation: %v",
+			t.Logf("Gas limit: %d, Gas price: %s DUST, Cost: %s DUST (%.6f CER), Validation: %v",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), types.BigIntToFloat(cost), passesValidation)
 		})
 	}
@@ -170,7 +165,7 @@ func TestMinGasPrice(t *testing.T) {
 		t.Errorf("MinGasPrice = %s, want %s", actualMinGasPrice.String(), expectedMinGasPrice.String())
 	}
 
-	t.Logf("MinGasPrice: %s wei (%.6f CER)", actualMinGasPrice.String(), types.BigIntToFloat(actualMinGasPrice))
+	t.Logf("MinGasPrice: %s DUST (%.6f CER)", actualMinGasPrice.String(), types.BigIntToFloat(actualMinGasPrice))
 }
 
 // TestGasCostCalculation проверяет расчет стоимости газа в контексте валидатора
@@ -187,26 +182,26 @@ func TestGasCostCalculation(t *testing.T) {
 		{
 			name:     "Минимальная транзакция",
 			gasLimit: 3,
-			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "3000000000000",
+			gasPrice: types.FloatToBigInt(0.000001), // 1 DUST/unit
+			expected: "3",                           // 3 × 1 DUST
 		},
 		{
 			name:     "Стандартная транзакция",
 			gasLimit: 5,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "5000000000000",
+			expected: "5",
 		},
 		{
 			name:     "Высокий лимит газа",
 			gasLimit: 50000,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "50000000000000000",
+			expected: "50000",
 		},
 		{
-			name:     "Ethereum-совместимый лимит",
+			name:     "Стандартный лимит газа",
 			gasLimit: 21000,
 			gasPrice: types.FloatToBigInt(0.000001),
-			expected: "21000000000000000",
+			expected: "21000",
 		},
 	}
 
@@ -215,7 +210,7 @@ func TestGasCostCalculation(t *testing.T) {
 			tx := types.NewTransaction(
 				1,
 				types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				big.NewInt(1000000000000000000),
+				big.NewInt(1_000_000), // 1 CER in DUST
 				tt.gasLimit,
 				tt.gasPrice,
 				[]byte("test data"),
@@ -241,7 +236,7 @@ func TestGasCostCalculation(t *testing.T) {
 					cost.String(), validator.GasPrice().String())
 			}
 
-			t.Logf("Gas limit: %d, Gas price: %s wei, Cost: %s wei (%.6f CER)",
+			t.Logf("Gas limit: %d, Gas price: %s DUST, Cost: %s DUST (%.6f CER)",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), types.BigIntToFloat(cost))
 		})
 	}
@@ -507,9 +502,9 @@ func TestTransactionGetFormat(t *testing.T) {
 	tx := types.NewTransaction(
 		1,
 		toAddr,
-		big.NewInt(1000000000000000000), // 1 ETH in wei
+		big.NewInt(1_000_000), // 1 CER in DUST
 		21000,
-		big.NewInt(20000000000), // 20 gwei
+		big.NewInt(1), // 1 DUST per gas unit
 		[]byte("test data"),
 	)
 

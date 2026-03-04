@@ -50,14 +50,15 @@ func Hex2Bytes(str string) []byte {
 	return h
 }
 
-// DecimalStringToWei converts exact decimal string (e.g. "1.23") into wei (10^18) without binary float errors.
-// Returns error for malformed input. Accepts optional leading +/-, and up to 18 fractional digits.
-func DecimalStringToWei(s string) (*big.Int, error) {
+// DecimalStringToDust converts exact decimal string (e.g. "1.23") into dust (10^6) without binary float errors.
+// 1 CER = 1,000,000 DUST.
+// Returns error for malformed input. Accepts optional leading +/-, and up to 6 fractional digits.
+func DecimalStringToDust(s string) (*big.Int, error) {
 	r := new(big.Rat)
 	if _, ok := r.SetString(s); !ok {
 		return nil, errors.New("bad decimal")
 	}
-	scale := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+	scale := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(6), nil))
 	r.Mul(r, scale)
 	// Round to nearest integer towards zero; adjust policy if needed
 	if !r.IsInt() {
@@ -66,18 +67,20 @@ func DecimalStringToWei(s string) (*big.Int, error) {
 	return new(big.Int).Set(r.Num()), nil
 }
 
+// DecimalStringToWei is an alias for DecimalStringToDust kept for backward compatibility.
+func DecimalStringToWei(s string) (*big.Int, error) { return DecimalStringToDust(s) }
+
 func BigIntToFloat(bi *big.Int) float64 {
 	bigval := new(big.Float)
 	bigval.SetInt(bi)
-	bigval.SetPrec(128) // Higher precision to match FloatToBigInt
+	bigval.SetPrec(128)
 
-	// Use 10^18 as the divisor (like Ethereum wei)
+	// 1 CER = 1,000,000 DUST
 	coin := new(big.Float)
-	coin.SetInt(big.NewInt(1000000000000000000)) // 10^18
+	coin.SetInt(big.NewInt(1_000_000)) // 10^6
 
 	bigval.Quo(bigval, coin)
 
-	// Convert to float64 with higher precision
 	result, _ := bigval.Float64()
 
 	return result
