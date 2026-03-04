@@ -13,9 +13,9 @@ func TestTransactionFormatConsistency(t *testing.T) {
 	tx := NewTransaction(
 		1,
 		toAddr,
-		big.NewInt(1000000000000000000), // 1 ETH in wei
+		big.NewInt(1_000_000), // 1 CER in DUST
 		21000,
-		big.NewInt(20000000000), // 20 gwei
+		big.NewInt(1), // 1 DUST per gas unit
 		[]byte("test data"),
 	)
 
@@ -103,9 +103,9 @@ func TestTransactionFormatFields(t *testing.T) {
 	tx := NewTransaction(
 		42,
 		toAddr,
-		big.NewInt(5000000000000000000), // 5 ETH
+		big.NewInt(5_000_000), // 5 CER in DUST
 		50000,
-		big.NewInt(30000000000), // 30 gwei
+		big.NewInt(1), // 1 DUST per gas unit
 		[]byte{0x01, 0x02, 0x03, 0x04},
 	)
 

@@ -269,7 +269,7 @@ func TestGetFloat(t *testing.T) {
 		{"int", 42, 42, false},
 		{"uint64", uint64(999), 999, false},
 		{"string", "1.5", 1.5, false},
-		{"big.Int", new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil), 1.0, false}, // 1e18 wei = 1 CER
+		{"big.Int", big.NewInt(1_000_000), 1.0, false}, // 1,000,000 DUST = 1 CER
 		{"zero", float64(0), 0, false},
 		{"invalid", struct{}{}, 0, true},
 	}

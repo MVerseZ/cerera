@@ -23,27 +23,27 @@ func TestFloatToBigInt(t *testing.T) {
 		{
 			name:     "positive integer",
 			input:    1.0,
-			expected: big.NewInt(1000000000000000000), // 1 * 10^18
+			expected: big.NewInt(1_000_000), // 1 * 10^6 (1 CER = 1,000,000 DUST)
 		},
 		{
 			name:     "positive decimal",
 			input:    0.5,
-			expected: big.NewInt(500000000000000000), // 0.5 * 10^18
+			expected: big.NewInt(500_000), // 0.5 * 10^6
 		},
 		{
 			name:     "small decimal",
 			input:    0.000001,
-			expected: big.NewInt(1000000000000), // exact 1e-6 * 1e18
+			expected: big.NewInt(1), // 1 DUST (minimum unit)
 		},
 		{
 			name:     "large number",
 			input:    1000.0,
-			expected: big.NewInt(0).Mul(big.NewInt(1000), big.NewInt(1000000000000000000)),
+			expected: big.NewInt(1_000_000_000), // 1000 * 10^6
 		},
 		{
 			name:     "negative number",
 			input:    -1.0,
-			expected: big.NewInt(-1000000000000000000),
+			expected: big.NewInt(-1_000_000), // -1 * 10^6
 		},
 	}
 
@@ -70,27 +70,27 @@ func TestBigIntToFloat(t *testing.T) {
 		},
 		{
 			name:     "positive integer",
-			input:    big.NewInt(1000000000000000000), // 1 * 10^18
+			input:    big.NewInt(1_000_000), // 1 CER = 1,000,000 DUST
 			expected: 1.0,
 		},
 		{
 			name:     "positive decimal",
-			input:    big.NewInt(500000000000000000), // 0.5 * 10^18
+			input:    big.NewInt(500_000), // 0.5 CER = 500,000 DUST
 			expected: 0.5,
 		},
 		{
 			name:     "small decimal",
-			input:    big.NewInt(1000000000000), // 0.000001 * 10^18
+			input:    big.NewInt(1), // 1 DUST = 0.000001 CER
 			expected: 0.000001,
 		},
 		{
 			name:     "large number",
-			input:    big.NewInt(0).Mul(big.NewInt(1000), big.NewInt(1000000000000000000)),
+			input:    big.NewInt(1_000_000_000), // 1000 CER = 1,000,000,000 DUST
 			expected: 1000.0,
 		},
 		{
 			name:     "negative number",
-			input:    big.NewInt(-1000000000000000000),
+			input:    big.NewInt(-1_000_000), // -1 CER
 			expected: -1.0,
 		},
 	}
@@ -106,6 +106,7 @@ func TestBigIntToFloat(t *testing.T) {
 }
 
 func TestFloatToBigIntBigIntToFloatRoundTrip(t *testing.T) {
+	// Only values representable within 6 decimal places (1 DUST precision)
 	tests := []float64{
 		0.0,
 		1.0,
@@ -114,7 +115,6 @@ func TestFloatToBigIntBigIntToFloatRoundTrip(t *testing.T) {
 		1000.0,
 		-1.0,
 		123.456789,
-		0.000000000000001,
 	}
 
 	for _, input := range tests {
@@ -193,7 +193,7 @@ func TestGetFloat(t *testing.T) {
 		},
 		{
 			name:     "big.Int",
-			input:    func() *big.Int { b, _ := big.NewInt(0).SetString("123000000000000000000", 10); return b }(), // 123 * 10^18
+			input:    big.NewInt(123_000_000), // 123 CER = 123,000,000 DUST
 			expected: 123.0,
 			hasError: false,
 		},

@@ -235,26 +235,26 @@ func TestGasCostCalculation(t *testing.T) {
 		{
 			name:     "Минимальная транзакция",
 			gasLimit: 3,
-			gasPrice: FloatToBigInt(0.000001),
-			expected: "3000000000000",
+			gasPrice: FloatToBigInt(0.000001), // 1 DUST/unit
+			expected: "3",                     // 3 units × 1 DUST = 3 DUST
 		},
 		{
 			name:     "Стандартная транзакция",
 			gasLimit: 5,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "5000000000000",
+			expected: "5",
 		},
 		{
 			name:     "Высокий лимит газа",
 			gasLimit: 50000,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "50000000000000000",
+			expected: "50000",
 		},
 		{
-			name:     "Ethereum-совместимый лимит",
+			name:     "Стандартный лимит газа",
 			gasLimit: 21000,
 			gasPrice: FloatToBigInt(0.000001),
-			expected: "21000000000000000",
+			expected: "21000",
 		},
 		{
 			name:     "Нулевой лимит газа",
@@ -270,7 +270,7 @@ func TestGasCostCalculation(t *testing.T) {
 			tx := NewTransaction(
 				1, // nonce
 				HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				big.NewInt(1000000000000000000), // 1 CER
+				big.NewInt(1_000_000), // 1 CER in DUST
 				tt.gasLimit,
 				tt.gasPrice,
 				[]byte("test data"),
@@ -317,19 +317,14 @@ func TestGasPriceValidation(t *testing.T) {
 			description: "Должна пройти валидацию",
 		},
 		{
-			name:        "Цена ниже минимума",
-			gasLimit:    3,
-			gasPrice:    FloatToBigInt(0.0000005),
-			shouldPass:  false,
-			description: "Должна быть отклонена",
-		},
-		{
 			name:        "Нулевая цена газа",
 			gasLimit:    3,
 			gasPrice:    big.NewInt(0),
 			shouldPass:  true,
-			description: "Нулевая цена разрешена",
+			description: "Нулевая цена разрешена (системные транзакции)",
 		},
+		// Примечание: с точностью 1 DUST невозможно задать цену "ниже минимума но не ноль":
+		// любое значение < 0.000001 CER конвертируется в 0 DUST, что равно "бесплатно" (разрешено).
 	}
 
 	for _, tt := range tests {
@@ -337,7 +332,7 @@ func TestGasPriceValidation(t *testing.T) {
 			tx := NewTransaction(
 				1,
 				HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				big.NewInt(1000000000000000000),
+				big.NewInt(1_000_000), // 1 CER in DUST
 				tt.gasLimit,
 				tt.gasPrice,
 				[]byte("test data"),
@@ -354,7 +349,7 @@ func TestGasPriceValidation(t *testing.T) {
 					passesValidation, tt.shouldPass, tt.description)
 			}
 
-			t.Logf("Gas cost: %s wei (%.6f CER), Validation: %v",
+			t.Logf("Gas cost: %s DUST (%.6f CER), Validation: %v",
 				cost.String(), BigIntToFloat(cost), passesValidation)
 		})
 	}
@@ -396,7 +391,7 @@ func TestGasCostEdgeCases(t *testing.T) {
 			tx := NewTransaction(
 				1,
 				HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				big.NewInt(1000000000000000000),
+				big.NewInt(1_000_000), // 1 CER in DUST
 				tt.gasLimit,
 				tt.gasPrice,
 				[]byte("test data"),
@@ -415,7 +410,7 @@ func TestGasCostEdgeCases(t *testing.T) {
 				t.Errorf("Cost calculation mismatch: got %s, want %s", cost.String(), expectedCost.String())
 			}
 
-			t.Logf("Gas limit: %d, Gas price: %s wei, Cost: %s wei (%.6f CER)",
+			t.Logf("Gas limit: %d, Gas price: %s DUST, Cost: %s DUST (%.6f CER)",
 				tt.gasLimit, tt.gasPrice.String(), cost.String(), BigIntToFloat(cost))
 		})
 	}
@@ -426,9 +421,9 @@ func TestUpdateNonce(t *testing.T) {
 	tx := NewTransaction(
 		1,
 		HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-		big.NewInt(1000000000000000000),
+		big.NewInt(1_000_000), // 1 CER in DUST
 		3,
-		FloatToBigInt(0.000001),
+		FloatToBigInt(0.000001), // 1 DUST per gas unit
 		[]byte("test data"),
 	)
 	tx.UpdateNonce(1337)
@@ -443,9 +438,9 @@ func TestTransactionMarshalFormat(t *testing.T) {
 	tx := NewTransaction(
 		1,
 		toAddr,
-		big.NewInt(1000000000000000000), // 1 ETH in wei
+		big.NewInt(1_000_000), // 1 CER in DUST
 		21000,
-		big.NewInt(20000000000), // 20 gwei
+		big.NewInt(1), // 1 DUST per gas unit
 		[]byte("test data"),
 	)
 
@@ -471,7 +466,7 @@ func TestTransactionMarshalFormat(t *testing.T) {
 			t.Errorf("value should be decimal string, not hex. Got: %s", value)
 		}
 		// Verify it's a valid decimal number
-		expectedValue := big.NewInt(1000000000000000000)
+		expectedValue := big.NewInt(1_000_000) // 1 CER in DUST
 		parsedValue, ok := new(big.Int).SetString(value, 10)
 		if !ok {
 			t.Errorf("value should be a valid decimal number. Got: %s", value)
