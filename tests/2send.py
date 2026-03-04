@@ -39,7 +39,7 @@ class CereraStressTester:
             return None
     
     def send_transaction(self, sender, to_addr: str, amount: float, 
-                        gas_limit: float = 5.0, message: str = "") -> bool:
+                        gas_limit: float = 1000, message: str = "") -> bool:
         """Отправляет транзакцию"""
         data_req = {
             "method": "cerera.transaction.send",

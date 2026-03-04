@@ -169,7 +169,7 @@ func (v *CoreValidator) CheckAddress(addr types.Address) bool {
 
 func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas uint64, message string) (*types.GTransaction, error) {
 	// here we create transaction by input values
-	tx, err := types.CreateUnbroadcastTransaction(nonce, addressTo, count, gas, common.FloatToBigInt(3114000000000000), message) //TODO replace later with realization
+	tx, err := types.CreateUnbroadcastTransaction(nonce, addressTo, count, gas, v.GasPrice(), message)
 	if err != nil {
 		return nil, err
 	}
@@ -238,24 +238,11 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 			return NotEnoughtInputs
 		}
 
-		// Validate gas limit against minimal required gas for bytecode
+		// Validate gas limit: for legacy transfers the minimum is MinTransferGas.
+		// tx.Data() contains a text message, not bytecode — PreCompile on it is incorrect.
 		gasLimit := uint64(tx.Gas())
-		vmCtx := pallada.NewContextWithStorage(
-			types.Address{},
-			types.Address{},
-			big.NewInt(0),
-			tx.Data(),
-			gasLimit,
-			big.NewInt(0),
-			nil,
-			nil,
-		)
-		minGas, err := pallada.NewVM(tx.Data(), vmCtx).PreCompile(tx.Data())
-		if err != nil {
-			return err
-		}
-		if gasLimit > 0 && gasLimit < minGas {
-			return errors.New("gas limit below minimum")
+		if gasLimit > 0 && gasLimit < pallada.MinTransferGas {
+			return fmt.Errorf("gas limit below minimum: got %d, need %d", gasLimit, pallada.MinTransferGas)
 		}
 
 		// Deduct gas from sender (gas is burned)
@@ -598,11 +585,11 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 				if p.Gas < 0 {
 					return errors.New("negative gas or value")
 				}
-				wei, err := types.DecimalStringToWei(p.Amount)
-				if err != nil {
-					return err
-				}
-				tx, err := types.CreateUnbroadcastTransactionWei(p.Nonce, p.To, wei, uint64(p.Gas), common.FloatToBigInt(3114000000000000), p.Msg) //TODO replace later with realization
+			dust, err := types.DecimalStringToDust(p.Amount)
+			if err != nil {
+				return err
+			}
+			tx, err := types.CreateUnbroadcastTransactionDust(p.Nonce, p.To, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
 				if err != nil {
 					return err
 				}
@@ -625,7 +612,7 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 			return errors.New("parameter type mismatch for create")
 		}
-		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, uint64(gas), common.FloatToBigInt(3114000000000000), msg) //TODO replace later with realization
+		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, uint64(gas), v.GasPrice(), msg)
 		if err != nil {
 			return err
 		}
@@ -641,12 +628,12 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 					return errors.New("negative gas or value")
 				}
 				addrTo := types.HexToAddress(p.ToHex)
-				wei, err := types.DecimalStringToWei(p.Amount)
-				if err != nil {
-					return err
-				}
-				nonce := gigea.GetAndIncrementNonce()
-				tx, err := types.CreateUnbroadcastTransactionWei(nonce, addrTo, wei, uint64(p.Gas), common.FloatToBigInt(3114000000000000), p.Msg)
+			dust, err := types.DecimalStringToDust(p.Amount)
+			if err != nil {
+				return err
+			}
+			nonce := gigea.GetAndIncrementNonce()
+			tx, err := types.CreateUnbroadcastTransactionDust(nonce, addrTo, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
 				if err != nil {
 					return err
 				}
@@ -677,7 +664,7 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 			return errors.New("parameter type mismatch for send")
 		}
 		var addrTo = types.HexToAddress(addrStr)
-		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gas), common.FloatToBigInt(3114000000000000), msg) // fix gas price
+		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gas), v.GasPrice(), msg)
 		if err != nil {
 			return err.Error()
 		}
@@ -734,3 +721,5 @@ func ConfigChain(validator Validator) {
 	// Placeholder for chain configuration
 	// Currently no-op, can be extended in the future if needed
 }
+
+// common methods

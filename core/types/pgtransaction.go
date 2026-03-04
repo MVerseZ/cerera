@@ -11,7 +11,7 @@ type PGTransaction struct {
 	Status   TxStatus
 	ChainID  *big.Int
 	Nonce    uint64
-	GasPrice *big.Int         // wei per gas
+	GasPrice *big.Int         // dust per gas (1 CER = 1,000,000 DUST)
 	Gas      uint64           // gas limit
 	To       *address.Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int

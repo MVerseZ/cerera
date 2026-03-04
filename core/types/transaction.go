@@ -143,17 +143,22 @@ func CreateUnbroadcastTransaction(nonce uint64, addressTo Address, count float64
 	return tx, nil
 }
 
-// CreateUnbroadcastTransactionWei creates a transaction using exact wei amount (no float conversion).
-func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountWei *big.Int, gas uint64, gasPrice *big.Int, message string) (*GTransaction, error) {
+// CreateUnbroadcastTransactionDust creates a transaction using exact dust amount (1 CER = 1,000,000 DUST).
+func CreateUnbroadcastTransactionDust(nonce uint64, addressTo Address, amountDust *big.Int, gas uint64, gasPrice *big.Int, message string) (*GTransaction, error) {
 	var tx = NewTransaction(
 		nonce,
 		addressTo,
-		new(big.Int).Set(amountWei),
+		new(big.Int).Set(amountDust),
 		gas,
 		gasPrice,
 		[]byte(message),
 	)
 	return tx, nil
+}
+
+// CreateUnbroadcastTransactionWei is an alias for CreateUnbroadcastTransactionDust kept for backward compatibility.
+func CreateUnbroadcastTransactionWei(nonce uint64, addressTo Address, amountDust *big.Int, gas uint64, gasPrice *big.Int, message string) (*GTransaction, error) {
+	return CreateUnbroadcastTransactionDust(nonce, addressTo, amountDust, gas, gasPrice, message)
 }
 
 // WithSignature returns a new transaction with the given signature.

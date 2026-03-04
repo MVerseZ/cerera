@@ -1162,11 +1162,11 @@ func (v *D5Vault) Exec(method string, params []any) any {
 		var amountBigInt *big.Int
 		// Prefer exact decimal as string in params[1]
 		if s, ok := params[1].(string); ok {
-			wei, err := types.DecimalStringToWei(s)
+			dust, err := types.DecimalStringToDust(s)
 			if err != nil {
 				return err.Error()
 			}
-			amountBigInt = wei
+			amountBigInt = dust
 		} else if f, ok := params[1].(float64); ok {
 			amountBigInt = common.FloatToBigInt(f)
 		} else {

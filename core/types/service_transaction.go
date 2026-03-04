@@ -10,7 +10,7 @@ import (
 type CBTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64
-	GasPrice *big.Int // wei per gas
+	GasPrice *big.Int // dust per gas (1 CER = 1,000,000 DUST)
 	Gas      uint64   // gas limit
 	To       *Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int
@@ -139,7 +139,7 @@ func (tx *CBTransaction) setNonce(nonce uint64) {
 type FaucetTransaction struct {
 	ChainID  *big.Int
 	Nonce    uint64
-	GasPrice *big.Int // wei per gas
+	GasPrice *big.Int // dust per gas (1 CER = 1,000,000 DUST)
 	Gas      uint64   // gas limit
 	To       *Address `rlp:"nil"` // nil means contract creation
 	Value    *big.Int

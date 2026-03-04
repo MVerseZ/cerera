@@ -181,11 +181,18 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 			return
 		}
 	}
-	// init vm for precalculate gas for transaction
-	minGas, err := pallada.NewVM(tx.Data(), nil).PreCompile(tx.Data())
-	if err != nil {
-		pLogger.Errorw("Error precompile transaction", "error", err)
-		return
+	// For legacy transfers tx.Data() is a text message, not bytecode.
+	// Use canonical minimum transfer gas; for contract transactions use PreCompile.
+	var minGas uint64
+	if tx.Type() == types.LegacyTxType {
+		minGas = pallada.MinTransferGas
+	} else {
+		var err error
+		minGas, err = pallada.NewVM(tx.Data(), nil).PreCompile(tx.Data())
+		if err != nil {
+			pLogger.Errorw("Error precompile transaction", "error", err)
+			return
+		}
 	}
 	if len(p.memPool) < p.maxSize && minGas <= tx.Gas() {
 		p.memPool[tx.Hash()] = *tx
@@ -247,9 +254,37 @@ func (p *Pool) GetInfo() MemPoolInfo {
 	return p.Info
 }
 
-// get minimal gas value (for internal use)
-func (p *Pool) GetMinimalGasValue() uint64 {
-	return 0
+// GetMinimalGasValue returns the minimum transfer cost in CER.
+// 1 gas unit = 1 DUST, 1 CER = 1,000,000 DUST → cost_CER = gasUnits / 1,000,000.
+func (p *Pool) GetMinimalGasValue() float64 {
+	// Canonical minimal transfer bytecode for Pallada VM:
+	//   1. SLOAD sender balance
+	//   2. SUB amount  → write back with SSTORE
+	//   3. SLOAD receiver balance
+	//   4. ADD amount  → write back with SSTORE
+	//   5. STOP
+	transferBytecode := []byte{
+		0x60, 0x00, // PUSH1 0  (sender storage key)
+		0x54,       // SLOAD    (load sender balance)
+		0x60, 0x01, // PUSH1 1  (amount placeholder)
+		0x03,       // SUB      (sender_bal - amount)
+		0x60, 0x00, // PUSH1 0  (sender storage key)
+		0x55,       // SSTORE   (save new sender balance)
+		0x60, 0x01, // PUSH1 1  (amount placeholder)
+		0x60, 0x01, // PUSH1 1  (receiver storage key)
+		0x54,       // SLOAD    (load receiver balance)
+		0x01,       // ADD      (receiver_bal + amount)
+		0x60, 0x01, // PUSH1 1  (receiver storage key)
+		0x55,       // SSTORE   (save new receiver balance)
+		0x00,       // STOP
+	}
+	gasUnits, err := pallada.NewVM(transferBytecode, nil).PreCompile(transferBytecode)
+	if err != nil {
+		pLogger.Errorw("Error precompile transfer bytecode", "error", err)
+		return 0
+	}
+	// gasUnits DUST → CER
+	return float64(gasUnits) / 1_000_000
 }
 
 // get pending transactions (for internal use)

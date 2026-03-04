@@ -106,16 +106,30 @@ func NewContextWithCall(
 	}
 }
 
-// NewContextWithStorage создает новый контекст только с storage (без вызовов)
+/*
+Description: Создает новый контекст с поддержкой storage (без вызовов)
+
+	args:
+	caller types.Address, // адрес аккаунта или контракта, инициировавшего вызов
+	address types.Address, // адрес контракта, который будет выполнен
+	value *big.Int, // количество токенов, переданных вместе с вызовом
+	input []byte, // входные данные вызова (ABI-encoded аргументы или произвольные байты)
+	gasLimit uint64, // максимальное количество газа, доступное для выполнения
+	gasPrice *big.Int, // цена одной единицы газа, заданная отправителем
+	blockInfo *BlockInfo, // метаданные текущего блока (номер, timestamp, хеш)
+	storage StorageInterface, // интерфейс для чтения и записи persistent-хранилища контракта
+	return:
+	*Context, // контекст выполнения
+*/
 func NewContextWithStorage(
-	caller types.Address,
-	address types.Address,
-	value *big.Int,
-	input []byte,
-	gasLimit uint64,
-	gasPrice *big.Int,
-	blockInfo *BlockInfo,
-	storage StorageInterface,
+	caller types.Address, // адрес аккаунта или контракта, инициировавшего вызов
+	address types.Address, // адрес контракта, который будет выполнен
+	value *big.Int, // количество токенов, переданных вместе с вызовом
+	input []byte, // входные данные вызова (ABI-encoded аргументы или произвольные байты)
+	gasLimit uint64, // максимальное количество газа, доступное для выполнения
+	gasPrice *big.Int, // цена одной единицы газа, заданная отправителем
+	blockInfo *BlockInfo, // метаданные текущего блока (номер, timestamp, хеш)
+	storage StorageInterface, // интерфейс для чтения и записи persistent-хранилища контракта
 ) *Context {
 	return NewContext(caller, address, value, input, gasLimit, gasPrice, blockInfo, storage)
 }
