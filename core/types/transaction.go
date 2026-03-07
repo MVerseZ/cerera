@@ -379,16 +379,16 @@ func crvTxHash(t TxData) (h common.Hash) {
 	hw, _ := blake2b.New256(nil)
 	// hw, _ := blake2b.New256(nil)
 
-	tNonce := make([]byte, 8)
+	// tNonce := make([]byte, 8)
 	tGas := make([]byte, 8)
-	binary.BigEndian.PutUint64(tNonce, t.nonce())
+	// binary.BigEndian.PutUint64(tNonce, t.nonce())
 	binary.BigEndian.PutUint64(tGas, t.gas())
 
 	hw.Write(h[:0])
 	hw.Write(t.data())
 	hw.Write(t.dna())
 	hw.Write(t.value().Bytes())
-	hw.Write(tNonce)
+	// hw.Write(tNonce)
 
 	// Обрабатываем nil To для создания контрактов
 	toAddr := t.to()

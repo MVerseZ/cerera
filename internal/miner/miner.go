@@ -147,9 +147,10 @@ type miner struct {
 	status byte
 	config *config.Config
 	// chain    *chain.Chain
-	pool            pool.TxPool
-	mining          bool
-	stopChan        chan struct{}
+	pool     pool.TxPool
+	mining   bool
+	stopChan chan struct{}
+
 	miningHeight    int  // Height currently being mined
 	miningCancelled bool // Flag to track if current mining was cancelled
 }
@@ -364,6 +365,7 @@ func (m *miner) mineBlock() {
 	}
 
 	// Получаем транзакции из пула
+	// майнер САМ определяет дерево меркла для включаемых транзакций
 	pendingTxs := m.pool.GetPendingTransactions()
 	minerPendingTxsInBlock.Set(float64(len(pendingTxs)))
 	minerLogger().Debugw("Mining block", "pending_txs", len(pendingTxs), "height", targetHeight)
@@ -592,7 +594,6 @@ func (m *miner) performMining(block *block.Block) error {
 		newHeader := block.Header()
 		newHeader.Nonce += 1
 		block.Head = newHeader
-		block.UpdateNonce()
 		newBlockHash, _ := block.CalculateHash()
 		blockHash = newBlockHash
 		blockHashInt = new(big.Int).SetBytes(newBlockHash)

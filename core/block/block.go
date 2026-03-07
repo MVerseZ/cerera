@@ -119,7 +119,8 @@ func (b *Block) Header() *Header {
 	if b == nil || b.Head == nil {
 		return nil
 	}
-	return CopyHeader(b.Head)
+	// return CopyHeader(b.Head)
+	return b.Head
 }
 
 // Function for compare block headers, may be deprecated later.
@@ -234,13 +235,6 @@ func (b *Block) GetNonceBytes() []byte {
 	bts := make([]byte, 8)
 	binary.BigEndian.PutUint64(bts, uint64(b.Head.Nonce))
 	return bts
-}
-
-func (b *Block) UpdateNonce() {
-	// set tx nonce to block nonce
-	for _, tx := range b.Transactions {
-		tx.UpdateNonce(b.Head.Nonce)
-	}
 }
 
 // get nonce as [4]byte from header
