@@ -1,0 +1,97 @@
+version: "3.8"
+
+# Запуск: docker compose -f deployments/docker-compose-public.yml up -d --build
+# Сервисы доступны через nginx на http://91.199.32.125/
+#   /            → Cerera Node API (порт 1337)
+#   /grafana/    → Grafana
+#   /prometheus/ → Prometheus
+
+services:
+
+  # ─── Cerera Node ────────────────────────────────────────────────────────────
+  node1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cerera-node1
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    expose:
+      - "1337"   # HTTP/RPC — доступен только внутри сети (через nginx)
+    ports:
+      - "31100:31100"  # P2P — должен быть открыт напрямую для пиров
+    volumes:
+      - node1_data:/app/data
+      - node1_config:/app/config
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  # ─── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cerera-prometheus
+    depends_on:
+      - node1
+    volumes:
+      - ./prometheus-single.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.external-url=http://91.199.32.125/prometheus/
+      - --web.route-prefix=/
+    expose:
+      - "9090"   # Только внутри сети
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  # ─── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cerera-grafana
+    depends_on:
+      - prometheus
+    expose:
+      - "3000"   # Только внутри сети
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_ROOT_URL=http://91.199.32.125/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+  # ─── Nginx Reverse Proxy ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: cerera-nginx
+    depends_on:
+      - node1
+      - prometheus
+      - grafana
+    ports:
+      - "80:80"    # Единственный публичный HTTP-порт
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    networks:
+      - cerera-network
+
+volumes:
+  node1_data:
+  node1_config:
+  prom_data:
+  grafana_data:
+
+networks:
+  cerera-network:
+    driver: bridge
