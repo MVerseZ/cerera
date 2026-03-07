@@ -92,6 +92,11 @@ func (m *mockTxPool) Exec(method string, params []interface{}) interface{} {
 
 func (m *mockTxPool) Register(obs observer.Observer) {}
 
+// GetMiningPackage stub — delegates to GetTopN (no dependency graph in mock).
+func (m *mockTxPool) GetMiningPackage(n int) []*types.GTransaction {
+	return m.GetTopN(n)
+}
+
 // GetTopN returns up to n transaction pointers from the front of the slice.
 // The mock does not sort — ordering is determined by insertion order.
 func (m *mockTxPool) GetTopN(n int) []*types.GTransaction {
@@ -471,8 +476,8 @@ func TestMockTxPool_GetTopN_ExactN(t *testing.T) {
 // ─── createNewBlock tests ─────────────────────────────────────────────────────
 
 // TestMiner_CreateNewBlock_GasLimitEnforcement verifies that regular transactions
-// exceeding the cumulative gas limit are excluded from the block.
-// Transactions are processed in order; the loop breaks on the first over-limit tx.
+// exceeding the per-transaction gas budget are skipped with continue (not break),
+// so smaller transactions that still fit are not unfairly excluded.
 func TestMiner_CreateNewBlock_GasLimitEnforcement(t *testing.T) {
 	m := &miner{config: config.GenerageConfig()}
 
@@ -486,9 +491,9 @@ func TestMiner_CreateNewBlock_GasLimitEnforcement(t *testing.T) {
 	}
 	lastBlock := block.NewBlock(lastHeader)
 
-	// tx1 uses 60 gas — fits.
-	// tx2 uses 60 gas — 60+60=120 > 100, does NOT fit; loop breaks.
-	// tx3 would also be skipped because of the break.
+	// tx1 uses 60 gas — fits;  totalGasUsed = 60.
+	// tx2 uses 60 gas — 60+60 = 120 > 100, skipped (continue, not break).
+	// tx3 uses 10 gas — 60+10 =  70 ≤ 100, fits;  totalGasUsed = 70.
 	tx1 := types.NewTransaction(1, types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), big.NewInt(1), 60, big.NewInt(1), []byte("a"))
 	tx2 := types.NewTransaction(2, types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), big.NewInt(1), 60, big.NewInt(1), []byte("b"))
 	tx3 := types.NewTransaction(3, types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), big.NewInt(1), 10, big.NewInt(1), []byte("c"))
@@ -496,16 +501,15 @@ func TestMiner_CreateNewBlock_GasLimitEnforcement(t *testing.T) {
 	newBlock := m.createNewBlock(lastBlock, []types.GTransaction{*tx1, *tx2, *tx3})
 	require.NotNil(t, newBlock)
 
-	// Only tx1 must be in the block (plus the coinbase appended at the end).
 	txHashes := make(map[common.Hash]struct{}, len(newBlock.Transactions))
 	for _, tx := range newBlock.Transactions {
 		txHashes[tx.Hash()] = struct{}{}
 	}
-	assert.Contains(t, txHashes, tx1.Hash(), "tx1 fits within gas limit and must be included")
-	assert.NotContains(t, txHashes, tx2.Hash(), "tx2 exceeds gas limit and must be excluded")
-	assert.NotContains(t, txHashes, tx3.Hash(), "tx3 is after the break and must be excluded")
+	assert.Contains(t, txHashes, tx1.Hash(), "tx1 fits and must be included")
+	assert.NotContains(t, txHashes, tx2.Hash(), "tx2 exceeds remaining gas and must be excluded")
+	assert.Contains(t, txHashes, tx3.Hash(), "tx3 fits in remaining gas (60+10=70≤100) and must be included")
 
-	assert.Equal(t, uint64(60), newBlock.Head.GasUsed, "GasUsed must equal gas of accepted txs only")
+	assert.Equal(t, uint64(70), newBlock.Head.GasUsed, "GasUsed must equal sum of accepted regular tx gas (60+10)")
 }
 
 // TestMiner_CreateNewBlock_EmptyTransactions verifies that a block is created with
@@ -524,34 +528,57 @@ func TestMiner_CreateNewBlock_EmptyTransactions(t *testing.T) {
 	assert.Equal(t, uint8(types.CoinbaseTxType), newBlock.Transactions[0].Type(), "single tx must be coinbase")
 }
 
-// TestMiner_CreateNewBlock_SpecialTxTypesBypassGasCheck verifies that
-// CoinbaseTxType transactions are always included regardless of the gas limit
-// because they use a continue-path in the filtering loop.
-func TestMiner_CreateNewBlock_SpecialTxTypesBypassGasCheck(t *testing.T) {
+// TestMiner_CreateNewBlock_CoinbaseTxSkippedFromPool verifies that CoinbaseTxType
+// transactions passed in from the pool are dropped (to prevent double-coinbase),
+// while createNewBlock still appends exactly one fresh coinbase at the end.
+//
+// Note: crvTxHash does not include nonce, so two coinbase txs may collide on
+// hash when created within the same nanosecond. The meaningful invariant is
+// the count: exactly one CoinbaseTxType must appear in the final block.
+func TestMiner_CreateNewBlock_CoinbaseTxSkippedFromPool(t *testing.T) {
 	m := &miner{config: config.GenerageConfig()}
 
-	// GasLimit=1 would reject any regular tx, but coinbase must get through.
-	lastHeader := &block.Header{Height: 1, Index: 1, Difficulty: 1, GasLimit: 1, ChainId: 11}
+	lastHeader := &block.Header{Height: 1, Index: 1, Difficulty: 1, GasLimit: 1_000_000, ChainId: 11}
 	lastBlock := block.NewBlock(lastHeader)
 
-	// Create a proper CoinbaseTxType transaction via the coinbase package.
 	addr := m.config.NetCfg.ADDR
-	coinbaseTx := coinbase.CreateCoinBaseTransation(0, addr)
 
-	newBlock := m.createNewBlock(lastBlock, []types.GTransaction{coinbaseTx})
+	// Build a pending list that contains both a stale coinbase AND a regular tx.
+	staleCoinbaseTx := coinbase.CreateCoinBaseTransation(0, addr)
+	regularTx := types.NewTransaction(
+		1,
+		types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		big.NewInt(100),
+		3,
+		big.NewInt(1),
+		[]byte("pay"),
+	)
+
+	newBlock := m.createNewBlock(lastBlock, []types.GTransaction{staleCoinbaseTx, *regularTx})
 	require.NotNil(t, newBlock)
 
-	// The coinbase-from-pending must appear in the block.
+	// Invariant: exactly one coinbase in the block (the freshly created one).
+	// If the stale pool coinbase were not dropped there would be two.
+	var coinbaseCount int
+	for _, tx := range newBlock.Transactions {
+		if tx.Type() == uint8(types.CoinbaseTxType) {
+			coinbaseCount++
+		}
+	}
+	assert.Equal(t, 1, coinbaseCount, "block must contain exactly one coinbase tx; stale pool coinbase must be dropped")
+
+	// The regular tx must still be included.
 	found := false
 	for _, tx := range newBlock.Transactions {
-		if tx.Hash() == coinbaseTx.Hash() {
+		if tx.Hash() == regularTx.Hash() {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "CoinbaseTxType tx must be included even when GasLimit=1")
-	// GasUsed must remain 0 because special txs skip gas accounting.
-	assert.Equal(t, uint64(0), newBlock.Head.GasUsed, "special txs must not contribute to GasUsed")
+	assert.True(t, found, "regular tx must be included in the block")
+
+	// Coinbase does not contribute to GasUsed.
+	assert.Equal(t, uint64(3), newBlock.Head.GasUsed, "only regular tx gas must be counted")
 }
 
 // TestMiner_CreateNewBlock_HeightAndIndexIncrement verifies the new block header

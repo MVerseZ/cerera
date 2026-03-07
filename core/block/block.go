@@ -2,7 +2,6 @@ package block
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -72,11 +71,14 @@ type UnconfirmedBlock struct {
 }
 
 func (b Block) CalculateHash() ([]byte, error) {
-	h := sha256.New()
-	if _, err := h.Write(b.ToBytes()); err != nil {
+	hw, err := blake2b.New256(nil)
+	if err != nil {
 		return nil, err
 	}
-	return h.Sum(nil), nil
+	if _, err := hw.Write(b.ToBytes()); err != nil {
+		return nil, err
+	}
+	return hw.Sum(nil), nil
 }
 
 func (b Block) Equals(other trie.Content) (bool, error) {
@@ -202,32 +204,28 @@ func GenerateGenesis(nodeAddress address.Address) *Block {
 	return genesisBlock
 }
 
+// ToBytes serialises the block to a deterministic byte slice.
+// It is a pure function: it does NOT mutate any field on b.
+// Callers that need Head.Size to reflect the serialised length must update it
+// explicitly:
+//
+//	b.Head.Size = len(b.ToBytes())
 func (b *Block) ToBytes() []byte {
 	var buf bytes.Buffer
 
-	// Используем исправленный Header.Bytes()
 	if b.Head != nil {
 		buf.Write(b.Head.Bytes())
 	}
 
-	// Количество транзакций
 	binary.Write(&buf, binary.BigEndian, uint32(len(b.Transactions)))
 
-	// Хэши транзакций (как в CrvBlockHash)
 	for _, tx := range b.Transactions {
 		buf.Write(tx.Hash().Bytes())
 	}
 
-	// Confirmations
 	binary.Write(&buf, binary.BigEndian, int32(b.Confirmations))
 
-	// Размер вычисляем и обновляем в Header
-	blockBytes := buf.Bytes()
-	if b.Head != nil {
-		b.Head.Size = len(blockBytes)
-	}
-
-	return blockBytes
+	return buf.Bytes()
 }
 
 // get nonce as [8]byte from header

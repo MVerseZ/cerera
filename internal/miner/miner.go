@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/bits"
+	"sync/atomic"
 	"time"
 
 	"github.com/cerera/config"
@@ -151,8 +153,8 @@ type miner struct {
 	mining   bool
 	stopChan chan struct{}
 
-	miningHeight    int  // Height currently being mined
-	miningCancelled bool // Flag to track if current mining was cancelled
+	miningHeight    int   // Height currently being mined
+	miningCancelled int32 // 0 = not cancelled, 1 = cancelled (atomic access)
 }
 
 func (m *miner) GetID() string {
@@ -324,7 +326,7 @@ func (m *miner) getHeightLockChecker() HeightLockChecker {
 func (m *miner) mineBlock() {
 	startTime := time.Now()
 	minerMiningAttemptsTotal.Inc()
-	m.miningCancelled = false
+	atomic.StoreInt32(&m.miningCancelled, 0)
 
 	// Получаем последний блок
 	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
@@ -364,9 +366,16 @@ func (m *miner) mineBlock() {
 		}
 	}
 
-	// Получаем транзакции из пула
-	// майнер САМ определяет дерево меркла для включаемых транзакций
-	pendingTxs := m.pool.GetPendingTransactions()
+	// Получаем транзакции из пула в порядке приоритета (CPFP-aware, по убыванию fee rate).
+	// GetMiningPackage гарантирует: родительские транзакции идут раньше дочерних,
+	// а пакеты отсортированы по effectiveFeeRate = ΣfeeChain / ΣgasChain.
+	pkgTxs := m.pool.GetMiningPackage(10_000)
+	pendingTxs := make([]types.GTransaction, 0, len(pkgTxs))
+	for _, tx := range pkgTxs {
+		if tx != nil {
+			pendingTxs = append(pendingTxs, *tx)
+		}
+	}
 	minerPendingTxsInBlock.Set(float64(len(pendingTxs)))
 	minerLogger().Debugw("Mining block", "pending_txs", len(pendingTxs), "height", targetHeight)
 
@@ -380,7 +389,7 @@ func (m *miner) mineBlock() {
 
 	// Выполняем майнинг (поиск nonce)
 	if err := m.performMining(newBlock); err != nil {
-		if m.miningCancelled {
+		if atomic.LoadInt32(&m.miningCancelled) != 0 {
 			minerLogger().Infow("Mining cancelled - received block from network",
 				"height", targetHeight)
 			return
@@ -391,7 +400,7 @@ func (m *miner) mineBlock() {
 	}
 
 	// Check if mining was cancelled while we were mining
-	if m.miningCancelled {
+	if atomic.LoadInt32(&m.miningCancelled) != 0 {
 		minerLogger().Infow("Mining cancelled after nonce found - block already received from network",
 			"height", targetHeight)
 		return
@@ -468,26 +477,31 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 		txType := tx.Type()
 		txGas := tx.Gas()
 
-		// Coinbase и faucet транзакции не учитываются в GasUsed, но добавляются в блок
-		if txType == types.CoinbaseTxType || txType == types.FaucetTxType {
+		// Coinbase-транзакции из пула пропускаем: свежий coinbase создаётся ниже,
+		// иначе в блок попадут два coinbase.
+		if txType == types.CoinbaseTxType {
+			continue
+		}
+
+		// Faucet-транзакции не учитываются в GasUsed, но добавляются в блок.
+		if txType == types.FaucetTxType {
 			selectedTxs = append(selectedTxs, tx)
 			continue
 		}
 
-		// Для обычных транзакций проверяем GasLimit
-		// Проверяем, не превысит ли добавление этой транзакции GasLimit
-		if totalGasUsed+txGas <= newHeader.GasLimit {
-			selectedTxs = append(selectedTxs, tx)
-			totalGasUsed += txGas
-		} else {
-			// Транзакция не помещается в блок по лимиту газа
+		// Для обычных транзакций проверяем GasLimit.
+		// Используем continue (не break): транзакции отсортированы по fee rate,
+		// а не по газу, поэтому меньшая tx после крупной может ещё поместиться.
+		if totalGasUsed+txGas > newHeader.GasLimit {
 			minerLogger().Debugw("Transaction exceeds gas limit, skipping",
 				"tx_hash", tx.Hash(),
 				"tx_gas", txGas,
 				"current_gas_used", totalGasUsed,
 				"gas_limit", newHeader.GasLimit)
-			break // Остальные транзакции тоже не поместятся
+			continue
 		}
+		selectedTxs = append(selectedTxs, tx)
+		totalGasUsed += txGas
 	}
 
 	// Добавляем отобранные транзакции в блок
@@ -568,22 +582,22 @@ func (m *miner) performMining(block *block.Block) error {
 	for blockHashInt.Cmp(target) >= 0 {
 		// Check for cancellation periodically
 		if cancelChan != nil && nonceSearchAttempts%checkCancelInterval == 0 {
-			select {
-			case <-cancelChan:
-				m.miningCancelled = true
-				minerLogger().Infow("Mining cancelled by external block",
-					"height", block.Header().Height,
-					"attempts", nonceSearchAttempts)
-				return fmt.Errorf("mining cancelled: received block from network")
-			default:
-				// Continue mining
-			}
+		select {
+		case <-cancelChan:
+			atomic.StoreInt32(&m.miningCancelled, 1)
+			minerLogger().Infow("Mining cancelled by external block",
+				"height", block.Header().Height,
+				"attempts", nonceSearchAttempts)
+			return fmt.Errorf("mining cancelled: received block from network")
+		default:
+			// Continue mining
+		}
 		}
 
 		// Also check if height is now locked
 		if heightLock != nil && nonceSearchAttempts%checkCancelInterval == 0 {
 			if heightLock.IsHeightLocked(block.Header().Height) {
-				m.miningCancelled = true
+				atomic.StoreInt32(&m.miningCancelled, 1)
 				minerLogger().Infow("Mining cancelled - height now locked",
 					"height", block.Header().Height,
 					"lockedHeight", heightLock.GetLockedHeight())
@@ -591,9 +605,14 @@ func (m *miner) performMining(block *block.Block) error {
 			}
 		}
 
-		newHeader := block.Header()
-		newHeader.Nonce += 1
-		block.Head = newHeader
+		// Increment nonce directly on the header pointer (block.Header() returns
+		// block.Head itself, not a copy, so assigning back would be a no-op).
+		// Detect uint64 overflow: if nonce wraps to 0 we have exhausted the space.
+		next, carry := bits.Add64(block.Head.Nonce, 1, 0)
+		if carry != 0 {
+			return fmt.Errorf("nonce overflow: exhausted all 2^64 nonce values without finding valid hash")
+		}
+		block.Head.Nonce = next
 		newBlockHash, _ := block.CalculateHash()
 		blockHash = newBlockHash
 		blockHashInt = new(big.Int).SetBytes(newBlockHash)
@@ -621,7 +640,7 @@ func (m *miner) performMining(block *block.Block) error {
 	if cancelChan != nil {
 		select {
 		case <-cancelChan:
-			m.miningCancelled = true
+			atomic.StoreInt32(&m.miningCancelled, 1)
 			return fmt.Errorf("mining cancelled at completion")
 		default:
 		}

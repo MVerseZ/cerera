@@ -81,6 +81,7 @@ type Pool struct {
 	memPool   map[common.Hash]*types.GTransaction
 	txHeap    TxHeap
 	heapItems map[common.Hash]*txHeapItem // O(1) lookup by hash → heap slot
+	graph     *TxGraph                    // CPFP dependency graph
 
 	maintainTicker *time.Ticker
 	stopCh         chan struct{}
@@ -114,7 +115,13 @@ type TxPool interface {
 	GetTransaction(transactionHash common.Hash) *types.GTransaction
 	// GetTopN returns the n most profitable transactions for block assembly.
 	// Results are ordered from highest to lowest total fee (GasPrice × Gas).
+	// Fast path: O(n log n), no dependency awareness.
 	GetTopN(n int) []*types.GTransaction
+	// GetMiningPackage returns up to n transactions in CPFP-aware,
+	// dependency-safe order. Ancestors are always emitted before descendants;
+	// packages are ranked by effective fee rate (ΣfeeChain / ΣgasChain) so a
+	// high-fee child can pull its cheap parent into the block.
+	GetMiningPackage(n int) []*types.GTransaction
 	Exec(method string, params []any) any
 	QueueTransaction(tx *types.GTransaction)
 	Register(observer observer.Observer)
@@ -129,6 +136,7 @@ func InitPool(maxSize int) (TxPool, error) {
 		memPool:        mPool,
 		txHeap:         make(TxHeap, 0, maxSize),
 		heapItems:      make(map[common.Hash]*txHeapItem, maxSize),
+		graph:          NewTxGraph(),
 		maintainTicker: time.NewTicker(1500 * time.Millisecond),
 		maxSize:        maxSize,
 		stopCh:         make(chan struct{}),
@@ -217,6 +225,7 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) error {
 	p.memPool[tx.Hash()] = tx
 	p.heapItems[tx.Hash()] = item
 	heap.Push(&p.txHeap, item)
+	p.graph.AddTx(tx) // wire CPFP dependency links (acquires graph.mu inside)
 	poolTxAddedTotal.Inc()
 	p.calcInfo()
 	p.mu.Unlock()
@@ -233,6 +242,7 @@ func (p *Pool) Clear() {
 	p.memPool = make(map[common.Hash]*types.GTransaction)
 	p.txHeap = make(TxHeap, 0, p.maxSize)
 	p.heapItems = make(map[common.Hash]*txHeapItem, p.maxSize)
+	p.graph = NewTxGraph()
 	p.calcInfo()
 }
 
@@ -266,6 +276,13 @@ func (p *Pool) GetTopN(n int) []*types.GTransaction {
 		result = append(result, heap.Pop(&tmp).(*txHeapItem).tx)
 	}
 	return result
+}
+
+// GetMiningPackage returns up to n transactions in CPFP-aware, dependency-safe
+// order by delegating to the internal TxGraph. The graph has its own lock so
+// this method does not need to hold p.mu, keeping it non-blocking for miners.
+func (p *Pool) GetMiningPackage(n int) []*types.GTransaction {
+	return p.graph.GetMiningPackage(n)
 }
 
 // calcInfo recalculates MemPoolInfo from current memPool state. Must be called under p.mu.
@@ -428,9 +445,10 @@ func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 		return errors.New("transaction not in mempool")
 	}
 	item := p.heapItems[txHash]
-	heap.Remove(&p.txHeap, item.idx) // O(log n) - no full rebuild
+	heap.Remove(&p.txHeap, item.idx) // O(log n) — no full rebuild
 	delete(p.heapItems, txHash)
 	delete(p.memPool, txHash)
+	p.graph.RemoveTx(txHash) // rewire CPFP links for orphaned descendants
 	poolTxRemovedTotal.Inc()
 	p.calcInfo()
 	return nil
