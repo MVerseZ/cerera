@@ -15,10 +15,9 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node1
     command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
-    expose:
-      - "1337"   # HTTP/RPC — доступен только внутри сети (через nginx)
     ports:
-      - "31100:31100"  # P2P — должен быть открыт напрямую для пиров
+      - "127.0.0.1:1337:1337"  # HTTP/RPC — только localhost, системный nginx проксирует
+      - "31100:31100"           # P2P — открыт напрямую для пиров
     volumes:
       - node1_data:/app/data
       - node1_config:/app/config
@@ -41,8 +40,8 @@ services:
       - --web.enable-lifecycle
       - --web.external-url=http://91.199.32.125/prometheus/
       - --web.route-prefix=/
-    expose:
-      - "9090"   # Только внутри сети
+    ports:
+      - "127.0.0.1:9090:9090"  # Только localhost
     restart: unless-stopped
     networks:
       - cerera-network
@@ -53,8 +52,8 @@ services:
     container_name: cerera-grafana
     depends_on:
       - prometheus
-    expose:
-      - "3000"   # Только внутри сети
+    ports:
+      - "127.0.0.1:3000:3000"  # Только localhost
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -70,21 +69,6 @@ services:
     networks:
       - cerera-network
 
-  # ─── Nginx Reverse Proxy ────────────────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: cerera-nginx
-    depends_on:
-      - node1
-      - prometheus
-      - grafana
-    ports:
-      - "80:80"    # Единственный публичный HTTP-порт
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    restart: unless-stopped
-    networks:
-      - cerera-network
 
 volumes:
   node1_data:
