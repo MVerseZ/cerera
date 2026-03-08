@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -155,6 +156,13 @@ type miner struct {
 
 	miningHeight    int   // Height currently being mined
 	miningCancelled int32 // 0 = not cancelled, 1 = cancelled (atomic access)
+
+	// Package builder / miner separation.
+	// packageBuilderLoop runs in its own goroutine and writes to cachedPkg;
+	// miningLoop reads cachedPkg without ever blocking on the pool lock.
+	cachedPkg   []*types.GTransaction
+	cachedPkgMu sync.Mutex
+	pkgReady    chan struct{} // cap=1: coalesced signal to rebuild package immediately
 }
 
 func (m *miner) GetID() string {
@@ -234,7 +242,9 @@ func (m *miner) Start() error {
 		"height", header.Height,
 		"hash", lastBlock.GetHash())
 
-	// Запускаем цикл майнинга
+	// packageBuilderLoop fetches the pool package independently so that
+	// miningLoop never blocks on pool lock contention.
+	go m.packageBuilderLoop()
 	go m.miningLoop()
 	return nil
 }
@@ -250,21 +260,21 @@ func (m *miner) Stop() {
 }
 
 func (m *miner) miningLoop() {
-
-	ticker := time.NewTicker(5 * time.Second) // Майним каждые 60 секунд
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			if m.mining {
-				// Проверяем статус консенсуса для логирования, но не блокируем создание блоков
-				// Валидатор проверит консенсус перед добавлением блока в цепочку
 				if !m.isConsensusStarted() {
 					m.printConsensusStatus()
 					minerLogger().Warnw("[MINER] Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
 				}
-				m.mineBlock()
+				// Read the package prepared by packageBuilderLoop.
+				// This is a single mutex-protected pointer copy — never blocks on pool.
+				pkg := m.getCachedPkg()
+				m.mineBlock(pkg)
 			}
 		case <-m.stopChan:
 			minerLogger().Info("[MINER] Mining loop stopped")
@@ -307,6 +317,59 @@ func (m *miner) printConsensusStatus() {
 		"address", consensusInfo["address"])
 }
 
+// packageBuilderLoop runs in a dedicated goroutine and rebuilds the mining
+// package independently of the nonce-search loop.
+//
+// Separation rationale: GetMiningPackage holds graph.mu (RLock) for an O(n)
+// traversal + O(n log n) sort. Under high pool load this blocks AddTx/RemoveTx
+// writers and, via write-lock priority in sync.RWMutex, also queues subsequent
+// miner reads — starving the nonce-search loop of CPU time.
+//
+// By moving pool access here, the miner goroutine only does a single mutex read
+// (getCachedPkg) per mining cycle instead of a potentially long pool traversal.
+func (m *miner) packageBuilderLoop() {
+	// Build an initial snapshot before the first mining tick fires.
+	m.refreshPackage()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.pkgReady:
+			// Coalesce bursts: many transactions arriving at once → one rebuild.
+			for len(m.pkgReady) > 0 {
+				<-m.pkgReady
+			}
+			m.refreshPackage()
+		case <-ticker.C:
+			m.refreshPackage()
+		case <-m.stopChan:
+			return
+		}
+	}
+}
+
+// refreshPackage calls GetMiningPackage and stores the result under cachedPkgMu.
+// The mutex is held only for the pointer swap (nanoseconds), not for the pool
+// traversal — so miningLoop is never blocked for more than a pointer copy.
+func (m *miner) refreshPackage() {
+	pkg := m.pool.GetMiningPackage(10_000)
+	m.cachedPkgMu.Lock()
+	m.cachedPkg = pkg
+	m.cachedPkgMu.Unlock()
+	minerLogger().Debugw("[MINER] Package refreshed", "txs", len(pkg))
+}
+
+// getCachedPkg returns the latest package prepared by packageBuilderLoop.
+// Lock is held only for a slice-header copy — no pool traversal involved.
+func (m *miner) getCachedPkg() []*types.GTransaction {
+	m.cachedPkgMu.Lock()
+	pkg := m.cachedPkg
+	m.cachedPkgMu.Unlock()
+	return pkg
+}
+
 // getHeightLockChecker retrieves the HeightLockChecker from the chain (registered in service registry).
 func (m *miner) getHeightLockChecker() HeightLockChecker {
 	registry, err := service.GetRegistry()
@@ -323,7 +386,11 @@ func (m *miner) getHeightLockChecker() HeightLockChecker {
 	return nil
 }
 
-func (m *miner) mineBlock() {
+// mineBlock assembles and mines one block using the pre-built pkgTxs snapshot.
+// pkgTxs is supplied by miningLoop from the cache maintained by packageBuilderLoop,
+// so this function never touches the pool lock — the nonce-search hot-loop is
+// fully isolated from pool write contention.
+func (m *miner) mineBlock(pkgTxs []*types.GTransaction) {
 	startTime := time.Now()
 	minerMiningAttemptsTotal.Inc()
 	atomic.StoreInt32(&m.miningCancelled, 0)
@@ -366,10 +433,7 @@ func (m *miner) mineBlock() {
 		}
 	}
 
-	// Получаем транзакции из пула в порядке приоритета (CPFP-aware, по убыванию fee rate).
-	// GetMiningPackage гарантирует: родительские транзакции идут раньше дочерних,
-	// а пакеты отсортированы по effectiveFeeRate = ΣfeeChain / ΣgasChain.
-	pkgTxs := m.pool.GetMiningPackage(10_000)
+	// pkgTxs is a snapshot built by packageBuilderLoop — no pool lock needed here.
 	pendingTxs := make([]types.GTransaction, 0, len(pkgTxs))
 	for _, tx := range pkgTxs {
 		if tx != nil {
@@ -714,13 +778,21 @@ func (m *miner) Update(tx *types.GTransaction) {
 		return
 	}
 
-	minerLogger().Debugw("Received transaction update, will be included in next mining cycle",
+	// Signal packageBuilderLoop to rebuild the cached package immediately.
+	// Non-blocking: if a rebuild is already queued, the signal is coalesced.
+	select {
+	case m.pkgReady <- struct{}{}:
+	default:
+	}
+	minerLogger().Debugw("Signalled package builder to refresh",
 		"tx_hash", tx.Hash())
-	// Транзакция будет включена в следующий блок при следующем майнинге
 }
 
 func Init() (Miner, error) {
-	m := &miner{status: 0x0}
-	minerStatus.Set(0) // Initialize status metric
+	m := &miner{
+		status:   0x0,
+		pkgReady: make(chan struct{}, 1),
+	}
+	minerStatus.Set(0)
 	return m, nil
 }

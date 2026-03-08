@@ -225,14 +225,55 @@ func (p *cpfpPackage) effectiveFeeRate() *big.Rat {
 //  4. Transactions are emitted package-by-package until maxTxs is reached.
 //     Within a package the root (lowest nonce) is always emitted first.
 func (g *TxGraph) GetMiningPackage(maxTxs int) []*types.GTransaction {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	if len(g.nodes) == 0 || maxTxs <= 0 {
+	// Phase 1: collect packages under RLock (minimise lock hold time).
+	// Sort and emit phases run after the lock is released to avoid blocking
+	// AddTx/RemoveTx writers for the full O(n log n) duration.
+	packages := g.collectPackages()
+	if len(packages) == 0 || maxTxs <= 0 {
 		return nil
 	}
 
-	// Collect one package per chain root.
+	// Phase 2: pre-compute effective fee rate once per package (no lock needed;
+	// cpfpPackage is a local snapshot). This avoids allocating big.Rat twice per
+	// comparison inside sort, which caused heavy GC pressure under large pools.
+	type ratedPkg struct {
+		pkg  *cpfpPackage
+		rate *big.Rat
+	}
+	rated := make([]ratedPkg, len(packages))
+	for i, pkg := range packages {
+		rated[i] = ratedPkg{pkg: pkg, rate: pkg.effectiveFeeRate()}
+	}
+
+	// Phase 3: sort highest effective fee rate first (no lock held).
+	sort.Slice(rated, func(i, j int) bool {
+		return rated[i].rate.Cmp(rated[j].rate) > 0
+	})
+
+	// Phase 4: emit transactions greedily up to maxTxs.
+	result := make([]*types.GTransaction, 0, maxTxs)
+	for _, r := range rated {
+		for _, tx := range r.pkg.txs {
+			if len(result) >= maxTxs {
+				return result
+			}
+			result = append(result, tx)
+		}
+	}
+	return result
+}
+
+// collectPackages builds the list of cpfpPackages from root nodes under RLock.
+// Keeping this as a separate method limits the critical section to the O(n)
+// graph traversal only; sorting runs outside the lock.
+func (g *TxGraph) collectPackages() []*cpfpPackage {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if len(g.nodes) == 0 {
+		return nil
+	}
+
 	packages := make([]*cpfpPackage, 0, len(g.nodes))
 	for _, node := range g.nodes {
 		if node.parent != nil {
@@ -264,23 +305,7 @@ func (g *TxGraph) GetMiningPackage(maxTxs int) []*types.GTransaction {
 			totalGas: totalGas,
 		})
 	}
-
-	// Sort: highest effective fee rate first.
-	sort.Slice(packages, func(i, j int) bool {
-		return packages[i].effectiveFeeRate().Cmp(packages[j].effectiveFeeRate()) > 0
-	})
-
-	// Emit transactions greedily.
-	result := make([]*types.GTransaction, 0, maxTxs)
-	for _, pkg := range packages {
-		for _, tx := range pkg.txs {
-			if len(result) >= maxTxs {
-				return result
-			}
-			result = append(result, tx)
-		}
-	}
-	return result
+	return packages
 }
 
 // AncestorCount returns the number of in-pool ancestors for the given tx hash.
