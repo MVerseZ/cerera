@@ -1,10 +1,15 @@
 package pallada
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/cerera/core/types"
+	secp256k1ecdsa "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+	"golang.org/x/crypto/ripemd160"
+	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -91,6 +96,150 @@ func executeSwap(vm *VM, depth int) error {
 
 	// Меняем местами элементы
 	return vm.stack.Swap(depth)
+}
+
+// executeHashOperations выполняет криптографические хэш-операции и ECRECOVER.
+// Для KECCAK256/SHA256/RIPEMD160 стек: offset, length -> hash
+// Для ECRECOVER стек: hash, v, r, s -> address
+func executeHashOperations(vm *VM, op Opcode) error {
+	if op == ECRECOVER {
+		return executeEcrecover(vm)
+	}
+
+	offset, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+	length, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+
+	// Вычисляем стоимость газа за расширение памяти
+	currentSize := vm.memory.Size()
+	endOffset := offset.Uint64() + length.Uint64()
+	if endOffset > currentSize {
+		gasCost := CalculateMemoryGas(currentSize, endOffset)
+		if err := vm.gasMeter.ConsumeGas(gasCost, "hash memory expansion"); err != nil {
+			return err
+		}
+	}
+
+	// Количество 32-байтовых слов (округление вверх)
+	words := (length.Uint64() + 31) / 32
+
+	// Базовый газ и газ за слова в зависимости от опкода
+	var baseGas, wordGas uint64
+	switch op {
+	case KECCAK256:
+		baseGas, wordGas = GasKeccak256, GasKeccak256Word
+	case SHA256:
+		baseGas, wordGas = GasSHA256, GasSHA256Word
+	case RIPEMD160:
+		baseGas, wordGas = GasRIPEMD160, GasRIPEMD160Word
+	default:
+		return ErrInvalidOpcode
+	}
+
+	if err := vm.gasMeter.ConsumeGas(baseGas+words*wordGas, op.String()); err != nil {
+		return err
+	}
+
+	// Читаем данные из памяти
+	data, err := vm.memory.Copy(offset, length)
+	if err != nil {
+		return err
+	}
+
+	// Вычисляем хэш
+	var hashBytes []byte
+	switch op {
+	case KECCAK256:
+		h := sha3.NewLegacyKeccak256()
+		h.Write(data)
+		hashBytes = h.Sum(nil)
+	case SHA256:
+		sum := sha256.Sum256(data)
+		hashBytes = sum[:]
+	case RIPEMD160:
+		h := ripemd160.New()
+		h.Write(data)
+		// RIPEMD160 возвращает 20 байт; дополняем слева нулями до 32 байт
+		sum := h.Sum(nil)
+		padded := make([]byte, 32)
+		copy(padded[12:], sum)
+		hashBytes = padded
+	}
+
+	// Кладём хэш на стек как big.Int (big-endian)
+	result := new(big.Int).SetBytes(hashBytes)
+	return vm.stack.Push(result)
+}
+
+// executeEcrecover выполняет восстановление адреса из ECDSA-подписи.
+// Стек (сверху вниз): hash(32 байта), v(27 или 28), r(32 байта), s(32 байта)
+// Результат: адрес (20 байт, left-padded до 32 байт) или 0 при ошибке
+func executeEcrecover(vm *VM) error {
+	if err := vm.gasMeter.ConsumeGas(GasEcrecover, "ECRECOVER"); err != nil {
+		return err
+	}
+
+	hashVal, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+	vVal, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+	rVal, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+	sVal, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+
+	// Нормализуем hash до 32 байт
+	hashBytes := make([]byte, 32)
+	hb := hashVal.Bytes()
+	copy(hashBytes[32-len(hb):], hb)
+
+	// Нормализуем v: принимаем 0/1 или 27/28
+	v := byte(vVal.Uint64())
+	if v >= 27 {
+		v -= 27
+	}
+	if v != 0 && v != 1 {
+		return vm.stack.Push(big.NewInt(0))
+	}
+
+	// decred RecoverCompact ожидает формат [V(1) | R(32) | S(32)]
+	// где V = 27 (чётный) или 28 (нечётный)
+	sig := make([]byte, 65)
+	sig[0] = v + 27
+	rb := rVal.Bytes()
+	sb := sVal.Bytes()
+	copy(sig[1+32-len(rb):33], rb)
+	copy(sig[33+32-len(sb):65], sb)
+
+	// Восстанавливаем публичный ключ
+	pubKey, _, recErr := secp256k1ecdsa.RecoverCompact(sig, hashBytes)
+	if recErr != nil {
+		return vm.stack.Push(big.NewInt(0))
+	}
+
+	// Адрес = keccak256(pubKey[1:])[12:] (последние 20 байт хэша без префикса 0x04)
+	pubBytes := pubKey.SerializeUncompressed() // 65 байт: 0x04 + X(32) + Y(32)
+	h := sha3.NewLegacyKeccak256()
+	h.Write(pubBytes[1:])
+	addrHash := h.Sum(nil) // 32 байта
+
+	// Адрес — последние 20 байт, дополняем нулями слева до 32 байт
+	result := make([]byte, 32)
+	copy(result[12:], addrHash[12:])
+	return vm.stack.Push(new(big.Int).SetBytes(result))
 }
 
 // executeStop выполняет операцию STOP
@@ -269,6 +418,205 @@ func executeStorageOperations(vm *VM, op Opcode) error {
 	default:
 		return ErrInvalidOpcode
 	}
+}
+
+// executeCalldataOperations выполняет операции с входными данными транзакции (ctx.Input).
+// CALLDATALOAD: пушит 32 байта calldata начиная с offset (zero-padded справа)
+// CALLDATASIZE: пушит длину calldata
+// CALLDATACOPY: копирует calldata в память (destOffset, dataOffset, length)
+func executeCalldataOperations(vm *VM, op Opcode) error {
+	var input []byte
+	if vm.ctx != nil {
+		input = vm.ctx.Input
+	}
+
+	switch op {
+	case CALLDATALOAD:
+		offset, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		if err := vm.gasMeter.ConsumeGas(GasCalldataLoad, "CALLDATALOAD"); err != nil {
+			return err
+		}
+
+		off := offset.Uint64()
+		word := make([]byte, 32)
+		if off < uint64(len(input)) {
+			n := copy(word, input[off:])
+			_ = n
+		}
+		return vm.stack.Push(new(big.Int).SetBytes(word))
+
+	case CALLDATASIZE:
+		if err := vm.gasMeter.ConsumeGas(GasCalldataSize, "CALLDATASIZE"); err != nil {
+			return err
+		}
+		return vm.stack.Push(big.NewInt(int64(len(input))))
+
+	case CALLDATACOPY:
+		destOffset, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		dataOffset, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		length, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+
+		l := length.Uint64()
+		if l == 0 {
+			return vm.gasMeter.ConsumeGas(GasCalldataCopy, "CALLDATACOPY")
+		}
+
+		// Газ: базовый + за каждые 32 байта
+		words := (l + 31) / 32
+		if err := vm.gasMeter.ConsumeGas(GasCalldataCopy+words*3, "CALLDATACOPY"); err != nil {
+			return err
+		}
+
+		// Расширяем память если нужно
+		dest := destOffset.Uint64()
+		currentSize := vm.memory.Size()
+		if dest+l > currentSize {
+			gasMem := CalculateMemoryGas(currentSize, dest+l)
+			if err := vm.gasMeter.ConsumeGas(gasMem, "CALLDATACOPY memory expansion"); err != nil {
+				return err
+			}
+		}
+
+		// Формируем данные: из calldata (с zero-padding если выходим за границу)
+		data := make([]byte, l)
+		doff := dataOffset.Uint64()
+		if doff < uint64(len(input)) {
+			copy(data, input[doff:])
+		}
+		return vm.memory.Set(destOffset, data)
+
+	default:
+		return ErrInvalidOpcode
+	}
+}
+
+// executeJumpOperations выполняет операции управления потоком.
+// JUMP: безусловный переход к dest (должен быть JUMPDEST)
+// JUMPI: условный переход — прыгает если condition != 0
+// JUMPDEST: маркер допустимого места назначения (NOP во время выполнения)
+func executeJumpOperations(vm *VM, op Opcode) error {
+	switch op {
+	case JUMP:
+		dest, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		if err := vm.gasMeter.ConsumeGas(GasJump, "JUMP"); err != nil {
+			return err
+		}
+		target := int(dest.Int64())
+		if !vm.jumpdests[target] {
+			return fmt.Errorf("invalid jump destination: %d", target)
+		}
+		// Устанавливаем pc = target: основной цикл прочитает JUMPDEST и выполнит его
+		vm.pc = target
+		return nil
+
+	case JUMPI:
+		// Стек (сверху вниз): destination, condition (EVM-совместимый порядок)
+		dest, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		condition, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		if err := vm.gasMeter.ConsumeGas(GasJumpi, "JUMPI"); err != nil {
+			return err
+		}
+		if condition.Sign() != 0 {
+			target := int(dest.Int64())
+			if !vm.jumpdests[target] {
+				return fmt.Errorf("invalid jump destination: %d", target)
+			}
+			vm.pc = target
+		}
+		return nil
+
+	case JUMPDEST:
+		// Только потребляем газ — сам маркер не делает ничего при выполнении
+		return vm.gasMeter.ConsumeGas(GasJumpdest, "JUMPDEST")
+
+	default:
+		return ErrInvalidOpcode
+	}
+}
+
+// executeLogOperations выполняет операции событий (LOG0-LOG4).
+// Стек: offset, length, [topic1, topic2, ...] -> (пусто)
+// Читает данные из памяти и сохраняет Log в vm.logs.
+func executeLogOperations(vm *VM, op Opcode) error {
+	if vm.ctx == nil {
+		return errors.New("log: execution context not available")
+	}
+
+	topicCount := int(op - LOG0)
+
+	offset, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+	length, err := vm.stack.Pop()
+	if err != nil {
+		return ErrStackUnderflowOpcode
+	}
+
+	// Газ: базовый + за байты данных + за топики
+	dataLen := length.Uint64()
+	gasCost := GasLogBase + dataLen*GasLogData + uint64(topicCount)*GasLogTopic
+	if err := vm.gasMeter.ConsumeGas(gasCost, op.String()); err != nil {
+		return err
+	}
+
+	// Расширяем память если нужно
+	currentSize := vm.memory.Size()
+	endOffset := offset.Uint64() + dataLen
+	if endOffset > currentSize && dataLen > 0 {
+		gasMem := CalculateMemoryGas(currentSize, endOffset)
+		if err := vm.gasMeter.ConsumeGas(gasMem, "LOG memory expansion"); err != nil {
+			return err
+		}
+	}
+
+	// Читаем данные события из памяти
+	var data []byte
+	if dataLen > 0 {
+		data, err = vm.memory.Copy(offset, length)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Извлекаем топики со стека
+	topics := make([]*big.Int, topicCount)
+	for i := 0; i < topicCount; i++ {
+		topic, err := vm.stack.Pop()
+		if err != nil {
+			return ErrStackUnderflowOpcode
+		}
+		topics[i] = new(big.Int).Set(topic)
+	}
+
+	// Записываем событие
+	vm.logs = append(vm.logs, &Log{
+		Address: vm.ctx.Address,
+		Topics:  topics,
+		Data:    data,
+	})
+	return nil
 }
 
 // calculateSStoreGas вычисляет стоимость газа для операции SSTORE

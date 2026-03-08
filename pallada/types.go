@@ -6,6 +6,13 @@ import (
 	"github.com/cerera/core/types"
 )
 
+// Log представляет событие, эмитированное контрактом через LOG0-LOG4
+type Log struct {
+	Address types.Address // Адрес контракта, эмитировавшего событие
+	Topics  []*big.Int    // Топики события (0-4 штуки, 32 байта каждый)
+	Data    []byte        // Произвольные данные события
+}
+
 // BlockInfo содержит информацию о текущем блоке
 type BlockInfo struct {
 	Number    uint64 // Номер блока

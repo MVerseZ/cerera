@@ -2,6 +2,7 @@ package pallada
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 )
 
@@ -31,6 +32,21 @@ const (
 	SIGNEXTEND Opcode = 0x0B // Расширение знака
 )
 
+// Криптографические опкоды (0x20-0x23)
+const (
+	KECCAK256 Opcode = 0x20 // Keccak-256 хэш (SHA3)
+	SHA256    Opcode = 0x21 // SHA-256 хэш
+	RIPEMD160 Opcode = 0x22 // RIPEMD-160 хэш
+	ECRECOVER Opcode = 0x23 // Восстановление адреса из ECDSA-подписи
+)
+
+// Опкоды входных данных транзакции (0x35-0x37)
+const (
+	CALLDATALOAD Opcode = 0x35 // Загрузить 32 байта из calldata
+	CALLDATASIZE Opcode = 0x36 // Размер calldata в байтах
+	CALLDATACOPY Opcode = 0x37 // Скопировать calldata в память
+)
+
 // Опкоды сравнения (0x10-0x1F)
 const (
 	LT     Opcode = 0x10 // Меньше
@@ -49,17 +65,69 @@ const (
 	SAR    Opcode = 0x1D // Арифметический сдвиг вправо
 )
 
-// Опкоды стека (0x50-0x5F)
+// Опкоды стека и памяти (0x50-0x5F)
 const (
-	POP     Opcode = 0x50 // Удалить элемент со стека
-	MLOAD   Opcode = 0x51 // Загрузить из памяти
-	MSTORE  Opcode = 0x52 // Сохранить в память
-	MSTORE8 Opcode = 0x53 // Сохранить байт в память
-	SLOAD   Opcode = 0x54 // Загрузить из storage
-	SSTORE  Opcode = 0x55 // Сохранить в storage
-	MSIZE   Opcode = 0x56 // Размер памяти
-	PUSH1   Opcode = 0x60 // Push 1 байт
-	PUSH32  Opcode = 0x7F // Push 32 байта (максимум)
+	POP      Opcode = 0x50 // Удалить элемент со стека
+	MLOAD    Opcode = 0x51 // Загрузить из памяти
+	MSTORE   Opcode = 0x52 // Сохранить в память
+	MSTORE8  Opcode = 0x53 // Сохранить байт в память
+	SLOAD    Opcode = 0x54 // Загрузить из storage
+	SSTORE   Opcode = 0x55 // Сохранить в storage
+	JUMP     Opcode = 0x56 // Безусловный переход
+	JUMPI    Opcode = 0x57 // Условный переход
+	MSIZE    Opcode = 0x59 // Размер памяти
+	JUMPDEST Opcode = 0x5B // Допустимая точка назначения перехода
+	PUSH1    Opcode = 0x60 // Push 1 байт
+	PUSH32   Opcode = 0x7F // Push 32 байта (максимум)
+)
+
+// Опкоды событий LOG (0xA0-0xA4)
+const (
+	LOG0 Opcode = 0xA0 // Событие без топиков
+	LOG1 Opcode = 0xA1 // Событие с 1 топиком
+	LOG2 Opcode = 0xA2 // Событие с 2 топиками
+	LOG3 Opcode = 0xA3 // Событие с 3 топиками
+	LOG4 Opcode = 0xA4 // Событие с 4 топиками
+)
+
+// Опкоды дублирования стека (0x80-0x8F)
+const (
+	DUP1  Opcode = 0x80 // Дублировать 1-й элемент стека
+	DUP2  Opcode = 0x81 // Дублировать 2-й элемент стека
+	DUP3  Opcode = 0x82
+	DUP4  Opcode = 0x83
+	DUP5  Opcode = 0x84
+	DUP6  Opcode = 0x85
+	DUP7  Opcode = 0x86
+	DUP8  Opcode = 0x87
+	DUP9  Opcode = 0x88
+	DUP10 Opcode = 0x89
+	DUP11 Opcode = 0x8A
+	DUP12 Opcode = 0x8B
+	DUP13 Opcode = 0x8C
+	DUP14 Opcode = 0x8D
+	DUP15 Opcode = 0x8E
+	DUP16 Opcode = 0x8F // Дублировать 16-й элемент стека
+)
+
+// Опкоды обмена элементов стека (0x90-0x9F)
+const (
+	SWAP1  Opcode = 0x90 // Поменять местами 1-й и 2-й элементы стека
+	SWAP2  Opcode = 0x91 // Поменять местами 1-й и 3-й элементы стека
+	SWAP3  Opcode = 0x92
+	SWAP4  Opcode = 0x93
+	SWAP5  Opcode = 0x94
+	SWAP6  Opcode = 0x95
+	SWAP7  Opcode = 0x96
+	SWAP8  Opcode = 0x97
+	SWAP9  Opcode = 0x98
+	SWAP10 Opcode = 0x99
+	SWAP11 Opcode = 0x9A
+	SWAP12 Opcode = 0x9B
+	SWAP13 Opcode = 0x9C
+	SWAP14 Opcode = 0x9D
+	SWAP15 Opcode = 0x9E
+	SWAP16 Opcode = 0x9F // Поменять местами 1-й и 17-й элементы стека
 )
 
 // Опкоды управления потоком
@@ -434,6 +502,26 @@ func (op Opcode) String() string {
 		return "XOR"
 	case NOT:
 		return "NOT"
+	case KECCAK256:
+		return "KECCAK256"
+	case SHA256:
+		return "SHA256"
+	case RIPEMD160:
+		return "RIPEMD160"
+	case ECRECOVER:
+		return "ECRECOVER"
+	case CALLDATALOAD:
+		return "CALLDATALOAD"
+	case CALLDATASIZE:
+		return "CALLDATASIZE"
+	case CALLDATACOPY:
+		return "CALLDATACOPY"
+	case JUMP:
+		return "JUMP"
+	case JUMPI:
+		return "JUMPI"
+	case JUMPDEST:
+		return "JUMPDEST"
 	case POP:
 		return "POP"
 	case MLOAD:
@@ -450,7 +538,30 @@ func (op Opcode) String() string {
 		return "RETURN"
 	case REVERT:
 		return "REVERT"
-	default:
-		return "UNKNOWN"
+	case LOG0:
+		return "LOG0"
+	case LOG1:
+		return "LOG1"
+	case LOG2:
+		return "LOG2"
+	case LOG3:
+		return "LOG3"
+	case LOG4:
+		return "LOG4"
 	}
+
+	// DUP1-DUP16
+	if op >= DUP1 && op <= DUP16 {
+		return fmt.Sprintf("DUP%d", int(op-DUP1)+1)
+	}
+	// SWAP1-SWAP16
+	if op >= SWAP1 && op <= SWAP16 {
+		return fmt.Sprintf("SWAP%d", int(op-SWAP1)+1)
+	}
+	// PUSH1-PUSH32
+	if op >= PUSH1 && op <= PUSH32 {
+		return fmt.Sprintf("PUSH%d", int(op-PUSH1)+1)
+	}
+
+	return fmt.Sprintf("UNKNOWN(0x%02X)", byte(op))
 }

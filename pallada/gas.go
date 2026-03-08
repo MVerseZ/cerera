@@ -84,6 +84,32 @@ const (
 	GasCallStipend uint64 = 2300  // Газ, передаваемый вызываемому контракту
 	GasReturn      uint64 = 0     // RETURN бесплатный
 	GasRevert      uint64 = 0     // REVERT бесплатный
+
+	// Хэш-операции
+	GasKeccak256     uint64 = 30  // Базовая стоимость KECCAK256
+	GasKeccak256Word uint64 = 6   // Стоимость за каждые 32 байта входа KECCAK256
+	GasSHA256        uint64 = 60  // Базовая стоимость SHA256
+	GasSHA256Word    uint64 = 12  // Стоимость за каждые 32 байта входа SHA256
+	GasRIPEMD160     uint64 = 600 // Базовая стоимость RIPEMD160
+	GasRIPEMD160Word uint64 = 120 // Стоимость за каждые 32 байта входа RIPEMD160
+
+	// ECRECOVER
+	GasEcrecover uint64 = 3000 // Стоимость восстановления адреса из подписи
+
+	// Управление потоком
+	GasJump     uint64 = 8  // JUMP
+	GasJumpi    uint64 = 10 // JUMPI
+	GasJumpdest uint64 = 1  // JUMPDEST (маркер, дешевый)
+
+	// Calldata
+	GasCalldataLoad uint64 = 3  // CALLDATALOAD
+	GasCalldataSize uint64 = 2  // CALLDATASIZE
+	GasCalldataCopy uint64 = 3  // CALLDATACOPY базовая + 3 за каждые 32 байта
+
+	// LOG события
+	GasLogBase    uint64 = 375  // Базовая стоимость LOG
+	GasLogData    uint64 = 8    // Стоимость за байт данных события
+	GasLogTopic   uint64 = 375  // Стоимость за каждый топик
 )
 
 // CalculateMemoryGas вычисляет стоимость газа для операций с памятью

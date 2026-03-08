@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"container/heap"
 	"errors"
 	"sync"
 	"time"
@@ -67,66 +68,80 @@ type MemPoolInfo struct {
 	Usage            uintptr // Total mem for mempool
 	MaxMempool       int     // Maximum mem for mempool
 	Mempoolminfee    int     // min fee for tx
-	UnbroadCastCount int     // local pool transactions
+	UnbroadcastCount int     // local pool transactions
 	Hashes           []common.Hash
-	Txs              []types.GTransaction
+	Txs              []*types.GTransaction
 }
 
-// for simplification of mining, pool sort transactions by gas*gasPrice with coefficient of payload
+// for simplification of mining, pool sorts transactions by gas*gasPrice with coefficient of payload
 //
 // @author gnupunk 28.02.2026
 type Pool struct {
-	Listen      chan []*types.GTransaction // outbound channel
-	DataChannel chan []byte                // ws channel
+	maxSize   int
+	memPool   map[common.Hash]*types.GTransaction
+	txHeap    TxHeap
+	heapItems map[common.Hash]*txHeapItem // O(1) lookup by hash → heap slot
+	graph     *TxGraph                    // CPFP dependency graph
 
-	NewTxEventChannel chan *types.GTransaction
-	maxSize           int
-	memPool           map[common.Hash]types.GTransaction
-	maintainTicker    *time.Ticker
+	maintainTicker *time.Ticker
+	stopCh         chan struct{}
 
-	Status   byte
-	Prepared []*types.GTransaction
+	Status byte
 
 	observers []observer.Observer
 
 	Info MemPoolInfo
 
-	mu sync.Mutex
+	mu          sync.Mutex
+	observersMu sync.RWMutex
 }
 
-var GPool TxPool
+var (
+	gPoolMu sync.RWMutex
+	GPool   TxPool
+)
 
 func Get() TxPool {
+	gPoolMu.RLock()
+	defer gPoolMu.RUnlock()
 	return GPool
 }
 
 type TxPool interface {
-	AddRawTransaction(tx *types.GTransaction)
+	AddRawTransaction(tx *types.GTransaction) error
 	GetInfo() MemPoolInfo
 	GetRawMemPool() []any
 	GetPendingTransactions() []types.GTransaction
 	GetTransaction(transactionHash common.Hash) *types.GTransaction
+	// GetTopN returns the n most profitable transactions for block assembly.
+	// Results are ordered from highest to lowest total fee (GasPrice × Gas).
+	// Fast path: O(n log n), no dependency awareness.
+	GetTopN(n int) []*types.GTransaction
+	// GetMiningPackage returns up to n transactions in CPFP-aware,
+	// dependency-safe order. Ancestors are always emitted before descendants;
+	// packages are ranked by effective fee rate (ΣfeeChain / ΣgasChain) so a
+	// high-fee child can pull its cheap parent into the block.
+	GetMiningPackage(n int) []*types.GTransaction
 	Exec(method string, params []any) any
 	QueueTransaction(tx *types.GTransaction)
 	Register(observer observer.Observer)
 	RemoveFromPool(txHash common.Hash) error
 	ServiceName() string
+	Stop()
 }
 
 func InitPool(maxSize int) (TxPool, error) {
-	mPool := make(map[common.Hash]types.GTransaction)
+	mPool := make(map[common.Hash]*types.GTransaction)
 	var p = &Pool{
 		memPool:        mPool,
+		txHeap:         make(TxHeap, 0, maxSize),
+		heapItems:      make(map[common.Hash]*txHeapItem, maxSize),
+		graph:          NewTxGraph(),
 		maintainTicker: time.NewTicker(1500 * time.Millisecond),
 		maxSize:        maxSize,
-
-		Prepared: make([]*types.GTransaction, 0),
-
-		Listen:      make(chan []*types.GTransaction),
-		DataChannel: make(chan []byte),
-		Status:      0xa,
-
-		observers: make([]observer.Observer, 0),
+		stopCh:         make(chan struct{}),
+		Status:         0xa,
+		observers:      make([]observer.Observer, 0),
 	}
 	pLogger.Infow("Init pool",
 		"maxSize", p.maxSize,
@@ -136,9 +151,9 @@ func InitPool(maxSize int) (TxPool, error) {
 		Bytes:            0,
 		Usage:            0,
 		MaxMempool:       p.maxSize,
-		UnbroadCastCount: 0,
+		UnbroadcastCount: 0,
 		Hashes:           make([]common.Hash, 0),
-		Txs:              make([]types.GTransaction, 0),
+		Txs:              make([]*types.GTransaction, 0),
 	}
 
 	poolMaxSize.Set(float64(p.maxSize))
@@ -146,15 +161,25 @@ func InitPool(maxSize int) (TxPool, error) {
 	poolBytes.Set(0)
 
 	go p.PoolServiceLoop()
+
+	gPoolMu.Lock()
 	GPool = p
-	return GPool, nil
+	gPoolMu.Unlock()
+
+	return p, nil
 }
 
-// remove observer from pool observers list, common method
-func removeFromslice(observerList []observer.Observer, observerToRemove observer.Observer) []observer.Observer {
+// Stop gracefully shuts down the pool service loop.
+func (p *Pool) Stop() {
+	p.maintainTicker.Stop()
+	close(p.stopCh)
+}
+
+// removeFromSlice removes an observer from the slice by swapping with the last element.
+func removeFromSlice(observerList []observer.Observer, observerToRemove observer.Observer) []observer.Observer {
 	observerListLength := len(observerList)
-	for i, observer := range observerList {
-		if observerToRemove.GetID() == observer.GetID() {
+	for i, obs := range observerList {
+		if observerToRemove.GetID() == obs.GetID() {
 			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
 			return observerList[:observerListLength-1]
 		}
@@ -162,27 +187,16 @@ func removeFromslice(observerList []observer.Observer, observerToRemove observer
 	return observerList
 }
 
-// add transaction to pool
-// tx validate by gas, size, etc..
-
-func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
+// AddRawTransaction validates and adds a transaction to the pool.
+// Returns an error if the transaction is rejected (duplicate, low gas, or pool full).
+func (p *Pool) AddRawTransaction(tx *types.GTransaction) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
-	// Check if transaction already exists in memPool
 	if _, exists := p.memPool[tx.Hash()]; exists {
-		// Transaction already exists, skip or update
-		return
+		p.mu.Unlock()
+		return errors.New("transaction already in pool")
 	}
-	// Check if transaction already exists in Prepared to avoid duplicates
-	for _, preparedTx := range p.Prepared {
-		if preparedTx.Hash() == tx.Hash() {
-			// Transaction already in Prepared, skip
-			return
-		}
-	}
-	// For legacy transfers tx.Data() is a text message, not bytecode.
-	// Use canonical minimum transfer gas; for contract transactions use PreCompile.
+
 	var minGas uint64
 	if tx.Type() == types.LegacyTxType {
 		minGas = pallada.MinTransferGas
@@ -191,66 +205,116 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) {
 		minGas, err = pallada.NewVM(tx.Data(), nil).PreCompile(tx.Data())
 		if err != nil {
 			pLogger.Errorw("Error precompile transaction", "error", err)
-			return
+			p.mu.Unlock()
+			return err
 		}
 	}
-	if len(p.memPool) < p.maxSize && minGas <= tx.Gas() {
-		p.memPool[tx.Hash()] = *tx
-		p.Prepared = append(p.Prepared, tx)
-		p.NotifyAll(tx)
-		poolTxAddedTotal.Inc()
-		// Recalculate Info instead of manual update to prevent memory leaks
-		p.calcInfo()
-	} else {
+
+	if len(p.memPool) >= p.maxSize {
 		poolTxRejectedTotal.Inc()
+		p.mu.Unlock()
+		return errors.New("pool is full")
 	}
+	if minGas > tx.Gas() {
+		poolTxRejectedTotal.Inc()
+		p.mu.Unlock()
+		return errors.New("gas too low")
+	}
+
+	item := &txHeapItem{tx: tx, fee: tx.Cost()}
+	p.memPool[tx.Hash()] = tx
+	p.heapItems[tx.Hash()] = item
+	heap.Push(&p.txHeap, item)
+	p.graph.AddTx(tx) // wire CPFP dependency links (acquires graph.mu inside)
+	poolTxAddedTotal.Inc()
+	p.calcInfo()
+	p.mu.Unlock()
+
+	p.NotifyAll(tx)
+	return nil
 }
 
-// clear pool (for testing purposes)
+// Clear removes all transactions from the pool (for testing purposes).
 func (p *Pool) Clear() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.memPool = nil
-	p.memPool = make(map[common.Hash]types.GTransaction)
+	p.memPool = make(map[common.Hash]*types.GTransaction)
+	p.txHeap = make(TxHeap, 0, p.maxSize)
+	p.heapItems = make(map[common.Hash]*txHeapItem, p.maxSize)
+	p.graph = NewTxGraph()
 	p.calcInfo()
 }
 
-// calculate pool info (for internal use)
-func (p *Pool) calcInfo() {
+// GetTopN returns up to n transactions with the highest total fee (GasPrice × Gas).
+// It clones the heap items so the original heap is not modified.
+// Cloning txHeapItem structs (not pointers) keeps the originals' idx intact while
+// pops on the copy update only the clones - no heap.Init needed since the layout
+// is structurally identical to the source heap.
+func (p *Pool) GetTopN(n int) []*types.GTransaction {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
+	sz := len(p.txHeap)
+	if n > sz {
+		n = sz
+	}
+	if n == 0 {
+		return nil
+	}
+
+	// Clone item structs so Swap on the copy does not touch original idx values.
+	tmp := make(TxHeap, sz)
+	for i, item := range p.txHeap {
+		clone := *item // copy struct (fee pointer shared - fee is read-only)
+		tmp[i] = &clone
+	}
+	// tmp mirrors the same heap topology - valid heap, no Init needed.
+
+	result := make([]*types.GTransaction, 0, n)
+	for i := 0; i < n; i++ {
+		result = append(result, heap.Pop(&tmp).(*txHeapItem).tx)
+	}
+	return result
+}
+
+// GetMiningPackage returns up to n transactions in CPFP-aware, dependency-safe
+// order by delegating to the internal TxGraph. The graph has its own lock so
+// this method does not need to hold p.mu, keeping it non-blocking for miners.
+func (p *Pool) GetMiningPackage(n int) []*types.GTransaction {
+	return p.graph.GetMiningPackage(n)
+}
+
+// calcInfo recalculates MemPoolInfo from current memPool state. Must be called under p.mu.
+func (p *Pool) calcInfo() {
 	var txPoolSize = 0
-	var hashes = make([]common.Hash, 0)
-	var cp = make([]types.GTransaction, 0)
+	hashes := make([]common.Hash, 0, len(p.memPool))
+	cp := make([]*types.GTransaction, 0, len(p.memPool))
 
 	for _, k := range p.memPool {
-		var txSize = k.Size()
-		txPoolSize += int(txSize)
+		txPoolSize += int(k.Size())
 		hashes = append(hashes, k.Hash())
 		cp = append(cp, k)
 	}
 
-	var result = MemPoolInfo{
+	p.Info = MemPoolInfo{
 		Size:             len(hashes),
 		Bytes:            txPoolSize,
-		Usage:            0, // Можно рассчитать если нужно
-		UnbroadCastCount: len(hashes),
+		Usage:            0,
+		UnbroadcastCount: len(hashes),
 		MaxMempool:       p.maxSize,
-		Mempoolminfee:    0, //int(p.minGas),
+		Mempoolminfee:    0,
 		Hashes:           hashes,
 		Txs:              cp,
 	}
-
-	p.Info = result
-	poolSize.Set(float64(result.Size))
-	poolBytes.Set(float64(result.Bytes))
+	poolSize.Set(float64(len(hashes)))
+	poolBytes.Set(float64(txPoolSize))
 }
 
-// get pool info (for internal use)
+// GetInfo returns a snapshot of the current pool state.
 func (p *Pool) GetInfo() MemPoolInfo {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.calcInfo()
 	return p.Info
 }
 
@@ -275,176 +339,158 @@ func (p *Pool) GetMinimalGasValue() float64 {
 		0x54,       // SLOAD    (load receiver balance)
 		0x01,       // ADD      (receiver_bal + amount)
 		0x60, 0x01, // PUSH1 1  (receiver storage key)
-		0x55,       // SSTORE   (save new receiver balance)
-		0x00,       // STOP
+		0x55, // SSTORE   (save new receiver balance)
+		0x00, // STOP
 	}
 	gasUnits, err := pallada.NewVM(transferBytecode, nil).PreCompile(transferBytecode)
 	if err != nil {
 		pLogger.Errorw("Error precompile transfer bytecode", "error", err)
 		return 0
 	}
-	// gasUnits DUST → CER
 	return float64(gasUnits) / 1_000_000
 }
 
-// get pending transactions (for internal use)
+// GetPendingTransactions returns a copy of all pending transactions.
 func (p *Pool) GetPendingTransactions() []types.GTransaction {
 	start := time.Now()
 	defer func() {
-		duration := time.Since(start).Seconds()
-		poolGetPendingDurationSeconds.Observe(duration)
+		poolGetPendingDurationSeconds.Observe(time.Since(start).Seconds())
 	}()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	result := make([]types.GTransaction, 0)
+	result := make([]types.GTransaction, 0, len(p.memPool))
 	for _, k := range p.memPool {
-		result = append(result, k)
+		result = append(result, *k)
 	}
 	return result
 }
 
-// get raw mempool (hashes of transactions in mempool)
+// GetRawMemPool returns hashes of all transactions currently in the pool.
 func (p *Pool) GetRawMemPool() []any {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Seconds()
-		poolGetPendingDurationSeconds.Observe(duration)
-	}()
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	var result []any
-	for i := range p.memPool {
-		var tx = p.memPool[i]
-		result = append(result, tx.Hash())
+	result := make([]any, 0, len(p.memPool))
+	for hash := range p.memPool {
+		result = append(result, hash)
 	}
-
 	return result
 }
 
-// add transaction to pool queue (wrapper for AddRawTransaction)
+// QueueTransaction adds a transaction to the pool, discarding any error.
 func (p *Pool) QueueTransaction(tx *types.GTransaction) {
-	p.AddRawTransaction(tx)
+	//nolint:errcheck
+	_ = p.AddRawTransaction(tx)
 }
 
-// get transaction by hash (for internal use)
+// SendTransaction adds a transaction to the pool and returns its hash.
+func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
+	if err := p.AddRawTransaction(&tx); err != nil {
+		return common.Hash{}, err
+	}
+	return tx.Hash(), nil
+}
+
+// GetTransaction returns a copy of the transaction with the given hash, or nil if not found.
 func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	// Use direct access by hash instead of iteration
-	if tx, ok := p.memPool[transactionHash]; ok {
-		return &tx
+	tx, ok := p.memPool[transactionHash]
+	if !ok {
+		return nil
 	}
-	return nil
+	cp := *tx
+	return &cp
 }
 
-// notify all observers (for internal use)
+// NotifyAll delivers a transaction event to all registered observers.
+// Called outside p.mu to prevent deadlocks when observers call back into the pool.
 func (p *Pool) NotifyAll(tx *types.GTransaction) {
-	for _, observer := range p.observers {
-		observer.Update(tx)
+	p.observersMu.RLock()
+	observers := make([]observer.Observer, len(p.observers))
+	copy(observers, p.observers)
+	p.observersMu.RUnlock()
+
+	for _, obs := range observers {
+		obs.Update(tx)
 	}
 }
 
-// pool service loop (for internal use)
+// PoolServiceLoop runs the pool maintenance ticker until Stop is called.
 func (p *Pool) PoolServiceLoop() {
-	var errc chan error
-	for errc == nil {
+	for {
 		select {
 		case <-p.maintainTicker.C:
-			// fmt.Printf("Pool maintain loop\r\n")
-			// p.mu.Lock()
+			// maintenance hook: eviction, repricing, etc.
+		case <-p.stopCh:
+			return
 		}
 	}
 }
 
-// register new observer (for internal use)
+// Register adds an observer to receive new transaction events.
 func (p *Pool) Register(observer observer.Observer) {
+	p.observersMu.Lock()
+	defer p.observersMu.Unlock()
 	pLogger.Infow("Register new pool observer", "observerID", observer.GetID())
 	p.observers = append(p.observers, observer)
 }
 
+// RemoveFromPool deletes a transaction from the pool by hash.
 func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	_, ok := p.memPool[txHash]
-	if !ok {
-		return errors.New("no in mempool")
+	if _, ok := p.memPool[txHash]; !ok {
+		return errors.New("transaction not in mempool")
 	}
+	item := p.heapItems[txHash]
+	heap.Remove(&p.txHeap, item.idx) // O(log n) — no full rebuild
+	delete(p.heapItems, txHash)
 	delete(p.memPool, txHash)
-	// Исключаем также из Prepared, чтобы не было рассинхрона и утечки
-	for i := 0; i < len(p.Prepared); i++ {
-		if p.Prepared[i].Hash() == txHash {
-			p.Prepared = append(p.Prepared[:i], p.Prepared[i+1:]...)
-			break
-		}
-	}
+	p.graph.RemoveTx(txHash) // rewire CPFP links for orphaned descendants
 	poolTxRemovedTotal.Inc()
 	p.calcInfo()
 	return nil
 }
 
-// send transaction to pool (for internal use)
-func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if len(p.memPool) < p.maxSize { //&& p.minGas <= tx.Gas() {
-		p.memPool[tx.Hash()] = tx
-		poolTxAddedTotal.Inc()
-		// Update metrics
-		p.calcInfo()
-	} else {
-		poolTxRejectedTotal.Inc()
-		pLogger.Warnw("Transaction rejected",
-			"hash", tx.Hash(),
-			"poolSize", len(p.memPool),
-			"maxSize", p.maxSize,
-			"gas", tx.Gas(),
-			//"minGas", p.minGas,
-		)
-		return tx.Hash(), errors.New("transaction rejected: pool full or gas too low")
-	}
-	return tx.Hash(), nil
-}
-
-// get service name (for internal use)
+// ServiceName returns the service identifier string.
 func (p *Pool) ServiceName() string {
 	return POOL_SERVICE_NAME
 }
 
-// unregister observer (for internal use)
+// UnRegister removes an observer from the notification list.
 func (p *Pool) UnRegister(observer observer.Observer) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.observers = removeFromslice(p.observers, observer)
+	p.observersMu.Lock()
+	defer p.observersMu.Unlock()
+	p.observers = removeFromSlice(p.observers, observer)
 }
 
-// update transaction in pool, change gas or message (NOT VALUE, if we send 1,1 -> we will receive 1,1).
+// UpdateTx replaces an existing transaction in the pool (gas or message update, not value).
+// heap.Fix repositions the item in O(log n) after the fee may have changed.
 func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	// Use direct access by hash instead of iteration
-	if _, exists := p.memPool[newTx.Hash()]; exists {
-		pLogger.Infow("Replace sign tx in pool",
-			"hash", newTx.Hash(),
-			"signed", newTx.IsSigned(),
-		)
-		p.memPool[newTx.Hash()] = newTx
-		// Update Prepared list if transaction is there
-		for i, preparedTx := range p.Prepared {
-			if preparedTx.Hash() == newTx.Hash() {
-				p.Prepared[i] = &newTx
-				break
-			}
-		}
-		p.calcInfo()
-		// Notify observers
-		p.NotifyAll(&newTx)
+	item, exists := p.heapItems[newTx.Hash()]
+	if !exists {
+		p.mu.Unlock()
+		return
 	}
+	pLogger.Infow("Replace sign tx in pool",
+		"hash", newTx.Hash(),
+		"signed", newTx.IsSigned(),
+	)
+	stored := &newTx
+	p.memPool[newTx.Hash()] = stored
+	item.tx = stored
+	item.fee = stored.Cost() // recalculate cached fee
+	heap.Fix(&p.txHeap, item.idx)
+	p.calcInfo()
+	p.mu.Unlock()
+
+	p.NotifyAll(stored)
 }
 
-// execute method (for internal use)
+// Exec dispatches a named method call on the pool.
 func (p *Pool) Exec(method string, params []interface{}) interface{} {
 	switch method {
 	case "getInfo":
