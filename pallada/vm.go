@@ -7,15 +7,17 @@ import (
 // VM представляет виртуальную машину для выполнения контрактов
 // Принцип: Single Responsibility (SRP) - VM только управляет выполнением
 type VM struct {
-	code         []byte   // Байткод контракта
-	ctx          *Context // Контекст выполнения
-	stack        *Stack   // Стек операндов
-	memory       *Memory  // Память выполнения
-	gasMeter     GasMeter // Счетчик газа
-	pc           int      // Program Counter (указатель на текущую инструкцию)
-	returnData   []byte   // Данные для возврата (RETURN/REVERT)
-	shouldReturn bool     // Флаг возврата
-	shouldRevert bool     // Флаг отката
+	code         []byte        // Байткод контракта
+	ctx          *Context      // Контекст выполнения
+	stack        *Stack        // Стек операндов
+	memory       *Memory       // Память выполнения
+	gasMeter     GasMeter      // Счетчик газа
+	pc           int           // Program Counter (указатель на текущую инструкцию)
+	returnData   []byte        // Данные для возврата (RETURN/REVERT)
+	shouldReturn bool          // Флаг возврата
+	shouldRevert bool          // Флаг отката
+	logs         []*Log        // Накопленные события (LOG0-LOG4)
+	jumpdests    map[int]bool  // Допустимые точки назначения JUMP/JUMPI
 }
 
 // NewVM создает новую виртуальную машину с указанным байткодом и контекстом
@@ -37,6 +39,8 @@ func NewVM(code []byte, ctx *Context) *VM {
 		returnData:   nil,
 		shouldReturn: false,
 		shouldRevert: false,
+		logs:         make([]*Log, 0),
+		jumpdests:    buildJumpdests(code),
 	}
 }
 
@@ -128,6 +132,37 @@ func (vm *VM) PreCompile(code []byte) (uint64, error) {
 		case op >= ISZERO && op <= SAR:
 			gasUsed += GasVeryLow
 
+		// Хэш-операции (консервативная оценка: базовый газ без учёта данных)
+		case op == KECCAK256:
+			gasUsed += GasKeccak256
+		case op == SHA256:
+			gasUsed += GasSHA256
+		case op == RIPEMD160:
+			gasUsed += GasRIPEMD160
+		case op == ECRECOVER:
+			gasUsed += GasEcrecover
+
+		// Calldata
+		case op == CALLDATALOAD:
+			gasUsed += GasCalldataLoad
+		case op == CALLDATASIZE:
+			gasUsed += GasCalldataSize
+		case op == CALLDATACOPY:
+			gasUsed += GasCalldataCopy
+
+		// Управление потоком
+		case op == JUMP:
+			gasUsed += GasJump
+		case op == JUMPI:
+			gasUsed += GasJumpi
+		case op == JUMPDEST:
+			gasUsed += GasJumpdest
+
+		// LOG события (консервативная оценка без данных)
+		case op >= LOG0 && op <= LOG4:
+			topics := uint64(op - LOG0)
+			gasUsed += GasLogBase + topics*GasLogTopic
+
 		// Стековые, память, storage
 		case op == MLOAD:
 			gasUsed += GasVeryLow
@@ -138,12 +173,17 @@ func (vm *VM) PreCompile(code []byte) (uint64, error) {
 		case op == SSTORE:
 			gasUsed += GasSStore
 		case op == POP || op == MSIZE:
-			// POP и MSIZE почти бесплатные
 			gasUsed += GasBase
+
+		// DUP / SWAP — дешёвые операции
+		case op >= DUP1 && op <= DUP16:
+			gasUsed += GasVeryLow
+		case op >= SWAP1 && op <= SWAP16:
+			gasUsed += GasVeryLow
 
 		// CALL инструкции
 		case op == CALL:
-			gasUsed += GasCall // + возможно, GasCallValue если value > 0
+			gasUsed += GasCall
 
 		// PUSH
 		case op >= PUSH1 && op <= PUSH32:
@@ -152,8 +192,6 @@ func (vm *VM) PreCompile(code []byte) (uint64, error) {
 
 		// RETURN/REVERT
 		case op == RETURN || op == REVERT:
-			// RETURN/REVERT бесплатные сами по себе
-			// Можно оценить возврат/откат как GasReturn/GasRevert
 			gasUsed += GasReturn
 		}
 	}
@@ -187,6 +225,10 @@ func (vm *VM) executeOpcode(op Opcode) error {
 	case op >= ISZERO && op <= SAR:
 		return executeBitwise(vm, op)
 
+	// Криптографические хэш-операции и ECRECOVER
+	case op >= KECCAK256 && op <= ECRECOVER:
+		return executeHashOperations(vm, op)
+
 	// Операции со стеком
 	case op == POP || op == MSIZE:
 		return executeStackOperations(vm, op)
@@ -199,9 +241,29 @@ func (vm *VM) executeOpcode(op Opcode) error {
 	case op == SLOAD || op == SSTORE:
 		return executeStorageOperations(vm, op)
 
+	// Calldata операции
+	case op >= CALLDATALOAD && op <= CALLDATACOPY:
+		return executeCalldataOperations(vm, op)
+
+	// Управление потоком (JUMP, JUMPI, JUMPDEST)
+	case op == JUMP || op == JUMPI || op == JUMPDEST:
+		return executeJumpOperations(vm, op)
+
+	// LOG события
+	case op >= LOG0 && op <= LOG4:
+		return executeLogOperations(vm, op)
+
 	// PUSH операции (0x60-0x7F)
 	case op >= PUSH1 && op <= PUSH32:
 		return vm.executePush(op)
+
+	// DUP операции (0x80-0x8F): DUPn дублирует n-й элемент с вершины
+	case op >= DUP1 && op <= DUP16:
+		return executeDup(vm, int(op-DUP1))
+
+	// SWAP операции (0x90-0x9F): SWAPn меняет вершину с (n+1)-м элементом
+	case op >= SWAP1 && op <= SWAP16:
+		return executeSwap(vm, int(op-SWAP1)+1)
 
 	// Операции вызовов
 	case op == RETURN || op == REVERT || op == CALL:
@@ -238,4 +300,28 @@ func (vm *VM) GetReturnData() []byte {
 // GetMemory возвращает доступ к памяти VM (для отладки и тестирования)
 func (vm *VM) GetMemory() *Memory {
 	return vm.memory
+}
+
+// GetLogs возвращает накопленные события контракта
+func (vm *VM) GetLogs() []*Log {
+	return vm.logs
+}
+
+// buildJumpdests предварительно вычисляет допустимые цели JUMP/JUMPI.
+// Проходит байткод один раз, пропуская аргументы PUSH, и фиксирует
+// все позиции JUMPDEST. Это гарантирует O(1) проверку при каждом прыжке.
+func buildJumpdests(code []byte) map[int]bool {
+	dests := make(map[int]bool)
+	for i := 0; i < len(code); {
+		op := Opcode(code[i])
+		if op == JUMPDEST {
+			dests[i] = true
+		}
+		if op >= PUSH1 && op <= PUSH32 {
+			i += int(op-PUSH1) + 2 // опкод + N байт данных
+		} else {
+			i++
+		}
+	}
+	return dests
 }
