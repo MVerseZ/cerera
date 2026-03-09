@@ -16,12 +16,35 @@ As the any blockchain project there is RPC communication protocol via HTTP(S).
 There is no any VM for virtual contracts creation. But transaction entity can store big data, like CSV dataframes or multimedia content.
 
 ________________________________________________
-Consensus algorythm
+Consensus algorithm
   
+Cerera uses a hybrid approach that cleanly separates **network transport** and
+**consensus / chain logic**.
 
+- The **network layer** (`icenet`) is responsible only for:
+  - peer discovery and connectivity (libp2p + DHT),
+  - pub/sub topics for blocks, transactions and consensus messages,
+  - low–level request/response protocols for status and block syncing.
 
-  TODO
+- The **node layer** (`gigea`) owns:
+  - the blockchain state and validation (via ServiceProvider),
+  - a PBFT‑like finality protocol over proposed PoW blocks
+    (PrePrepare → Prepare → Commit → Finalize),
+  - synchronization policy: when to request blocks and which peers to trust.
 
+A high‑level view:
+- miners/validators build candidate blocks satisfying PoW;
+- a validator proposes a block to others through the consensus pub/sub channel;
+- validators run a PBFT‑style round:
+  - **PrePrepare**: proposal with full block;
+  - **Prepare**: validators vote to accept the proposal;
+  - **Commit**: after quorum of Prepare votes, validators vote to finalize;
+- once Commit quorum is reached, the block is re‑validated and appended
+  to the local chain; the result is a finalized block height.
+
+Network transport does not make consensus decisions: it only carries messages.
+All rules about who can propose blocks, how quorum is calculated and how the
+chain is updated live in the `gigea` node logic.
 
 
 ________________________________________________

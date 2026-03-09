@@ -22,8 +22,9 @@ const (
 	SyncCheckInterval = 30 * time.Second
 	// SyncTimeout is the timeout for a sync operation
 	SyncTimeout = 5 * time.Minute
-	// MinBlocksAhead is the minimum number of blocks a peer must be ahead to trigger sync
-	MinBlocksAhead = 5
+	// MinBlocksAhead is the minimum number of blocks a peer must be ahead to trigger sync.
+	// We keep this low so that nodes that are slightly behind still trigger a catch-up.
+	MinBlocksAhead = 1
 )
 
 func syncLogger() *zap.SugaredLogger {
@@ -308,8 +309,41 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 		return
 	}
 
+	// Build local status for comparison (chain + storage fingerprint).
+	localStatus, _ := protocol.GetStatus(m.serviceProvider)
+
+	// Compare local and remote status.
+	chainMatch := (localStatus.ChainID == status.Status.ChainID) &&
+		(localStatus.GenesisHash == status.Status.GenesisHash)
+	storageMatch := (localStatus.StorageService == status.Status.StorageService)
+
+	if chainMatch && storageMatch {
+		syncLogger().Infow("[SYNC] Peer ready: chain+storage match",
+			"peer", peerID,
+			"localChainID", localStatus.ChainID,
+			"remoteChainID", status.Status.ChainID,
+			"storageService", localStatus.StorageService,
+		)
+	} else {
+		syncLogger().Warnw("[SYNC] Peer incompatible: chain/storage mismatch",
+			"peer", peerID,
+			"localChainID", localStatus.ChainID,
+			"remoteChainID", status.Status.ChainID,
+			"localGenesis", localStatus.GenesisHash,
+			"remoteGenesis", status.Status.GenesisHash,
+			"localStorageService", localStatus.StorageService,
+			"remoteStorageService", status.Status.StorageService,
+		)
+	}
+
 	// Update peer info
 	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.Status, status.NodeAddress)
+	// Mark readiness on the peer based on compatibility result.
+	if chainMatch && storageMatch {
+		m.peerManager.MarkPeerReady(peerID, true)
+	} else {
+		m.peerManager.MarkPeerReady(peerID, false)
+	}
 	m.peerTracker.UpdatePeer(peerID, status.Height, status.Status)
 
 	syncLogger().Infow("[SYNC] Peer status received",

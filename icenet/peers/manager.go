@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cerera/core/types"
+	"github.com/cerera/icenet/metrics"
 	"github.com/cerera/icenet/protocol"
 	"github.com/cerera/internal/logger"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -43,6 +44,9 @@ type PeerInfo struct {
 	IsSyncing    bool            `json:"isSyncing"`
 	Direction    string          `json:"direction"` // "inbound" or "outbound"
 	Status       protocol.Status `json:"status"`
+	// IsReady indicates whether the peer is considered ready for use
+	// based on chain/storage compatibility checks.
+	IsReady bool `json:"isReady"`
 }
 
 // Manager manages peer connections and information
@@ -226,6 +230,26 @@ func (m *Manager) cleanup() {
 	}
 }
 
+// MarkPeerReady marks a peer as ready or not ready based on compatibility checks.
+func (m *Manager) MarkPeerReady(peerID peer.ID, isReady bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if info, exists := m.peers[peerID]; exists {
+		prev := info.IsReady
+		info.IsReady = isReady
+
+		// Update readiness metric if state changed.
+		if prev != isReady {
+			delta := 1.0
+			if !isReady {
+				delta = -1.0
+			}
+			metrics.PeersReady.Add(delta)
+		}
+	}
+}
+
 // UpdatePeerInfo updates information about a peer
 func (m *Manager) UpdatePeerInfo(peerID peer.ID, height int, status protocol.Status, address types.Address) {
 	m.mu.Lock()
@@ -316,13 +340,17 @@ func (m *Manager) GetPeerCount() int {
 	return len(m.peers)
 }
 
-// GetBestPeer returns the peer with the highest height
+// GetBestPeer returns the ready peer with the highest height.
+// Peers that are not marked as ready (IsReady == false) are ignored.
 func (m *Manager) GetBestPeer() *PeerInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	var best *PeerInfo
 	for _, info := range m.peers {
+		if !info.IsReady {
+			continue
+		}
 		if best == nil || info.Height > best.Height {
 			copy := *info
 			best = &copy

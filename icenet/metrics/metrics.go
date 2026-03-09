@@ -35,6 +35,13 @@ var (
 		Help:      "Total number of peers banned",
 	})
 
+	// Peer readiness metrics
+	PeersReady = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "peers_ready",
+		Help:      "Number of peers marked as ready (chain+storage compatible)",
+	})
+
 	// Block metrics
 	BlocksReceived = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,

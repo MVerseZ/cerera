@@ -147,34 +147,19 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 		return nil, fmt.Errorf("failed to start pubsub: %w", err)
 	}
 
-	// Create consensus manager (publish under lock so Exec() sees it safely)
-	consensusMgr := consensus.NewManager(ctx, h, ice.PeerManager, ice.PeerScorer, cfg.NetCfg.ADDR, nil)
-	ice.mu.Lock()
-	ice.Consensus = consensusMgr
-	ice.mu.Unlock()
-
-	consensusMgr.SetOnBlockFinalized(func(b *block.Block) {
-		if b != nil && b.Head != nil {
-			metrics.SetBlockHeight(b.Head.Height)
-		}
-		metrics.RecordBlockValidated()
-	})
-	// Dev-mode validator set: treat connected peers as validators, including self.
-	if ice.devValidators {
-		consensusMgr.AddValidator(h.ID())
-	}
+	// Wire PubSub callbacks to Ice handlers so that incoming
+	// blocks/transactions/consensus messages are processed.
+	pubsubMgr.SetOnBlock(ice.onPubSubBlock)
+	pubsubMgr.SetOnTx(ice.onPubSubTx)
+	pubsubMgr.SetOnConsensus(ice.onPubSubConsensus)
 
 	// Setup peer callbacks
 	ice.PeerManager.SetOnPeerConnected(ice.onPeerConnected)
 	ice.PeerManager.SetOnPeerDisconnected(ice.onPeerDisconnected)
 
-	// Setup pubsub callbacks
-	ice.PubSub.SetOnBlock(ice.onPubSubBlock)
-	ice.PubSub.SetOnTx(ice.onPubSubTx)
-	ice.PubSub.SetOnConsensus(ice.onPubSubConsensus)
-
-	// Setup consensus broadcast
-	consensusMgr.SetBroadcastFunc(ice.broadcastConsensusMsg)
+	// NOTE: PubSub callbacks and consensus wiring are now expected to be
+	// configured by higher-level node logic (e.g. gigea) via the
+	// NetworkAdapter, so icenet remains a pure transport layer.
 
 	// Log startup info
 	iceLogger().Infow("Ice P2P network started",
@@ -194,6 +179,29 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
 	ice.mu.Lock()
 	ice.ServiceProvider = provider
+
+	// Initialize consensus engine if not yet created.
+	if ice.Consensus == nil {
+		consMgr := consensus.NewManager(
+			ice.ctx,
+			ice.Host,
+			ice.PeerManager,
+			ice.PeerScorer,
+			ice.cfg.NetCfg.ADDR,
+			provider,
+		)
+		// Wire consensus callbacks.
+		consMgr.SetBroadcastFunc(ice.broadcastConsensusMsg)
+		consMgr.SetOnBlockFinalized(func(b *block.Block) {
+			if b != nil && b.Head != nil {
+				metrics.SetBlockHeight(b.Head.Height)
+			}
+		})
+		ice.Consensus = consMgr
+		ice.Consensus.Start()
+		// In dev-mode, validators are auto-registered when peers connect.
+		go ice.Consensus.MonitorValidators()
+	}
 
 	// Consensus uses same provider for AddBlock/GetBlockByHash
 	if ice.Consensus != nil {
@@ -233,13 +241,21 @@ func (ice *Ice) onPeerConnected(peerID peer.ID) {
 
 	// Auto-register as validator (dev-mode)
 	if ice.devValidators && ice.Consensus != nil {
-		ice.Consensus.AddValidator(peerID)
-		metrics.SetValidatorCount(ice.Consensus.GetValidatorCount())
-		iceLogger().Infow("[ICE] Peer registered as validator",
-			"peerID", peerID,
-			"validatorCount", ice.Consensus.GetValidatorCount(),
-			"quorum", ice.Consensus.GetQuorum(),
-		)
+		// Only register peers that are marked as ready by the sync layer.
+		peerInfo := ice.PeerManager.GetPeer(peerID)
+		if peerInfo != nil && peerInfo.IsReady {
+			ice.Consensus.AddValidator(peerID)
+			metrics.SetValidatorCount(ice.Consensus.GetValidatorCount())
+			iceLogger().Infow("[ICE] Peer registered as validator (ready)",
+				"peerID", peerID,
+				"validatorCount", ice.Consensus.GetValidatorCount(),
+				"quorum", ice.Consensus.GetQuorum(),
+			)
+		} else {
+			iceLogger().Infow("[ICE] Peer not registered as validator: not ready",
+				"peerID", peerID,
+			)
+		}
 	}
 }
 
@@ -460,6 +476,7 @@ type Status struct {
 	PeerID       string                     `json:"peerId"`
 	Addresses    []string                   `json:"addresses"`
 	PeerCount    int                        `json:"peerCount"`
+	PeersReady   int                        `json:"peersReady"`
 	IsSyncing    bool                       `json:"isSyncing"`
 	SyncProgress *icesync.SyncProgress      `json:"syncProgress,omitempty"`
 	Consensus    *consensus.ConsensusStatus `json:"consensus,omitempty"`
@@ -521,11 +538,12 @@ func (ice *Ice) Exec(method string, params []interface{}) interface{} {
 // GetStatus returns the current status of the Ice component
 func (ice *Ice) GetStatus() *Status {
 	status := &Status{
-		Version:   IceVersion,
-		PeerID:    ice.Host.ID().String(),
-		Addresses: GetFullAddresses(ice.Host),
-		PeerCount: ice.GetPeerCount(),
-		IsSyncing: ice.IsSyncing(),
+		Version:    IceVersion,
+		PeerID:     ice.Host.ID().String(),
+		Addresses:  GetFullAddresses(ice.Host),
+		PeerCount:  ice.GetPeerCount(),
+		PeersReady: 0,
+		IsSyncing:  ice.IsSyncing(),
 	}
 
 	if ice.IsSyncing() {
@@ -541,6 +559,7 @@ func (ice *Ice) GetStatus() *Status {
 
 	// Update metrics
 	metrics.PeersConnected.Set(float64(status.PeerCount))
+	metrics.PeersReady.Set(float64(status.PeersReady))
 
 	return status
 }

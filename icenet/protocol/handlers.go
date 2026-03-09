@@ -387,8 +387,16 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
 	}
 
-	genesisHash := h.serviceProvider.GetBlockByHeight(0).Hash
-	chainID := h.serviceProvider.GetChainID()
+	// Build minimal local status for handshake; must be safe even if
+	// serviceProvider is not yet wired or genesis block is unavailable.
+	var genesisHash common.Hash
+	chainID := 0
+	if h.serviceProvider != nil {
+		if genesis := h.serviceProvider.GetBlockByHeight(0); genesis != nil {
+			genesisHash = genesis.Hash
+		}
+		chainID = h.serviceProvider.GetChainID()
+	}
 
 	request := NewStatusRequest(chainID, h.version, genesisHash, h.nodeAddr)
 	protocolLogger().Debugw("Sending status request", "request", request)

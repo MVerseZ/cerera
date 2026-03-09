@@ -6,7 +6,7 @@ import random
 from typing import Dict
 
 class CereraStressTester:
-    def __init__(self, api_url: str = "http://localhost:1337/app"):
+    def __init__(self, api_url: str = "http://91.199.32.125"):
         self.api_url = api_url
         self.accounts: Dict[str, Dict] = {}
         
