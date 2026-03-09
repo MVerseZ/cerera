@@ -184,8 +184,8 @@ class CereraStressTester:
         print(f"✅ Аккаунт 2: {account2['address'][:12]}...")
 
         # Пополняем аккаунты через faucet перед пересылкой
-        self.faucet(account1['address'], 100.0)
-        self.faucet(account2['address'], 100.0)
+        self.faucet(account1['address'], 1.0)
+        self.faucet(account2['address'], 1.0)
         
         return True
     
