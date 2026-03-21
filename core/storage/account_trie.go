@@ -29,6 +29,7 @@ func GetAccountsTrie() *AccountsTrie {
 
 // add account with address to Account Tree
 func (at *AccountsTrie) Append(addr types.Address, sa *account.StateAccount) {
+	fmt.Println("Append account", addr, sa.Address)
 	at.mu.Lock()
 	defer at.mu.Unlock()
 	at.accounts[addr] = sa
@@ -51,6 +52,14 @@ func (at *AccountsTrie) GetAccount(addr types.Address) *account.StateAccount {
 	return at.accounts[addr]
 }
 
+// GetCount returns the total number of accounts in the trie
+func (at *AccountsTrie) GetCount() int {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
+	return len(at.accounts)
+}
+
+// Size returns the total size of all accounts in the trie
 func (at *AccountsTrie) Size() int {
 	at.mu.Lock()
 	defer at.mu.Unlock()

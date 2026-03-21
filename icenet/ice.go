@@ -152,6 +152,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	pubsubMgr.SetOnBlock(ice.onPubSubBlock)
 	pubsubMgr.SetOnTx(ice.onPubSubTx)
 	pubsubMgr.SetOnConsensus(ice.onPubSubConsensus)
+	pubsubMgr.SetOnAccount(ice.onPubSubAccount)
 
 	// Setup peer callbacks
 	ice.PeerManager.SetOnPeerConnected(ice.onPeerConnected)
@@ -170,7 +171,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	)
 
 	// Update metrics
-	metrics.SetPubSubTopicsJoined(3) // blocks, txs, consensus
+	metrics.SetPubSubTopicsJoined(4) // blocks, txs, consensus, accounts
 
 	return ice, nil
 }
@@ -219,6 +220,17 @@ func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
 			metrics.SetBlockHeight(b.Head.Height)
 		}
 	})
+
+	if ice.PubSub != nil {
+		storage.AccountCreatedHook = func(b []byte) {
+			if err := ice.PubSub.BroadcastAccountState(b); err != nil {
+				iceLogger().Warnw("BroadcastAccountState failed", "err", err)
+			}
+		}
+	} else {
+		storage.AccountCreatedHook = nil
+	}
+
 	ice.mu.Unlock()
 
 	ice.SyncManager.Start()
@@ -329,6 +341,18 @@ func (ice *Ice) onPubSubTx(tx *types.GTransaction, from peer.ID) {
 	// }
 }
 
+// onPubSubAccount merges a StateAccount blob from a peer (same format as storage snapshot / Vault.Sync).
+func (ice *Ice) onPubSubAccount(accountBytes []byte, from peer.ID) {
+	metrics.RecordPubSubMessageReceived(TopicAccounts)
+
+	v := storage.GetVault()
+	if v == nil {
+		return
+	}
+	v.Sync(accountBytes)
+	iceLogger().Debugw("Merged account state from pubsub", "from", from, "bytes", len(accountBytes))
+}
+
 // onPubSubConsensus handles consensus messages received via PubSub
 func (ice *Ice) onPubSubConsensus(consensusType int, data []byte, from peer.ID) {
 	metrics.RecordPubSubMessageReceived(TopicConsensus)
@@ -429,6 +453,8 @@ func (ice *Ice) GetConsensusStatus() *consensus.ConsensusStatus {
 // Stop gracefully shuts down the Ice component
 func (ice *Ice) Stop(ctx context.Context) {
 	iceLogger().Infow("Stopping Ice P2P network...")
+
+	storage.AccountCreatedHook = nil
 
 	// Stop consensus
 	if ice.Consensus != nil {

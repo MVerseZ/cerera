@@ -148,23 +148,64 @@ func (m *Manager) checkAndSync() {
 	// Update peer tracker
 	m.peerTracker.UpdatePeer(bestPeer.ID, bestPeer.Height, protocol.Status{})
 
-	// Check if sync is needed
-	if bestPeer.Height <= currentHeight+MinBlocksAhead {
+	// Chain catch-up: only when the peer is ahead on height.
+	if bestPeer.Height > currentHeight+MinBlocksAhead {
+		syncLogger().Infow("Sync needed",
+			"currentHeight", currentHeight,
+			"peerHeight", bestPeer.Height,
+			"peer", bestPeer.ID,
+		)
+		go m.syncChainWithPeer(bestPeer.ID, currentHeight, bestPeer.Height)
+	}
+
+	currentStorageSize := 0
+	if m.serviceProvider != nil {
+		currentStorageSize = m.serviceProvider.GetStorageSize()
+	}
+
+	syncLogger().Debugw("Sync check state",
+		"height", currentHeight,
+		"storageSize", currentStorageSize,
+		"bestPeer", bestPeer.ID,
+	)
+
+	newBestPeer := m.peerManager.GetBestPeer()
+	if bestPeer != newBestPeer {
+		syncLogger().Infow("Best peer changed during sync check",
+			"previousPeer", bestPeer.ID,
+			"newBestPeer", newBestPeer.ID,
+		)
+		bestPeer = m.peerManager.GetBestPeer()
+	}
+	bestPeer = newBestPeer
+	if bestPeer == nil {
 		return
 	}
 
-	syncLogger().Infow("Sync needed",
-		"currentHeight", currentHeight,
-		"peerHeight", bestPeer.Height,
-		"peer", bestPeer.ID,
-	)
+	localStorageSvc := ""
+	if m.serviceProvider != nil {
+		localStorageSvc = m.serviceProvider.GetStorageServiceName()
+	}
+	if localStorageSvc != "" && bestPeer.Status.StorageService != "" &&
+		localStorageSvc != bestPeer.Status.StorageService {
+		return
+	}
 
-	// Start sync
-	go m.syncWithPeer(bestPeer.ID, currentHeight, bestPeer.Height)
+	// Vault snapshot sync must run even when heights already match; otherwise
+	// nodes stay with divergent account sets forever.
+	if bestPeer.Status.StorageData > currentStorageSize {
+		syncLogger().Infow("Peer has more accounts — triggering storage sync",
+			"currentStorageSize", currentStorageSize,
+			"peerStorageSize", bestPeer.Status.StorageData,
+			"peer", bestPeer.ID,
+		)
+		go m.syncStorageWithPeer(bestPeer.ID, currentStorageSize, bestPeer.Status.StorageData)
+	}
+
 }
 
-// syncWithPeer synchronizes blocks with a specific peer
-func (m *Manager) syncWithPeer(peerID peer.ID, startHeight, targetHeight int) {
+// syncChainWithPeer synchronizes blocks with a specific peer.
+func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight int) {
 	m.mu.Lock()
 	if m.isSyncing {
 		m.mu.Unlock()
@@ -296,6 +337,74 @@ func (m *Manager) syncWithPeer(peerID peer.ID, startHeight, targetHeight int) {
 	}
 }
 
+const storageSnapshotChunkLimit = 256
+
+// syncStorageWithPeer pulls serialized vault accounts from the peer (chunked) and merges locally.
+// It does not use the block-sync isSyncing flag so it can run in parallel with chain catch-up.
+func (m *Manager) syncStorageWithPeer(peerID peer.ID, startStorageSize, targetSize int) {
+	if m.handler == nil || m.serviceProvider == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(m.ctx, SyncTimeout)
+	defer cancel()
+
+	syncLogger().Infow("Starting storage sync",
+		"peer", peerID,
+		"localAccountCount", startStorageSize,
+		"peerReportedCount", targetSize,
+	)
+
+	offset := 0
+	applied := 0
+	for {
+		select {
+		case <-ctx.Done():
+			syncLogger().Infow("Storage sync cancelled or timed out", "peer", peerID, "offset", offset)
+			return
+		default:
+		}
+
+		resp, err := m.handler.RequestStorageSnapshot(ctx, peerID, offset, storageSnapshotChunkLimit)
+		if err != nil {
+			syncLogger().Errorw("Storage snapshot request failed", "peer", peerID, "offset", offset, "error", err)
+			return
+		}
+
+		m.serviceProvider.ApplyStorageAccounts(resp.Accounts)
+		applied += len(resp.Accounts)
+
+		if !resp.More {
+			break
+		}
+		if resp.NextOffset <= offset {
+			syncLogger().Warnw("Storage snapshot nextOffset did not advance, stopping", "peer", peerID, "offset", offset)
+			break
+		}
+		offset = resp.NextOffset
+	}
+
+	nowCount := 0
+	if m.serviceProvider != nil {
+		nowCount = m.serviceProvider.GetStorageSize()
+	}
+
+	if nowCount < targetSize {
+		syncLogger().Warnw("Storage sync ended with fewer accounts than peer reported at start (retry on next sync tick)",
+			"peer", peerID,
+			"accountCountNow", nowCount,
+			"peerReportedAtStart", targetSize,
+			"blobsApplied", applied,
+		)
+	}
+
+	syncLogger().Infow("Storage sync completed",
+		"peer", peerID,
+		"blobsApplied", applied,
+		"accountCountNow", nowCount,
+	)
+}
+
 // HandleNewPeer handles a newly connected peer
 func (m *Manager) HandleNewPeer(peerID peer.ID) {
 
@@ -315,31 +424,45 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 	// Compare local and remote status.
 	chainMatch := (localStatus.ChainID == status.Status.ChainID) &&
 		(localStatus.GenesisHash == status.Status.GenesisHash)
-	storageMatch := (localStatus.StorageService == status.Status.StorageService)
+	storageSvcMatch := localStatus.StorageService == status.Status.StorageService
+	storageCountMatch := status.Status.StorageData == localStatus.StorageData
 
-	if chainMatch && storageMatch {
+	switch {
+	case !chainMatch:
+		syncLogger().Warnw("[SYNC] Peer incompatible: chain mismatch",
+			"peer", peerID,
+			"localChainID", localStatus.ChainID,
+			"remoteChainID", status.Status.ChainID,
+			"localGenesis", localStatus.GenesisHash,
+			"remoteGenesis", status.Status.GenesisHash,
+		)
+	case !storageSvcMatch:
+		syncLogger().Warnw("[SYNC] Peer incompatible: vault/storage service mismatch",
+			"peer", peerID,
+			"localStorageService", localStatus.StorageService,
+			"remoteStorageService", status.Status.StorageService,
+		)
+	case !storageCountMatch:
+		syncLogger().Infow("[SYNC] Peer usable (chain+vault OK); account counts differ — periodic sync will catch up",
+			"peer", peerID,
+			"localAccounts", localStatus.StorageData,
+			"remoteAccounts", status.Status.StorageData,
+			"storageService", localStatus.StorageService,
+		)
+	default:
 		syncLogger().Infow("[SYNC] Peer ready: chain+storage match",
 			"peer", peerID,
 			"localChainID", localStatus.ChainID,
 			"remoteChainID", status.Status.ChainID,
 			"storageService", localStatus.StorageService,
 		)
-	} else {
-		syncLogger().Warnw("[SYNC] Peer incompatible: chain/storage mismatch",
-			"peer", peerID,
-			"localChainID", localStatus.ChainID,
-			"remoteChainID", status.Status.ChainID,
-			"localGenesis", localStatus.GenesisHash,
-			"remoteGenesis", status.Status.GenesisHash,
-			"localStorageService", localStatus.StorageService,
-			"remoteStorageService", status.Status.StorageService,
-		)
 	}
 
 	// Update peer info
 	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.Status, status.NodeAddress)
-	// Mark readiness on the peer based on compatibility result.
-	if chainMatch && storageMatch {
+	// Ready for sync/block work if chain and vault implementation match; divergent
+	// account counts must not hide the peer from GetBestPeer or storage sync stalls.
+	if chainMatch && storageSvcMatch {
 		m.peerManager.MarkPeerReady(peerID, true)
 	} else {
 		m.peerManager.MarkPeerReady(peerID, false)
@@ -360,7 +483,17 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 	}
 
 	if status.Height > currentHeight+MinBlocksAhead {
-		go m.syncWithPeer(peerID, currentHeight, status.Height)
+		go m.syncChainWithPeer(peerID, currentHeight, status.Height)
+	}
+
+	localStorage := 0
+	if m.serviceProvider != nil {
+		localStorage = m.serviceProvider.GetStorageSize()
+	}
+	if chainMatch &&
+		localStatus.StorageService == status.Status.StorageService &&
+		status.Status.StorageData > localStorage {
+		go m.syncStorageWithPeer(peerID, localStorage, status.Status.StorageData)
 	}
 }
 
@@ -414,7 +547,7 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 
 	// Block is ahead - we might need to sync
 	if b.Head.Height > currentHeight+MinBlocksAhead {
-		go m.syncWithPeer(fromPeer, currentHeight, b.Head.Height)
+		go m.syncChainWithPeer(fromPeer, currentHeight, b.Head.Height)
 	}
 
 	return nil
@@ -465,7 +598,7 @@ func (m *Manager) ForceSync() error {
 		return fmt.Errorf("already at best height")
 	}
 
-	go m.syncWithPeer(bestPeer.ID, currentHeight, bestPeer.Height)
+	go m.syncChainWithPeer(bestPeer.ID, currentHeight, bestPeer.Height)
 	return nil
 }
 

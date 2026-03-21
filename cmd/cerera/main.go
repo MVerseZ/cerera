@@ -135,7 +135,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 func setupLogging() error {
 	_, err := logger.Init(logger.Config{
 		Path:    "logfile",
-		Level:   "info",
+		Level:   "debug",
 		Console: true,
 	})
 	return err
@@ -164,6 +164,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 }
 
 func main() {
+
 	// Настройка логирования
 	if err := setupLogging(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)

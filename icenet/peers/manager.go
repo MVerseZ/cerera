@@ -342,6 +342,7 @@ func (m *Manager) GetPeerCount() int {
 
 // GetBestPeer returns the ready peer with the highest height.
 // Peers that are not marked as ready (IsReady == false) are ignored.
+// A peer may be ready while vault account counts still lag; sync uses Status.StorageData to catch up.
 func (m *Manager) GetBestPeer() *PeerInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,21 @@ type D5Vault struct {
 }
 
 var vlt D5Vault
+
+// AccountCreatedHook is invoked with StateAccount.Bytes() after a successful Vault.Create.
+// The node wires this to P2P (e.g. GossipSub) so peers can merge the same account state.
+var AccountCreatedHook func(accountBytes []byte)
+
+func notifyAccountCreated(sa *account.StateAccount) {
+	if AccountCreatedHook == nil || sa == nil {
+		return
+	}
+	b := sa.Bytes()
+	if len(b) == 0 {
+		return
+	}
+	AccountCreatedHook(b)
+}
 
 var (
 	vaultAccountsTotal = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -386,6 +402,8 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	restoredPrivateKey := crypto.RXor(masterKey, &privateKey.PublicKey, xorResult)
 	vltlogger().Infow("Account created", "restored private key without offset", restoredPrivateKey)
 	vltlogger().Infow("Account created", "keys equality", bytes.Equal(restoredPrivateKey, etaKeyBytes))
+
+	notifyAccountCreated(newAccount)
 
 	return crypto.EncodePrivateKeyToToString(privateKey), crypto.EncodePublicKeyToString(&privateKey.PublicKey), mnemonic, &address, nil
 
@@ -670,7 +688,40 @@ func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) 
 }
 
 func (v *D5Vault) GetCount() int {
-	return v.accounts.Size()
+	return v.accounts.GetCount()
+}
+
+// ExportAccountRangeSortedByAddress returns serialized accounts for a stable
+// lexicographic slice of addresses (offset/limit over sorted hex keys).
+// TODO this is CRITICAL point of optimization for the future, we need to use a more efficient data structure for this.
+func (v *D5Vault) ExportAccountRangeSortedByAddress(offset, limit int) ([][]byte, int) {
+	v.accounts.mu.RLock()
+	defer v.accounts.mu.RUnlock()
+
+	hexes := make([]string, 0, len(v.accounts.accounts))
+	for addr := range v.accounts.accounts {
+		hexes = append(hexes, addr.Hex())
+	}
+	sort.Strings(hexes)
+	total := len(hexes)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > total {
+		return nil, total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	out := make([][]byte, 0, end-offset)
+	for _, h := range hexes[offset:end] {
+		addr := types.HexToAddress(h)
+		if sa := v.accounts.accounts[addr]; sa != nil {
+			out = append(out, sa.Bytes())
+		}
+	}
+	return out, total
 }
 
 func (v *D5Vault) GetOwner() *account.StateAccount {
@@ -678,8 +729,22 @@ func (v *D5Vault) GetOwner() *account.StateAccount {
 }
 
 func (v *D5Vault) Sync(saBytes []byte) {
-	var sa = types.BytesToStateAccount(saBytes)
+	sa := types.BytesToStateAccount(saBytes)
+	if sa == nil {
+		return
+	}
 	v.accounts.Append(sa.Address, sa)
+	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
+
+	if !v.inMem && v.db != nil {
+		key := sa.Address.Bytes()
+		if err := v.db.Put(key, saBytes); err != nil {
+			vltlogger().Warnw("Sync: failed to persist account to vault db",
+				"address", sa.Address.Hex(),
+				"err", err,
+			)
+		}
+	}
 }
 
 func (v *D5Vault) Status() byte {

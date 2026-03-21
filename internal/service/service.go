@@ -48,6 +48,10 @@ type ServiceProvider interface {
 	GetChainID() int
 	// storage
 	GetStorageServiceName() string
+	GetStorageSize() int
+	GetStorageCount() int
+	ExportStorageAccountRange(offset, limit int) ([][]byte, int)
+	ApplyStorageAccounts(accounts [][]byte)
 	// common
 	GetMethodType() byte
 }
@@ -337,6 +341,43 @@ func (s *CereraServiceProvider) GetStorageServiceName() string {
 
 func (s *CereraServiceProvider) GetMethodType() byte {
 	return 0x0
+}
+
+func (s *CereraServiceProvider) GetStorageSize() int { // this
+	v := storage.GetVault()
+	if v == nil {
+		return 0
+	}
+	return v.GetCount()
+}
+
+func (s *CereraServiceProvider) GetStorageCount() int {
+	v := storage.GetVault()
+	if v == nil {
+		return 0
+	}
+	return v.GetCount()
+}
+
+func (s *CereraServiceProvider) ExportStorageAccountRange(offset, limit int) ([][]byte, int) {
+	v := storage.GetVault()
+	if v == nil {
+		return nil, 0
+	}
+	return v.ExportAccountRangeSortedByAddress(offset, limit)
+}
+
+func (s *CereraServiceProvider) ApplyStorageAccounts(accounts [][]byte) {
+	v := storage.GetVault()
+	if v == nil {
+		return
+	}
+	for _, blob := range accounts {
+		if len(blob) == 0 {
+			continue
+		}
+		v.Sync(blob)
+	}
 }
 
 // getChain resolves the chain service from the global registry.
