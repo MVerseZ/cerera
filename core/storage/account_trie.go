@@ -9,13 +9,14 @@ import (
 	"github.com/cerera/core/types"
 )
 
-// structure stores account and other accounting stuff
-// in smth like merkle-b-tree (cool data structure)
+// AccountsTrie holds accounts by address (O(1)) and by stable insertion index (O(1)).
+// Re-appending the same address updates the existing slot instead of growing index.
 type AccountsTrie struct {
 	mu         sync.RWMutex
 	index      map[int64]*account.StateAccount
 	accounts   map[types.Address]*account.StateAccount
-	lastInsert int64
+	addrIndex  map[types.Address]int64 // address -> ordinal in index
+	lastInsert int64                   // next free ordinal == distinct address count
 }
 
 func GetAccountsTrie() *AccountsTrie {
@@ -23,17 +24,24 @@ func GetAccountsTrie() *AccountsTrie {
 	return &AccountsTrie{
 		index:      make(map[int64]*account.StateAccount),
 		accounts:   make(map[types.Address]*account.StateAccount),
+		addrIndex:  make(map[types.Address]int64),
 		lastInsert: 0,
 	}
 }
 
-// add account with address to Account Tree
+// Append inserts a new address or replaces the account at an existing address in O(1).
 func (at *AccountsTrie) Append(addr types.Address, sa *account.StateAccount) {
-	fmt.Println("Append account", addr, sa.Address)
 	at.mu.Lock()
 	defer at.mu.Unlock()
+	if idx, ok := at.addrIndex[addr]; ok {
+		at.accounts[addr] = sa
+		at.index[idx] = sa
+		return
+	}
+	idx := at.lastInsert
 	at.accounts[addr] = sa
-	at.index[at.lastInsert] = sa
+	at.index[idx] = sa
+	at.addrIndex[addr] = idx
 	at.lastInsert++
 }
 
@@ -42,6 +50,7 @@ func (at *AccountsTrie) Clear() error {
 	defer at.mu.Unlock()
 	at.accounts = make(map[types.Address]*account.StateAccount)
 	at.index = make(map[int64]*account.StateAccount)
+	at.addrIndex = make(map[types.Address]int64)
 	at.lastInsert = 0
 	return nil
 }

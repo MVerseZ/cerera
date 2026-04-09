@@ -27,8 +27,8 @@ func TestGetAccountsTrie(t *testing.T) {
 	if at == nil {
 		t.Fatal("GetAccountsTrie returned nil")
 	}
-	if at.index == nil || at.accounts == nil {
-		t.Error("index or accounts map is nil")
+	if at.index == nil || at.accounts == nil || at.addrIndex == nil {
+		t.Error("index, accounts, or addrIndex map is nil")
 	}
 	if at.lastInsert != 0 {
 		t.Errorf("lastInsert want 0, got %d", at.lastInsert)
@@ -66,6 +66,15 @@ func TestAccountsTrie_Append_OverwriteSameAddress(t *testing.T) {
 
 	if at.GetCount() != 1 {
 		t.Errorf("GetCount want 1 (same address overwritten), got %d", at.GetCount())
+	}
+	if at.lastInsert != 1 {
+		t.Errorf("lastInsert want 1 (one distinct address), got %d", at.lastInsert)
+	}
+	if at.GetByIndex(0) != sa2 {
+		t.Error("GetByIndex(0) should point to the updated account, not a stale slot")
+	}
+	if at.GetByIndex(1) != nil {
+		t.Error("GetByIndex(1) should be nil after overwrite same address")
 	}
 	got := at.GetAccount(addr)
 	if got != sa2 {

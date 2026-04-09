@@ -39,6 +39,8 @@ func vltlogger() *zap.SugaredLogger {
 }
 
 const VAULT_SERVICE_NAME = "D5_VAULT_CERERA_001_1_7"
+const EMPTY_PATH = "EMPTY"
+const DEFAULT_VAULT_PATH = "./vault"
 
 // Error constants
 var (
@@ -94,7 +96,7 @@ type D5Vault struct {
 	path      string
 	rootHash  common.Hash
 	inMem     bool
-	status    byte
+	status    byte // 0xf status means error
 
 	// channels
 	// stChan chan [32]byte
@@ -203,6 +205,28 @@ func (v *D5Vault) updateSupplyMetrics() {
 	vaultCirculatingSupply.Set(totalFloat)
 }
 
+// InitVaultKeys initializes the vault keys (owner keys)
+// If error occurs during process, the vault status is set to 0xf (error)
+func InitVaultKeys() {
+	var err error
+	entropy, err := bip39.NewEntropy(256)
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	seed := bip39.NewSeed(mnemonic, "NODE_PASS")
+	masterKey, err := bip32.NewMasterKey(seed)
+	publicKey := masterKey.PublicKey()
+	var mpub [78]byte
+	pubKeyStr := publicKey.B58Serialize()
+	copy(mpub[:], []byte(pubKeyStr))
+	if err != nil {
+		vlt.status = 0xf
+	}
+	SetKeys(masterKey, publicKey)
+	vltlogger().Infow("Vault recovery mnemonic generated", "mnemonic", mnemonic)
+	vltlogger().Infow("Vault recovery password generated", "password", "NODE_PASS")
+	vltlogger().Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
+	vltlogger().Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
+}
+
 // NewD5Vault initializes and returns a new vault instance.
 func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	gob.Register(account.StateAccount{})
@@ -216,26 +240,11 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		// stChan:   make(chan [32]byte),
 	}
 
-	entropy, _ := bip39.NewEntropy(256)
-	mnemonic, _ := bip39.NewMnemonic(entropy)
-	seed := bip39.NewSeed(mnemonic, "NODE_PASS")
-	masterKey, _ := bip32.NewMasterKey(seed)
-	publicKey := masterKey.PublicKey()
-	var mpub [78]byte
-	pubKeyStr := publicKey.B58Serialize()
-	copy(mpub[:], []byte(pubKeyStr))
-
+	InitVaultKeys()
 	vltlogger().Infow("Init vault",
 		"address", rootHashAddress.String(),
 		"service", VAULT_SERVICE_NAME,
 	)
-	vltlogger().Infow("Vault recovery mnemonic generated", "mnemonic", mnemonic)
-	vltlogger().Infow("Vault recovery password generated", "password", "NODE_PASS")
-	vltlogger().Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
-	vltlogger().Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
-
-	SetKeys(masterKey, publicKey)
-	// vltlogger.Printf("%s\r\n", cfg.NetCfg.PRIV)
 
 	rootSA := &account.StateAccount{
 		StateAccountData: account.StateAccountData{
@@ -249,7 +258,6 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
-		// MPub: mpub,
 	}
 	rootSA.SetBalance(coinbase.InitialNodeBalance)
 
@@ -259,15 +267,14 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		vltlogger().Infow("Vault running in memory mode")
 		vlt.accounts.Append(rootSA.Address, rootSA)
 		vlt.status = 0xa
-		vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
+		vaultAccountsTotal.Set(float64(vlt.accounts.GetCount()))
 		vlt.updateSupplyMetrics()
-
 		return &vlt, nil
 	}
 
 	// Initialize vault path if not set (pogreb uses directory, not file)
-	if cfg.Vault.PATH == "EMPTY" {
-		cfg.UpdateVaultPath("./vault")
+	if cfg.Vault.PATH == EMPTY_PATH {
+		cfg.UpdateVaultPath(DEFAULT_VAULT_PATH)
 	}
 
 	vlt.path = cfg.Vault.PATH
@@ -297,7 +304,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	if !has {
 		// Create new vault with rootSA
 		accountData := rootSA.Bytes()
-		if err := db.Put(key, accountData); err != nil {
+		if err := putAccountPayload(db, key, accountData); err != nil {
 			vltlogger().Errorw("Failed to write root account", "err", err)
 			db.Close()
 			return nil, fmt.Errorf("failed to write root account: %w", err)
@@ -315,7 +322,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		// Ensure rootSA is in accounts after sync (may not exist in old vaults)
 		if vlt.accounts.GetAccount(rootSA.Address) == nil {
 			vlt.accounts.Append(rootSA.Address, rootSA)
-			if err := db.Put(key, rootSA.Bytes()); err != nil {
+			if err := putAccountPayload(db, key, rootSA.Bytes()); err != nil {
 				vltlogger().Errorw("Failed to save root account", "err", err)
 				db.Close()
 				return nil, fmt.Errorf("failed to save root account: %w", err)
@@ -327,7 +334,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vlt.status = 0xa
 
 	// init metrics
-	vaultAccountsTotal.Set(float64(vlt.accounts.Size()))
+	vaultAccountsTotal.Set(float64(vlt.accounts.GetCount()))
 	vlt.updateSupplyMetrics()
 
 	return &vlt, nil
@@ -385,11 +392,11 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 	newAccount.SetBalance(0.0)
 	v.accounts.Append(address, newAccount)
-	vaultAccountsTotal.Set(float64(v.accounts.Size()))
+	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 
 	if !v.inMem && v.db != nil {
 		key := newAccount.Address.Bytes()
-		if err := v.db.Put(key, newAccount.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, key, newAccount.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to save account to vault",
 				"address", address.Hex(),
 				"err", err,
@@ -466,48 +473,17 @@ func (v *D5Vault) GetPos(pos int64) *account.StateAccount {
 	return v.accounts.GetByIndex(pos)
 }
 
-// GetKey - get public key from vault by string representation
-//
-//	args: public key:string
-//	return: bytes representation of public key:[]byte
-// func (v *D5Vault) GetKey(signKey string) []byte {
-// 	pubKey, err := bip32.B58Deserialize(signKey)
-// 	if err != nil || pubKey == nil {
-// 		vltlogger().Warnw("GetKey: failed to deserialize public key",
-// 			"signKey", signKey,
-// 			"err", err,
-// 		)
-// 		return []byte{0x0, 0x0, 0xf, 0xf}
-// 	}
-
-// 	var fp = v.accounts.GetKBytes(pubKey)
-
-// 	if fp != nil {
-// 		return fp
-// 	} else {
-// 		vltlogger().Warnw("GetKey: key not found in accounts", "signKey", signKey)
-// 		return []byte{0x0, 0x0, 0xf, 0xf}
-// 	}
-// }
-
 func (v *D5Vault) GetAll() interface{} {
-	// refactor
-	// this function returns all active (register) addressses with balance
-	// [addr1:balance1, addr2:balance2, ..., addrN:balanceN]
-
-	if !v.inMem {
-		SyncVault(v.path)
-	}
+	// Returns current in-memory account balances. Reload from disk via SyncVault / SyncFromDB when needed.
 	return v.accounts.GetAll()
 }
 
 func (v *D5Vault) Put(address types.Address, acc *account.StateAccount) {
-	if v.accounts.GetAccount(address) == nil {
-		v.accounts.Append(address, acc)
-		vaultAccountsTotal.Set(float64(v.accounts.Size()))
-		return
-	}
+	wasNew := v.accounts.GetAccount(address) == nil
 	v.accounts.Append(address, acc)
+	if wasNew {
+		vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
+	}
 }
 
 // EnsureAccount ensures an address exists in the vault with balance 0 if not present.
@@ -522,10 +498,10 @@ func (v *D5Vault) EnsureAccount(addr types.Address) {
 	}
 	acc := account.NewStateAccount(addr, 0, v.rootHash)
 	v.accounts.Append(addr, acc)
-	vaultAccountsTotal.Set(float64(v.accounts.Size()))
+	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	if !v.inMem && v.db != nil {
 		key := addr.Bytes()
-		if err := v.db.Put(key, acc.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, key, acc.Bytes()); err != nil {
 			vltlogger().Warnw("EnsureAccount: failed to persist account", "address", addr.Hex(), "err", err)
 		}
 	}
@@ -534,16 +510,21 @@ func (v *D5Vault) Size() int64 {
 	if v.inMem || v.db == nil {
 		return int64(v.accounts.Size())
 	}
-	// Pogreb doesn't have Stats() method, so we count items manually
+	v.dbMu.RLock()
+	defer v.dbMu.RUnlock()
+	// Count account rows only (exclude code:/storage: keys).
 	count := int64(0)
 	it := v.db.Items()
 	for {
-		_, _, err := it.Next()
+		k, _, err := it.Next()
 		if err == pogreb.ErrIterationDone {
 			break
 		}
 		if err != nil {
 			return -1
+		}
+		if isContractOrStorageKey(k) {
+			continue
 		}
 		count++
 	}
@@ -581,10 +562,10 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	if !v.inMem && v.db != nil {
 		destKey := saDest.Address.Bytes()
 		fromKey := saFrom.Address.Bytes()
-		if err := v.db.Put(destKey, saDest.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, destKey, saDest.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update destination account in database", "err", err)
 		}
-		if err := v.db.Put(fromKey, saFrom.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, fromKey, saFrom.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update source account in database", "err", err)
 		}
 	}
@@ -605,7 +586,7 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 	if saDest == nil {
 		saDest = account.NewStateAccount(to, 0, v.rootHash)
 		v.accounts.Append(to, saDest)
-		vaultAccountsTotal.Set(float64(v.accounts.Size()))
+		vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	}
 
 	newBal := new(big.Int).Add(saDest.GetBalanceBI(), cnt)
@@ -614,7 +595,7 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 
 	if !v.inMem && v.db != nil {
 		destKey := saDest.Address.Bytes()
-		if err := v.db.Put(destKey, saDest.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, destKey, saDest.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update account in database", "err", err)
 		}
 	}
@@ -738,7 +719,7 @@ func (v *D5Vault) Sync(saBytes []byte) {
 
 	if !v.inMem && v.db != nil {
 		key := sa.Address.Bytes()
-		if err := v.db.Put(key, saBytes); err != nil {
+		if err := putAccountPayload(v.db, key, saBytes); err != nil {
 			vltlogger().Warnw("Sync: failed to persist account to vault db",
 				"address", sa.Address.Hex(),
 				"err", err,
@@ -778,7 +759,8 @@ func (v *D5Vault) SyncFromDB() error {
 
 	v.accounts.Clear()
 
-	// Iterate over all items in the database
+	v.dbMu.RLock()
+	defer v.dbMu.RUnlock()
 	it := v.db.Items()
 	for {
 		key, accountData, err := it.Next()
@@ -787,6 +769,10 @@ func (v *D5Vault) SyncFromDB() error {
 		}
 		if err != nil {
 			vltlogger().Errorw("syncFromDB: failed to get next item", "err", err)
+			continue
+		}
+
+		if isContractOrStorageKey(key) {
 			continue
 		}
 
@@ -801,7 +787,12 @@ func (v *D5Vault) SyncFromDB() error {
 					)
 				}
 			}()
-			account := types.BytesToStateAccount(accountData)
+			plain, derr := decodeAccountPayload(accountData)
+			if derr != nil {
+				vltlogger().Warnw("syncFromDB: decode account payload", "err", derr, "key", fmt.Sprintf("%x", key))
+				return
+			}
+			account := types.BytesToStateAccount(plain)
 			if account != nil {
 				vltlogger().Infow("Read account from pogreb vault", "address", account.Address.Hex())
 				v.accounts.Append(account.Address, account)
@@ -868,7 +859,7 @@ func (v *D5Vault) StoreContractCode(address types.Address, code []byte) error {
 		// Устанавливаем тип как контракт (Type = 5 для контракта, если нужно)
 		// Пока оставляем Type = 0, но CodeHash будет указывать на наличие кода
 		v.accounts.Append(address, acc)
-		vaultAccountsTotal.Set(float64(v.accounts.Size()))
+		vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	} else {
 		// Обновляем CodeHash существующего аккаунта
 		// account.CodeHash = codeHash
@@ -889,7 +880,7 @@ func (v *D5Vault) StoreContractCode(address types.Address, code []byte) error {
 
 		// Также сохраняем обновленный аккаунт
 		accountKey := address.Bytes()
-		if err := v.db.Put(accountKey, acc.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, accountKey, acc.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update account with code hash", "address", address.Hex(), "err", err)
 			return fmt.Errorf("failed to update account: %w", err)
 		}
@@ -948,17 +939,6 @@ func (v *D5Vault) GetContractCode(address types.Address) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create hash: %w", err)
 	}
 	hash.Write(code)
-	// computedHash := hash.Sum(nil)
-
-	// Сравниваем с сохраненным хешем
-	// if len(account.CodeHash) > 0 {
-	// 	if !bytes.Equal(computedHash, account.CodeHash) {
-	// 		vltlogger().Warnw("Contract code hash mismatch", "address", address.Hex(),
-	// 			"expected", fmt.Sprintf("%x", account.CodeHash),
-	// 			"computed", fmt.Sprintf("%x", computedHash))
-	// 		// Не возвращаем ошибку, но логируем предупреждение
-	// 	}
-	// }
 
 	return code, nil
 }
@@ -1013,7 +993,7 @@ func (v *D5Vault) DeleteContractCode(address types.Address) error {
 
 		// Обновляем аккаунт в базе данных
 		accountKey := address.Bytes()
-		if err := v.db.Put(accountKey, acc.Bytes()); err != nil {
+		if err := putAccountPayload(v.db, accountKey, acc.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to update account after code deletion", "address", address.Hex(), "err", err)
 			return fmt.Errorf("failed to update account: %w", err)
 		}
@@ -1039,7 +1019,7 @@ func (v *D5Vault) SetStorage(address types.Address, key *big.Int, value *big.Int
 		// Создаем новый аккаунт для контракта
 		acc = account.NewStateAccount(address, 0, v.rootHash)
 		v.accounts.Append(address, acc)
-		vaultAccountsTotal.Set(float64(v.accounts.Size()))
+		vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	}
 
 	// Сохраняем в pogreb с ключом "storage:" + address + ":" + key
@@ -1197,9 +1177,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 		if err != nil {
 			return false //"Error while verify"
 		}
-		// fmt.Println(rAddr.Hex(), addr)
-		// INSERT_YOUR_CODE
-		// Compare the addresses byte by byte for equality
+
 		if len(addr) != len(rAddr.Hex()) {
 			return false
 		}
