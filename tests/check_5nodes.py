@@ -17,8 +17,16 @@ from collections import defaultdict
 DOCKER_COMPOSE_PORTS = [1337, 1338, 1339, 1340, 1341]  # node1-node5
 DOCKER_COMPOSE_NODES = ['node1', 'node2', 'node3', 'node4', 'node5']
 
+RPC_ID_ACCOUNT_GET_ALL = 11
 
-def make_jsonrpc_request(api_url: str, method: str, params: List = None, timeout: int = 10) -> Optional[Dict]:
+
+def make_jsonrpc_request(
+    api_url: str,
+    method: str,
+    params: List = None,
+    timeout: int = 10,
+    rpc_id: int = 1,
+) -> Optional[Dict]:
     """
     Выполняет JSON-RPC запрос на указанный адрес
     
@@ -38,7 +46,7 @@ def make_jsonrpc_request(api_url: str, method: str, params: List = None, timeout
         "jsonrpc": "2.0",
         "method": method,
         "params": params,
-        "id": 1
+        "id": rpc_id,
     }
     
     try:
@@ -133,6 +141,26 @@ def get_mempool_info(api_url: str) -> Optional[Dict]:
         if "result" in result:
             return result["result"]
     return None
+
+
+def get_all_accounts(api_url: str) -> Optional[Dict]:
+    """cerera.account.getAll с id=11 (как tests/total.py)."""
+    result = make_jsonrpc_request(
+        api_url, "cerera.account.getAll", [], rpc_id=RPC_ID_ACCOUNT_GET_ALL
+    )
+    if result and "error" not in result and "result" in result:
+        r = result["result"]
+        return r if isinstance(r, dict) else None
+    return None
+
+
+def fingerprint_accounts_map(data: Optional[Dict]) -> Optional[str]:
+    if not isinstance(data, dict):
+        return None
+    try:
+        return json.dumps(data, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return None
 
 
 def normalize_hash(hash_value) -> str:
@@ -272,7 +300,7 @@ def main():
     print("=" * 80)
     print("📡 Проверка 5 нод из docker-compose-5nodes.yml и целостности цепочки")
     print("   Ноды: node1 (1337), node2 (1338), node3 (1339), node4 (1340), node5 (1341)")
-    print("   Проверка: высота блокчейна, мемпул, синхронизация нод, целостность цепочки")
+    print("   Проверка: высота, мемпул, getAll (id=11), синхронизация, целостность цепочки")
     print("=" * 80)
     print()
     
@@ -286,6 +314,12 @@ def main():
         
         print(f"\n🔍 Нода: {node_name} (порт {port})")
         print(f"   URL: {api_url}")
+
+        accounts_map = get_all_accounts(api_url)
+        if accounts_map is not None:
+            print(f"   ✅ cerera.account.getAll: {len(accounts_map)} аккаунтов (id={RPC_ID_ACCOUNT_GET_ALL})")
+        else:
+            print(f"   ⚠️  cerera.account.getAll: нет данных или ошибка (id={RPC_ID_ACCOUNT_GET_ALL})")
         
         # Получаем высоту
         height = get_chain_height(api_url)
@@ -298,6 +332,7 @@ def main():
                 "height": None,
                 "blockchain_info": None,
                 "blocks": {},
+                "accounts": accounts_map,
                 "error": "Не удалось получить высоту"
             }
             blocks_by_node[node_name] = {}
@@ -350,7 +385,8 @@ def main():
             "height": height,
             "blockchain_info": blockchain_info,
             "mempool_info": mempool_info,
-            "blocks": node_blocks
+            "blocks": node_blocks,
+            "accounts": accounts_map,
         }
         blocks_by_node[node_name] = node_blocks
     
@@ -361,6 +397,7 @@ def main():
     
     successful = sum(1 for r in results.values() if r.get("height") is not None)
     failed = len(results) - successful
+    heights: List[int] = []
     
     print(f"✅ Успешных запросов: {successful}/{len(results)}")
     print(f"❌ Ошибок: {failed}/{len(results)}")
@@ -396,6 +433,39 @@ def main():
                     print(f"      Высота {h}: {', '.join(nodes)}")
             else:
                 print(f"\n✅ Все ноды имеют одинаковую высоту: {min_height}")
+
+    print("\n" + "=" * 80)
+    print("👛 СРАВНЕНИЕ cerera.account.getAll (id=11)")
+    print("=" * 80)
+    account_fps: Dict[str, Optional[str]] = {}
+    for node_name, data in results.items():
+        acc = data.get("accounts")
+        fp = fingerprint_accounts_map(acc)
+        account_fps[node_name] = fp
+        if fp is not None:
+            print(f"✅ {node_name:8}: аккаунтов = {len(acc)}")
+        else:
+            print(f"❌ {node_name:8}: getAll недоступен или ошибка")
+    valid_acc_fps = [fp for fp in account_fps.values() if fp is not None]
+    accounts_match = True
+    if len(valid_acc_fps) >= 2:
+        unique_acc = set(valid_acc_fps)
+        if len(unique_acc) != 1:
+            accounts_match = False
+            print("\n⚠️  Наборы аккаунтов (getAll) различаются между нодами!")
+            by_fp: Dict[str, List[str]] = {}
+            for node, fp in account_fps.items():
+                if fp is None:
+                    continue
+                by_fp.setdefault(fp, []).append(node)
+            for i, nodes in enumerate(by_fp.values(), 1):
+                print(f"   Группа {i}: {', '.join(sorted(nodes))}")
+        else:
+            print("\n✅ Снимок getAll совпадает на всех нодах, где ответ получен")
+    elif len(valid_acc_fps) == 1:
+        print("\nℹ️  Только одна нода вернула getAll — сравнение между нодами невозможно")
+    else:
+        print("\n⚠️  Ни одна нода не вернула getAll")
     
     # Детальная информация по каждой ноде
     print(f"\n📋 Детальная информация:")
@@ -416,8 +486,9 @@ def main():
                 hash_short = block_hash[:16] + "..." if isinstance(block_hash, str) and len(block_hash) > 16 else block_hash
                 txs = len(last_block.get("transactions", []))
                 last_block_info = f" | Last block: {hash_short} ({txs} TXs) | Загружено блоков: {blocks_count}"
-        
-        print(f"{status} {node_name:8} (порт {port:4}): высота = {height}{last_block_info}")
+        ac = data.get("accounts")
+        ac_n = len(ac) if isinstance(ac, dict) else "—"
+        print(f"{status} {node_name:8} (порт {port:4}): высота = {height} | getAll: {ac_n} acc{last_block_info}")
     
     # Проверка мемпула
     print("\n" + "=" * 80)
@@ -453,6 +524,8 @@ def main():
     # Фильтруем ноды, у которых есть блоки
     valid_nodes = {node: blocks for node, blocks in blocks_by_node.items() if blocks}
     
+    integrity_ok = True
+    integrity_errors: List[str] = []
     if not valid_nodes:
         print("⚠️  Нет нод с загруженными блоками для проверки целостности")
     else:
@@ -480,11 +553,12 @@ def main():
     ) if heights else False
     mempool_available = all(r.get("mempool_info") is not None for r in results.values())
     
-    if has_success and all_synced:
+    if has_success and all_synced and integrity_ok and accounts_match:
         print("✅ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО")
         print("   - Все ноды доступны")
         print("   - Все ноды синхронизированы")
         print("   - Целостность цепочки подтверждена")
+        print("   - cerera.account.getAll (id=11) совпадает между нодами")
         if mempool_available:
             print("   - Мемпул доступен на всех нодах")
         else:
@@ -498,6 +572,8 @@ def main():
             print("   - Ноды не синхронизированы")
         if not integrity_ok:
             print("   - Проблемы с целостностью цепочки")
+        if not accounts_match:
+            print("   - Различие cerera.account.getAll между нодами")
         if not mempool_available:
             print("   - Мемпул недоступен на некоторых нодах")
         sys.exit(1)

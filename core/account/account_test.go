@@ -250,9 +250,12 @@ func TestStateAccount_ToBytes(t *testing.T) {
 		t.Errorf("ToBytes/FromBytes failed: Passphrase mismatch. Got: %v, Want: %v", sa2.Passphrase, sa.Passphrase)
 	}
 
-	// Inputs are not serialized, so we only verify they are initialized
+	// Inputs are not stored on disk; they are rebuilt from the chain.
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
 		t.Errorf("ToBytes/FromBytes failed: Inputs not properly initialized after binary deserialization")
+	}
+	if len(sa2.Inputs.M) != 0 {
+		t.Errorf("ToBytes/FromBytes: expected empty Inputs after deserialize, got %d entries", len(sa2.Inputs.M))
 	}
 }
 
@@ -884,7 +887,7 @@ func TestStateAccount_BalanceEdgeCases(t *testing.T) {
 }
 
 // ============================================================
-// Тесты для сериализации с Inputs
+// Тесты для сериализации с Inputs (инпуты в бинарник не пишутся — только из цепочки)
 // ============================================================
 
 func TestStateAccount_SerializationWithInputs(t *testing.T) {
@@ -905,7 +908,6 @@ func TestStateAccount_SerializationWithInputs(t *testing.T) {
 	}
 	sa.SetBalance(100.0)
 
-	// Добавляем несколько инпутов
 	txHash1 := common.Hash{0x1, 0x2, 0x3}
 	txHash2 := common.Hash{0x4, 0x5, 0x6}
 	txHash3 := common.Hash{0x7, 0x8, 0x9}
@@ -914,7 +916,6 @@ func TestStateAccount_SerializationWithInputs(t *testing.T) {
 	sa.AddInput(txHash2, big.NewInt(200))
 	sa.AddInput(txHash3, big.NewInt(300))
 
-	// Сериализуем
 	data := sa.Bytes()
 	sa2 := FromBytes(data)
 
@@ -922,30 +923,12 @@ func TestStateAccount_SerializationWithInputs(t *testing.T) {
 		t.Fatal("FromBytes returned nil")
 	}
 
-	// Проверяем что инпуты восстановлены
 	sa2.Inputs.RLock()
 	count := len(sa2.Inputs.M)
 	sa2.Inputs.RUnlock()
 
-	if count != 3 {
-		t.Errorf("Inputs serialization failed: expected 3, got %d", count)
-	}
-
-	// Проверяем значения инпутов
-	sa2.Inputs.RLock()
-	val1 := sa2.Inputs.M[txHash1]
-	val2 := sa2.Inputs.M[txHash2]
-	val3 := sa2.Inputs.M[txHash3]
-	sa2.Inputs.RUnlock()
-
-	if val1 == nil || val1.Cmp(big.NewInt(100)) != 0 {
-		t.Errorf("Input 1 serialization failed: expected 100, got %v", val1)
-	}
-	if val2 == nil || val2.Cmp(big.NewInt(200)) != 0 {
-		t.Errorf("Input 2 serialization failed: expected 200, got %v", val2)
-	}
-	if val3 == nil || val3.Cmp(big.NewInt(300)) != 0 {
-		t.Errorf("Input 3 serialization failed: expected 300, got %v", val3)
+	if count != 0 {
+		t.Errorf("inputs must not be restored from bytes: want 0 entries, got %d", count)
 	}
 }
 
@@ -1123,22 +1106,14 @@ func TestStateAccount_Size_WithInputs(t *testing.T) {
 	dataWithInputs := sa.Bytes()
 	sizeWithInputs := len(dataWithInputs)
 
-	// Размер с inputs должен быть больше
-	if sizeWithInputs <= sizeWithoutInputs {
-		t.Errorf("Size with inputs should be larger: got %d, expected > %d", sizeWithInputs, sizeWithoutInputs)
-	}
-
-	// Каждый input добавляет: 32 bytes (hash) + 4 bytes (value len) + несколько байт (value)
-	// 3 inputs должны добавить минимум: 3 * (32 + 4) = 108 bytes
-	expectedIncrease := 3 * (32 + 4) // минимум для каждого input
-	actualIncrease := sizeWithInputs - sizeWithoutInputs
-	if actualIncrease < expectedIncrease {
-		t.Errorf("Inputs size increase too small: got %d, expected at least %d", actualIncrease, expectedIncrease)
+	// Inputs are not part of the serialized blob (chain-derived).
+	if sizeWithInputs != sizeWithoutInputs {
+		t.Errorf("serialized size must not depend on in-memory inputs: without=%d, with=%d",
+			sizeWithoutInputs, sizeWithInputs)
 	}
 
 	t.Logf("Account size without inputs: %d bytes", sizeWithoutInputs)
-	t.Logf("Account size with 3 inputs: %d bytes", sizeWithInputs)
-	t.Logf("Size increase: %d bytes", actualIncrease)
+	t.Logf("Account size with 3 inputs (not stored): %d bytes", sizeWithInputs)
 }
 
 // TestStateAccount_Size_WithLargeBalance проверяет размер аккаунта с большим балансом
@@ -1290,34 +1265,13 @@ func TestStateAccount_Size_WithManyInputs(t *testing.T) {
 		sizes = append(sizes, len(data))
 	}
 
-	// Размер должен монотонно увеличиваться
+	// Serialized size does not grow with in-memory inputs.
 	for i := 1; i < len(sizes); i++ {
-		if sizes[i] <= sizes[i-1] {
-			t.Errorf("Size should increase with more inputs: %d inputs = %d bytes, %d inputs = %d bytes",
-				i-1, sizes[i-1], i, sizes[i])
+		if sizes[i] != sizes[i-1] {
+			t.Errorf("serialized size must be constant w.r.t. inputs: %d vs %d bytes",
+				sizes[i-1], sizes[i])
 		}
 	}
 
-	// Проверяем, что каждый input добавляет примерно одинаковое количество байт
-	increases := make([]int, len(sizes)-1)
-	for i := 1; i < len(sizes); i++ {
-		increases[i-1] = sizes[i] - sizes[i-1]
-	}
-
-	// Первые несколько увеличений могут быть разными из-за выравнивания,
-	// но в целом должны быть похожими
-	avgIncrease := 0
-	for _, inc := range increases {
-		avgIncrease += inc
-	}
-	avgIncrease /= len(increases)
-
-	t.Logf("Account size progression with inputs:")
-	for i, size := range sizes {
-		t.Logf("  %d inputs: %d bytes", i, size)
-		if i > 0 {
-			t.Logf("    (+%d bytes)", increases[i-1])
-		}
-	}
-	t.Logf("Average increase per input: %d bytes", avgIncrease)
+	t.Logf("Account size with varying in-memory inputs (not stored): %d bytes", sizes[0])
 }

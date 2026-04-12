@@ -169,14 +169,7 @@ func (sa *StateAccount) Bytes() []byte {
 	if DEBUG {
 		fmt.Printf("Buffer length after passphrase: %d\n", buf.Len())
 	}
-	// Write MPub
-	// mpubBytes := sa.MPub[:]
-	// binary.Write(&buf, binary.LittleEndian, uint32(len(mpubBytes)))
-	// buf.Write(mpubBytes)
-	// // fmt.Printf("Buffer after mpub: %x\n", buf.Bytes())
-	// if DEBUG {
-	// 	fmt.Printf("Buffer length after mpub: %d\n", buf.Len())
-	// }
+
 	// Write Bloom
 	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.Bloom)))
 	buf.Write(sa.Bloom)
@@ -184,15 +177,7 @@ func (sa *StateAccount) Bytes() []byte {
 	if DEBUG {
 		fmt.Printf("Buffer length after bloom: %d\n", buf.Len())
 	}
-	// Write CodeHash
-	// if sa.Address == address.HexToAddress(BaseAddressHex) || sa.Address == address.HexToAddress(FaucetAddressHex) || sa.Address == address.HexToAddress(CoreStakingAddressHex) {
-	// 	zeroBuf := make([]byte, 4)
-	// 	buf.Write(zeroBuf)
-	// } else {
-	// 	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.CodeHash)))
-	// 	buf.Write(sa.CodeHash)
-	// }
-	// fmt.Printf("Buffer after code hash: %x\n", buf.Bytes())
+
 	if DEBUG {
 		fmt.Printf("Buffer length after code hash: %d\n", buf.Len())
 	}
@@ -225,36 +210,13 @@ func (sa *StateAccount) Bytes() []byte {
 		fmt.Printf("Buffer length after balance: %d\n", buf.Len())
 	}
 
-	// Write Inputs map
-	sa.Inputs.RLock()
-	inputsCount := uint32(len(sa.Inputs.M))
-	binary.Write(&buf, binary.LittleEndian, inputsCount)
-
-	// Записываем каждую пару (hash, value)
-	for txHash, val := range sa.Inputs.M {
-		// Записываем hash (32 bytes)
-		hashBytes := txHash.Bytes()
-		buf.Write(hashBytes)
-
-		// Записываем значение big.Int
-		valBytes := val.Bytes()
-		binary.Write(&buf, binary.LittleEndian, uint32(len(valBytes)))
-		if len(valBytes) > 0 {
-			buf.Write(valBytes)
-		}
-	}
-	sa.Inputs.RUnlock()
+	// Inputs are not persisted: they are reconstructed from the chain (UTXO / tx history).
+	// Keep slot for backward compatibility: always write zero entries.
+	binary.Write(&buf, binary.LittleEndian, uint32(0))
 
 	if DEBUG {
-		fmt.Printf("Buffer length after inputs (%d entries): %d\n", inputsCount, buf.Len())
+		fmt.Printf("Buffer length after inputs (0 entries, chain-derived): %d\n", buf.Len())
 	}
-
-	// Check if there's any '\n' byte in the buffer (typically end of serialized account line in file)
-	// if bytes.Contains(buf.Bytes(), []byte{'\n'}) {
-	// 	if DEBUG {
-	// 		fmt.Printf("Warning: Buffer contains newline (\\n) byte!\n")
-	// 	}
-	// }
 
 	return buf.Bytes()
 }
@@ -342,30 +304,22 @@ func FromBytes(data []byte) *StateAccount {
 	if err := binary.Read(buf, binary.LittleEndian, &inputsCount); err != nil {
 		return sa
 	}
-	sa.Inputs.Lock()
-	for i := uint32(0); i < inputsCount; i++ {
-		hashBytes := make([]byte, 32)
-		if _, err := io.ReadFull(buf, hashBytes); err != nil {
-			sa.Inputs.Unlock()
+	hashScratch := make([]byte, 32)
+	for range inputsCount {
+		if _, err := io.ReadFull(buf, hashScratch); err != nil {
 			return nil
 		}
-		txHash := common.Hash(hashBytes)
 		var valLen uint32
 		if err := binary.Read(buf, binary.LittleEndian, &valLen); err != nil {
-			sa.Inputs.Unlock()
 			return nil
 		}
-		valBytes := make([]byte, valLen)
 		if valLen > 0 {
-			if _, err := io.ReadFull(buf, valBytes); err != nil {
-				sa.Inputs.Unlock()
+			if _, err := io.CopyN(io.Discard, buf, int64(valLen)); err != nil {
 				return nil
 			}
 		}
-		val := new(big.Int).SetBytes(valBytes)
-		sa.Inputs.M[txHash] = val
+		// Do not populate sa.Inputs.M — inputs are rebuilt from the chain.
 	}
-	sa.Inputs.Unlock()
 
 	return sa
 }

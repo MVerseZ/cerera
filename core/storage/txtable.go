@@ -1,48 +1,66 @@
 package storage
 
 import (
-	"github.com/cerera/core/types"
+	"sync"
+
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/types"
 )
 
 var txTable TxTable
 
-type TxRecord struct {
-	Hash       common.Hash
-	BlockIndex int
-}
+// TxTable maps transaction hash to block index (-1 while pending).
 type TxTable struct {
-	recs []TxRecord
+	mu     sync.RWMutex
+	byHash map[common.Hash]int
 }
 
 func (t *TxTable) Add(tx *types.GTransaction) {
-	txRecord := TxRecord{
-		Hash:       tx.Hash(),
-		BlockIndex: -1,
+	if tx == nil {
+		return
 	}
-	t.recs = append(t.recs, txRecord)
+	h := tx.Hash()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.byHash == nil {
+		t.byHash = make(map[common.Hash]int)
+	}
+	if _, ok := t.byHash[h]; !ok {
+		t.byHash[h] = -1
+	}
 }
 
 func (t *TxTable) UpdateIndex(tx *types.GTransaction, bIndex int) {
-	for i, rec := range t.recs {
-		if rec.Hash == tx.Hash() {
-			t.recs[i].BlockIndex = bIndex
-		}
+	if tx == nil {
+		return
+	}
+	h := tx.Hash()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.byHash == nil {
+		return
+	}
+	if _, ok := t.byHash[h]; ok {
+		t.byHash[h] = bIndex
 	}
 }
 
 func (t *TxTable) Get(hash common.Hash) int {
-	for _, rec := range t.recs {
-		if rec.Hash == hash {
-			return rec.BlockIndex
-		}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if t.byHash == nil {
+		return -1
 	}
-	return -1
+	idx, ok := t.byHash[hash]
+	if !ok {
+		return -1
+	}
+	return idx
 }
 
 func InitTxTable() {
 	txTable = TxTable{
-		recs: make([]TxRecord, 0),
+		byHash: make(map[common.Hash]int),
 	}
 }
 

@@ -23,6 +23,9 @@ var (
 	// SyncProtocolID is used for block synchronization
 	SyncProtocolID = protocol.ID(ProtocolPrefix + "/sync/" + ProtocolVersion)
 
+	// StorageSnapshotProtocolID is the binary vault / account snapshot protocol.
+	StorageSnapshotProtocolID = protocol.ID(ProtocolPrefix + "/storage-snapshot/" + ProtocolVersion)
+
 	// BlockProtocolID is used for block requests and responses
 	BlockProtocolID = protocol.ID(ProtocolPrefix + "/block/" + ProtocolVersion)
 
@@ -46,6 +49,7 @@ func AllProtocols() []protocol.ID {
 		StatusProtocolID,
 		SystemProtocolID,
 		SyncProtocolID,
+		StorageSnapshotProtocolID,
 		BlockProtocolID,
 		TxProtocolID,
 		ConsensusProtocolID,

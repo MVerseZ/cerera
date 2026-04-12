@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
+	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
 )
 
 // closeTestDB closes the database after test
@@ -128,6 +131,50 @@ func TestEncryptDecryptShortCiphertext(t *testing.T) {
 	_, err := decrypt(shortCiphertext, key)
 	if err == nil {
 		t.Error("decrypt() with short ciphertext should return error")
+	}
+}
+
+func TestAccountPayloadRoundTripWithVaultKeys(t *testing.T) {
+	entropy, err := bip39.NewEntropy(128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := bip39.NewSeed(mnemonic, "")
+	mk, err := bip32.NewMasterKey(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk := mk.PublicKey()
+	if err := SetKeys(mk, pk); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = SetKeys(nil, nil) })
+
+	plain := []byte("state-account-bytes-payload")
+	enc, err := encodeAccountPayload(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(enc) <= len(plain) {
+		t.Fatal("expected encrypted blob larger than plaintext with magic prefix")
+	}
+	dec, err := decodeAccountPayload(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dec, plain) {
+		t.Fatalf("roundtrip got %q want %q", dec, plain)
+	}
+	decLegacy, err := decodeAccountPayload(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(decLegacy, plain) {
+		t.Fatal("legacy plaintext pass-through")
 	}
 }
 
