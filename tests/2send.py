@@ -6,6 +6,7 @@ import random
 from typing import Dict
 
 class CereraStressTester:
+    # def __init__(self, api_url: str = "http://91.199.32.125"):
     def __init__(self, api_url: str = "http://localhost:1337/app"):
         self.api_url = api_url
         self.accounts: Dict[str, Dict] = {}
@@ -184,8 +185,8 @@ class CereraStressTester:
         print(f"✅ Аккаунт 2: {account2['address'][:12]}...")
 
         # Пополняем аккаунты через faucet перед пересылкой
-        self.faucet(account1['address'], 100.0)
-        self.faucet(account2['address'], 100.0)
+        self.faucet(account1['address'], 11.0)
+        self.faucet(account2['address'], 11.0)
         
         return True
     

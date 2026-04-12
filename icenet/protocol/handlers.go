@@ -56,6 +56,7 @@ func NewHandler(h host.Host, serviceProvider service.ServiceProvider, nodeAddr t
 func (h *Handler) RegisterHandlers() {
 	h.host.SetStreamHandler(StatusProtocolID, h.handleStatusStream)
 	h.host.SetStreamHandler(SyncProtocolID, h.handleSyncStream)
+	h.host.SetStreamHandler(StorageSnapshotProtocolID, h.handleStorageSnapshotStream)
 	h.host.SetStreamHandler(BlockProtocolID, h.handleBlockStream)
 	h.host.SetStreamHandler(TxProtocolID, h.handleTxStream)
 	h.host.SetStreamHandler(ConsensusProtocolID, h.handleConsensusStream)
@@ -86,7 +87,7 @@ func (h *Handler) SetOnVote(callback func(*VoteMessage, peer.ID)) {
 	h.onVote = callback
 }
 
-// handleStatusStream handles incoming status protocol streams
+// handleStatusStream handles incoming status protocol streams (node <-stream<- candidate)
 func (h *Handler) handleStatusStream(s network.Stream) {
 	defer s.Close()
 
@@ -387,8 +388,16 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
 	}
 
-	genesisHash := h.serviceProvider.GetBlockByHeight(0).Hash
-	chainID := h.serviceProvider.GetChainID()
+	// Build minimal local status for handshake; must be safe even if
+	// serviceProvider is not yet wired or genesis block is unavailable.
+	var genesisHash common.Hash
+	chainID := 0
+	if h.serviceProvider != nil {
+		if genesis := h.serviceProvider.GetBlockByHeight(0); genesis != nil {
+			genesisHash = genesis.Hash
+		}
+		chainID = h.serviceProvider.GetChainID()
+	}
 
 	request := NewStatusRequest(chainID, h.version, genesisHash, h.nodeAddr)
 	protocolLogger().Debugw("Sending status request", "request", request)
@@ -410,6 +419,16 @@ func (h *Handler) RequestStatus(ctx context.Context, peerID peer.ID) (*StatusRes
 	}
 
 	protocolLogger().Debugw("Received status response", "response", response)
+	//
+	// {"level":"debug","ts":"2026-03-10T01:11:22.420Z","logger":"protocol","caller":"sync/sync.go:306",
+	// "msg":"Received status response","response":
+	// {"type":1,"timestamp":1773105082420853685,
+	// "accountsLen":11,
+	// "chainId":1,"version":"ALPHA-1_VERSION","height":0,
+	// "nodeAddress":"0xafde11e610384d0642e273a83805789e6859da6c5766c153c297c68e4100cdbf",
+	// "peerCount":1,"status":
+	// {"chainId":11,"genesisHash":"0x7ff47379ed04508aa183f6f9dddea9684ef148d04fbb2f31f2804026ddc823e6",
+	// "storageService":"D5_VAULT_CERERA_001_1_7"}}}
 
 	return response, nil
 }

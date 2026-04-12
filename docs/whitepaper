@@ -16,42 +16,35 @@ As the any blockchain project there is RPC communication protocol via HTTP(S).
 There is no any VM for virtual contracts creation. But transaction entity can store big data, like CSV dataframes or multimedia content.
 
 ________________________________________________
-Consensus algorythm
-Based on Raft with some mods.
+Consensus algorithm
+  
+Cerera uses a hybrid approach that cleanly separates **network transport** and
+**consensus / chain logic**.
 
-Example for nodes (A[100]), (B[0])
+- The **network layer** (`icenet`) is responsible only for:
+  - peer discovery and connectivity (libp2p + DHT),
+  - pub/sub topics for blocks, transactions and consensus messages,
+  - low–level request/response protocols for status and block syncing.
 
-A <------------> B
-A <---B--join--- B
-A ----Latest---> B
-A <---B--sync--- B[100]
-A ----[100]----> B
-A <---B--done--- B
+- The **node layer** (`gigea`) owns:
+  - the blockchain state and validation (via ServiceProvider),
+  - a PBFT‑like finality protocol over proposed PoW blocks
+    (PrePrepare → Prepare → Commit → Finalize),
+  - synchronization policy: when to request blocks and which peers to trust.
 
-Now A[100+N], B[100] (N - count waiting for consensus)
+A high‑level view:
+- miners/validators build candidate blocks satisfying PoW;
+- a validator proposes a block to others through the consensus pub/sub channel;
+- validators run a PBFT‑style round:
+  - **PrePrepare**: proposal with full block;
+  - **Prepare**: validators vote to accept the proposal;
+  - **Commit**: after quorum of Prepare votes, validators vote to finalize;
+- once Commit quorum is reached, the block is re‑validated and appended
+  to the local chain; the result is a finalized block height.
 
-Example for nodes (A[1], B[10], C[100], D[10], E[42], F[0], G[5000])
-Where D and G node are compromated by hjacking
-
-
-Example:
-
-New node connect to gossip and send ID + public key
-Swarm of consensus add new node to KNOWN NODES
-Move to consensus
->>>>>
-What if KNOWN NODE has height 1000, new node is 0. Consensus of new node has been started from 1001 height?
-Or there is a sync process making new node to height 1000. Before it will be KNOWN NODE 2.
-
-Or there is a Consensus knowledge and operation borrowing.
-We have 1 node. Consenus.
-We have 1 node and 1 diff node. Consenus work.
-We have 2 nodes. Consenus.
->>>>>
-<<<<<
-<<<<<
-
-
+Network transport does not make consensus decisions: it only carries messages.
+All rules about who can propose blocks, how quorum is calculated and how the
+chain is updated live in the `gigea` node logic.
 
 
 ________________________________________________

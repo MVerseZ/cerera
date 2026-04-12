@@ -111,7 +111,14 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		registry.Register("ice", ice) // Also register with short name
 	}
 
-	ice.SetServiceProvider(service.GetServiceProvider())
+	// Shared service provider for network/consensus access to chain, vault, pool, etc.
+	sp := service.GetServiceProvider()
+	ice.SetServiceProvider(sp)
+
+	// Wire gigea-level consensus manager to the underlying icenet consensus engine.
+	// This keeps node logic decoupled from transport while still allowing future
+	// use of gigea.ConsensusManager as a façade.
+	_ = gigea.NewConsensusManager(ctx, icenet.NewNetworkAdapter(ice), cfg.NetCfg.ADDR, sp)
 
 	return &Cerera{
 		bc:       chain,
@@ -128,7 +135,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 func setupLogging() error {
 	_, err := logger.Init(logger.Config{
 		Path:    "logfile",
-		Level:   "info",
+		Level:   "debug",
 		Console: true,
 	})
 	return err
@@ -157,6 +164,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 }
 
 func main() {
+
 	// Настройка логирования
 	if err := setupLogging(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
