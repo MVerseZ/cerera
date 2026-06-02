@@ -2,6 +2,7 @@ package account
 
 import (
 	"bytes"
+	"crypto/rand"
 	"math/big"
 	"reflect"
 	"sync"
@@ -189,21 +190,13 @@ func TestFromBytes(t *testing.T) {
 }
 
 func TestStateAccount_ToBytes(t *testing.T) {
-	sa := &StateAccount{
-		StateAccountData: StateAccountData{
-			Address: address.Address{0x1, 0x2, 0x3, 0x4},
-			Nonce:   42,
-			Root:    common.Hash{0x7, 0x8, 0x9},
-			KeyHash: common.Hash{0x1, 0x2, 0x3},
-		},
-		Bloom:      []byte{0x1, 0x2, 0x3},
-		Status:     1, // 1: OP_ACC_STAKE
-		Passphrase: common.Hash{0xa, 0xb, 0xc},
-		Inputs: &Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		},
+	var arr [32]byte
+	_, err := rand.Read(arr[:])
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	sa := NewStateAccount(arr, 0.0, common.EmptyRootHash)
 	sa.SetBalance(100.5)
 
 	// Add some inputs

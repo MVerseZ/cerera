@@ -150,7 +150,7 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
 	http := flag.Int("http", 8080, "Порт для http сервера")
 	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
-	inMem := flag.Bool("mem", true, "Хранение данных память/диск")
+	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
 	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
 	flag.Parse()
 

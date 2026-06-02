@@ -33,13 +33,10 @@ type StateAccountData struct {
 
 type StateAccount struct {
 	StateAccountData
-	Bloom []byte
-	// CodeHash   []byte
+	Bloom      []byte
 	Status     byte        // 0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID
 	Type       byte        // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
 	Passphrase common.Hash // hash of password
-
-	// MPub       [78]byte
 	// non serialized fields
 	balance *big.Int `json:"-"` // не сериализуем balance в JSON
 	Inputs  *Input   `json:"-"` // не сериализуем Inputs в JSON из-за mutex

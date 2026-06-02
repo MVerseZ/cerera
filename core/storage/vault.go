@@ -205,28 +205,6 @@ func (v *D5Vault) updateSupplyMetrics() {
 	vaultCirculatingSupply.Set(totalFloat)
 }
 
-// InitVaultKeys initializes the vault keys (owner keys)
-// If error occurs during process, the vault status is set to 0xf (error)
-func InitVaultKeys() {
-	var err error
-	entropy, err := bip39.NewEntropy(256)
-	mnemonic, err := bip39.NewMnemonic(entropy)
-	seed := bip39.NewSeed(mnemonic, "NODE_PASS")
-	masterKey, err := bip32.NewMasterKey(seed)
-	publicKey := masterKey.PublicKey()
-	var mpub [78]byte
-	pubKeyStr := publicKey.B58Serialize()
-	copy(mpub[:], []byte(pubKeyStr))
-	if err != nil {
-		vlt.status = 0xf
-	}
-	SetKeys(masterKey, publicKey)
-	vltlogger().Infow("Vault recovery mnemonic generated", "mnemonic", mnemonic)
-	vltlogger().Infow("Vault recovery password generated", "password", "NODE_PASS")
-	vltlogger().Infow("Vault master key generated", "masterKey", masterKey.B58Serialize())
-	vltlogger().Infow("Vault public key generated", "publicKey", publicKey.B58Serialize())
-}
-
 // NewD5Vault initializes and returns a new vault instance.
 func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	gob.Register(account.StateAccount{})
@@ -240,7 +218,6 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		// stChan:   make(chan [32]byte),
 	}
 
-	InitVaultKeys()
 	vltlogger().Infow("Init vault",
 		"address", rootHashAddress.String(),
 		"service", VAULT_SERVICE_NAME,
@@ -264,6 +241,7 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vlt.initiator = rootSA
 
 	if vlt.inMem {
+		InitVaultKeys()
 		vltlogger().Infow("Vault running in memory mode")
 		vlt.accounts.Append(rootSA.Address, rootSA)
 		vlt.status = 0xa
@@ -284,6 +262,11 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	if err := os.MkdirAll(dbDir, 0700); err != nil {
 		vltlogger().Errorw("Failed to create vault directory", "path", dbDir, "err", err)
 		return nil, fmt.Errorf("failed to create vault directory: %w", err)
+	}
+
+	if err := ensureVaultKeys(dbDir); err != nil {
+		vltlogger().Errorw("Failed to load vault encryption keys", "err", err)
+		return nil, fmt.Errorf("failed to load vault encryption keys: %w", err)
 	}
 
 	db, err := pogreb.Open(dbDir, nil)
@@ -395,6 +378,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 
 	if !v.inMem && v.db != nil {
+		// save to disk (vault)
 		key := newAccount.Address.Bytes()
 		if err := putAccountPayload(v.db, key, newAccount.Bytes()); err != nil {
 			vltlogger().Errorw("Failed to save account to vault",
@@ -747,7 +731,7 @@ func (v *D5Vault) ServiceName() string {
 	return VAULT_SERVICE_NAME
 }
 
-// SyncFromDB loads all accounts from the pogreb database into memory
+// SyncFromDB loads all accounts from the pogreb database into memory // LOAD
 func (v *D5Vault) SyncFromDB() error {
 	if v.db == nil {
 		return fmt.Errorf("database not initialized")
@@ -777,6 +761,7 @@ func (v *D5Vault) SyncFromDB() error {
 		}
 
 		// Try to deserialize account, skip on error
+		// TODO ERROR IN THIS GOROUTINE WHEN DB USAGE
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -792,19 +777,31 @@ func (v *D5Vault) SyncFromDB() error {
 				vltlogger().Warnw("syncFromDB: decode account payload", "err", derr, "key", fmt.Sprintf("%x", key))
 				return
 			}
-			account := types.BytesToStateAccount(plain)
-			if account != nil {
-				vltlogger().Infow("Read account from pogreb vault", "address", account.Address.Hex())
-				v.accounts.Append(account.Address, account)
+			encrypted := bytes.HasPrefix(accountData, vaultAccountEncMagic)
+			if encrypted && !looksLikeSerializedAccount(plain) {
+				vltlogger().Errorw("Failed to decrypt account (vault encryption key mismatch?)",
+					"key", fmt.Sprintf("%x", key),
+					"storedLen", len(accountData),
+					"plainLen", len(plain),
+					"hint", "set VAULT_MNEMONIC from first-run log or ensure .vault_keys matches the DB",
+				)
+				return
+			}
+			acc := types.BytesToStateAccount(plain)
+			if acc != nil {
+				vltlogger().Infow("Read account from pogreb vault", "address", acc.Address.Hex())
+				v.accounts.Append(acc.Address, acc)
 			} else {
 				previewLen := 20
-				if len(accountData) < previewLen {
-					previewLen = len(accountData)
+				if len(plain) < previewLen {
+					previewLen = len(plain)
 				}
 				vltlogger().Errorw("Failed to deserialize account",
 					"key", fmt.Sprintf("%x", key),
-					"length", len(accountData),
-					"preview", fmt.Sprintf("%x", accountData[:previewLen]),
+					"storedLen", len(accountData),
+					"plainLen", len(plain),
+					"encrypted", encrypted,
+					"plainPreview", fmt.Sprintf("%x", plain[:previewLen]),
 				)
 			}
 		}()

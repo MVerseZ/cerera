@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -67,6 +68,27 @@ func decodeAccountPayload(stored []byte) ([]byte, error) {
 	return decrypt(stored[len(vaultAccountEncMagic):], key)
 }
 
+// looksLikeSerializedAccount rejects obvious garbage after a wrong AES key decrypt.
+func looksLikeSerializedAccount(plain []byte) bool {
+	const maxAddrLen = 64
+	if len(plain) < 41 {
+		return false
+	}
+	if plain[0] <= 4 {
+		alen := binary.LittleEndian.Uint32(plain[1:5])
+		if alen > maxAddrLen {
+			return false
+		}
+		return len(plain) >= int(1+4+alen+32+4)
+	}
+	alen := binary.LittleEndian.Uint32(plain[0:4])
+	if alen > maxAddrLen {
+		return false
+	}
+	return len(plain) >= int(4+alen+32+4)
+}
+
+// putAccountPayload encodes the account data and stores it in the pogreb database under the given key.
 func putAccountPayload(db *pogreb.DB, addressKey []byte, serializedAccount []byte) error {
 	payload, err := encodeAccountPayload(serializedAccount)
 	if err != nil {
