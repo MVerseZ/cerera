@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
+	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
 )
 
 // closeTestDB closes the database after test
@@ -128,6 +131,50 @@ func TestEncryptDecryptShortCiphertext(t *testing.T) {
 	_, err := decrypt(shortCiphertext, key)
 	if err == nil {
 		t.Error("decrypt() with short ciphertext should return error")
+	}
+}
+
+func TestAccountPayloadRoundTripWithVaultKeys(t *testing.T) {
+	entropy, err := bip39.NewEntropy(128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := bip39.NewSeed(mnemonic, "")
+	mk, err := bip32.NewMasterKey(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk := mk.PublicKey()
+	if err := SetKeys(mk, pk); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = SetKeys(nil, nil) })
+
+	plain := []byte("state-account-bytes-payload")
+	enc, err := encodeAccountPayload(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(enc) <= len(plain) {
+		t.Fatal("expected encrypted blob larger than plaintext with magic prefix")
+	}
+	dec, err := decodeAccountPayload(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dec, plain) {
+		t.Fatalf("roundtrip got %q want %q", dec, plain)
+	}
+	decLegacy, err := decodeAccountPayload(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(decLegacy, plain) {
+		t.Fatal("legacy plaintext pass-through")
 	}
 }
 
@@ -734,4 +781,85 @@ func TestMultipleOperations(t *testing.T) {
 
 	// Close database after test
 	defer closeTestDB(t)
+}
+
+// TestSyncFromDB_DecryptsAccountPayload ensures SyncFromDB decrypts CRV1 rows before FromBytes.
+func TestSyncFromDB_DecryptsAccountPayload(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Cleanup(func() { _ = SetKeys(nil, nil) })
+
+	if err := ensureVaultKeys(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	sa := createTestStateAccountForSource(42.5)
+	sa.Type = 2
+
+	db, err := getPogrebDB(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+		GetVault().db = nil
+	})
+
+	key := sa.Address.Bytes()
+	if err := putAccountPayload(db, key, sa.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = SetKeys(nil, nil)
+	if err := ensureVaultKeys(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	vlt = D5Vault{
+		accounts: GetAccountsTrie(),
+		db:       db,
+	}
+	if err := vlt.SyncFromDB(); err != nil {
+		t.Fatal(err)
+	}
+
+	got := vlt.accounts.GetAccount(sa.Address)
+	if got == nil {
+		t.Fatal("SyncFromDB did not load encrypted account")
+	}
+	if got.GetBalance() != 42.5 {
+		t.Errorf("balance: got %v want 42.5", got.GetBalance())
+	}
+	if got.Type != 2 {
+		t.Errorf("type: got %d want 2", got.Type)
+	}
+	if got.Nonce != sa.Nonce {
+		t.Errorf("nonce: got %d want %d", got.Nonce, sa.Nonce)
+	}
+}
+
+func TestEnsureVaultKeysPersistsAcrossRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Cleanup(func() { _ = SetKeys(nil, nil) })
+
+	if err := ensureVaultKeys(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	priv1, _, err := GetKeys()
+	if err != nil || priv1 == nil {
+		t.Fatal("expected keys after first init")
+	}
+	ser1, _ := priv1.Serialize()
+
+	_ = SetKeys(nil, nil)
+	if err := ensureVaultKeys(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	priv2, _, err := GetKeys()
+	if err != nil || priv2 == nil {
+		t.Fatal("expected keys after reload")
+	}
+	ser2, _ := priv2.Serialize()
+	if !bytes.Equal(ser1, ser2) {
+		t.Fatal("vault encryption keys must be stable across restarts")
+	}
 }

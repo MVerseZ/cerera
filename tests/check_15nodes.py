@@ -15,8 +15,16 @@ from datetime import datetime
 DOCKER_COMPOSE_PORTS = list(range(1337, 1352))  # 1337-1351
 DOCKER_COMPOSE_NODES = [f'node{i}' for i in range(1, 16)]  # node1-node15
 
+RPC_ID_ACCOUNT_GET_ALL = 11
 
-def make_jsonrpc_request(api_url: str, method: str, params: List = None, timeout: int = 10) -> Optional[Dict]:
+
+def make_jsonrpc_request(
+    api_url: str,
+    method: str,
+    params: List = None,
+    timeout: int = 10,
+    rpc_id: int = 1,
+) -> Optional[Dict]:
     """
     Выполняет JSON-RPC запрос на указанный адрес
     
@@ -36,7 +44,7 @@ def make_jsonrpc_request(api_url: str, method: str, params: List = None, timeout
         "jsonrpc": "2.0",
         "method": method,
         "params": params,
-        "id": 1
+        "id": rpc_id,
     }
     
     try:
@@ -97,6 +105,26 @@ def get_block_by_index(api_url: str, index: int) -> Optional[Dict]:
     return None
 
 
+def get_all_accounts(api_url: str) -> Optional[Dict]:
+    """cerera.account.getAll с id=11 (как tests/total.py)."""
+    result = make_jsonrpc_request(
+        api_url, "cerera.account.getAll", [], rpc_id=RPC_ID_ACCOUNT_GET_ALL
+    )
+    if result and "error" not in result and "result" in result:
+        r = result["result"]
+        return r if isinstance(r, dict) else None
+    return None
+
+
+def fingerprint_accounts_map(data: Optional[Dict]) -> Optional[str]:
+    if not isinstance(data, dict):
+        return None
+    try:
+        return json.dumps(data, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return None
+
+
 def format_block_info(block: Dict) -> str:
     """
     Форматирует информацию о блоке для вывода
@@ -131,7 +159,7 @@ def format_block_info(block: Dict) -> str:
 def main():
     print("=" * 80)
     print("📡 Проверка 15 нод из docker-compose-15nodes.yml")
-    print("   Запросы: высота блокчейна и последний блок")
+    print("   Запросы: высота, последний блок, cerera.account.getAll (id=11)")
     print("=" * 80)
     print()
     
@@ -144,6 +172,12 @@ def main():
         
         print(f"\n🔍 Нода: {node_name} (порт {port})")
         print(f"   URL: {api_url}")
+
+        accounts_map = get_all_accounts(api_url)
+        if accounts_map is not None:
+            print(f"   ✅ cerera.account.getAll: {len(accounts_map)} аккаунтов (id={RPC_ID_ACCOUNT_GET_ALL})")
+        else:
+            print(f"   ⚠️  cerera.account.getAll: нет данных или ошибка (id={RPC_ID_ACCOUNT_GET_ALL})")
         
         # Получаем высоту
         height = get_chain_height(api_url)
@@ -155,6 +189,7 @@ def main():
                 "url": api_url,
                 "height": None,
                 "last_block": None,
+                "accounts": accounts_map,
                 "error": "Не удалось получить высоту"
             }
             continue
@@ -181,7 +216,8 @@ def main():
             "url": api_url,
             "height": height,
             "last_block_index": last_block_index,
-            "last_block": last_block
+            "last_block": last_block,
+            "accounts": accounts_map,
         }
     
     # Сводка
@@ -226,6 +262,39 @@ def main():
                     print(f"      Высота {h}: {', '.join(nodes)}")
             else:
                 print(f"\n✅ Все ноды имеют одинаковую высоту: {min_height}")
+
+    print("\n" + "=" * 80)
+    print("👛 СРАВНЕНИЕ cerera.account.getAll (id=11)")
+    print("=" * 80)
+    account_fps: Dict[str, Optional[str]] = {}
+    for node_name, data in results.items():
+        acc = data.get("accounts")
+        fp = fingerprint_accounts_map(acc)
+        account_fps[node_name] = fp
+        if fp is not None:
+            print(f"✅ {node_name:8}: аккаунтов = {len(acc)}")
+        else:
+            print(f"❌ {node_name:8}: getAll недоступен или ошибка")
+    valid_fps = [fp for fp in account_fps.values() if fp is not None]
+    accounts_match = True
+    if len(valid_fps) >= 2:
+        unique_acc = set(valid_fps)
+        if len(unique_acc) != 1:
+            accounts_match = False
+            print("\n⚠️  Наборы аккаунтов (getAll) различаются между нодами!")
+            by_fp: Dict[str, List[str]] = {}
+            for node, fp in account_fps.items():
+                if fp is None:
+                    continue
+                by_fp.setdefault(fp, []).append(node)
+            for i, nodes in enumerate(by_fp.values(), 1):
+                print(f"   Группа {i}: {', '.join(sorted(nodes))}")
+        else:
+            print("\n✅ Снимок getAll совпадает на всех нодах, где ответ получен")
+    elif len(valid_fps) == 1:
+        print("\nℹ️  Только одна нода вернула getAll — сравнение между нодами невозможно")
+    else:
+        print("\n⚠️  Ни одна нода не вернула getAll")
     
     # Детальная информация по каждой ноде
     print(f"\n📋 Детальная информация:")
@@ -243,14 +312,15 @@ def main():
             hash_short = block_hash[:16] + "..." if isinstance(block_hash, str) and len(block_hash) > 16 else block_hash
             txs = len(block.get("transactions", []))
             last_block_info = f" | Last block: {hash_short} ({txs} TXs)"
-        
-        print(f"{status} {node_name:8} (порт {port:4}): высота = {height}{last_block_info}")
+        ac = data.get("accounts")
+        ac_n = len(ac) if isinstance(ac, dict) else "—"
+        print(f"{status} {node_name:8} (порт {port:4}): высота = {height} | getAll: {ac_n} acc{last_block_info}")
     
     print("\n" + "=" * 80)
     
-    # Проверяем, были ли успешные запросы
     has_success = any(r.get("height") is not None for r in results.values())
-    sys.exit(0 if has_success else 1)
+    ok = has_success and accounts_match
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":
