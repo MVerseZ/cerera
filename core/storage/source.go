@@ -1,9 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +20,82 @@ import (
 
 var vaultSrcLogger = logger.Named("vault.source")
 var IS_DEGUG = true
+
+// CRV1 prefix marks AES-CFB encrypted StateAccount payloads (see encrypt).
+var vaultAccountEncMagic = []byte{'C', 'R', 'V', 1}
+
+func isContractOrStorageKey(key []byte) bool {
+	return bytes.HasPrefix(key, []byte("code:")) || bytes.HasPrefix(key, []byte("storage:"))
+}
+
+func deriveVaultAccountEncKey() []byte {
+	priv, _, err := GetKeys()
+	if err != nil || priv == nil {
+		return nil
+	}
+	ser, err := priv.Serialize()
+	if err != nil {
+		return nil
+	}
+	sum := sha256.Sum256(ser)
+	return sum[:]
+}
+
+func encodeAccountPayload(plain []byte) ([]byte, error) {
+	key := deriveVaultAccountEncKey()
+	if key == nil {
+		return plain, nil
+	}
+	ct, err := encrypt(plain, key)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, len(vaultAccountEncMagic)+len(ct))
+	copy(out, vaultAccountEncMagic)
+	copy(out[len(vaultAccountEncMagic):], ct)
+	return out, nil
+}
+
+// decodeAccountPayload reverses encodeAccountPayload. Legacy plaintext rows (no magic) are returned unchanged.
+func decodeAccountPayload(stored []byte) ([]byte, error) {
+	if len(stored) < len(vaultAccountEncMagic) || !bytes.HasPrefix(stored, vaultAccountEncMagic) {
+		return stored, nil
+	}
+	key := deriveVaultAccountEncKey()
+	if key == nil {
+		return nil, fmt.Errorf("encrypted account record but vault keys are not loaded")
+	}
+	return decrypt(stored[len(vaultAccountEncMagic):], key)
+}
+
+// looksLikeSerializedAccount rejects obvious garbage after a wrong AES key decrypt.
+func looksLikeSerializedAccount(plain []byte) bool {
+	const maxAddrLen = 64
+	if len(plain) < 41 {
+		return false
+	}
+	if plain[0] <= 4 {
+		alen := binary.LittleEndian.Uint32(plain[1:5])
+		if alen > maxAddrLen {
+			return false
+		}
+		return len(plain) >= int(1+4+alen+32+4)
+	}
+	alen := binary.LittleEndian.Uint32(plain[0:4])
+	if alen > maxAddrLen {
+		return false
+	}
+	return len(plain) >= int(4+alen+32+4)
+}
+
+// putAccountPayload encodes the account data and stores it in the pogreb database under the given key.
+func putAccountPayload(db *pogreb.DB, addressKey []byte, serializedAccount []byte) error {
+	payload, err := encodeAccountPayload(serializedAccount)
+	if err != nil {
+		return err
+	}
+	return db.Put(addressKey, payload)
+}
 
 func getLocalSource(vaultPath string) error {
 	// vault := GetVault()
@@ -123,7 +202,7 @@ func InitSecureVault(rootSa *account.StateAccount, vaultPath string) error {
 		vaultSrcLogger.Infow("Writing account data to pogreb", "address", rootSa.Address.Hex())
 	}
 
-	if err := db.Put(key, accountData); err != nil {
+	if err := putAccountPayload(db, key, accountData); err != nil {
 		return fmt.Errorf("failed to write account data to pogreb: %w", err)
 	}
 
@@ -155,6 +234,10 @@ func SyncVault(path string) error {
 			continue
 		}
 
+		if isContractOrStorageKey(key) {
+			continue
+		}
+
 		// Try to deserialize account, skip on error
 		func() {
 			defer func() {
@@ -168,7 +251,14 @@ func SyncVault(path string) error {
 					}
 				}
 			}()
-			account := types.BytesToStateAccount(accountData)
+			plain, decErr := decodeAccountPayload(accountData)
+			if decErr != nil {
+				if IS_DEGUG {
+					vaultSrcLogger.Warnw("SyncVault: decode account payload", "err", decErr, "key", fmt.Sprintf("%x", key))
+				}
+				return
+			}
+			account := types.BytesToStateAccount(plain)
 			if account != nil {
 				if IS_DEGUG {
 					vaultSrcLogger.Infow("Read account from pogreb vault", "address", account.Address.Hex())
@@ -212,7 +302,7 @@ func SaveToVault(account []byte, vaultPath string) error {
 		vaultSrcLogger.Infow("Writing account data to pogreb", "address", accountData.Address.Hex())
 	}
 
-	if err := db.Put(key, account); err != nil {
+	if err := putAccountPayload(db, key, account); err != nil {
 		return fmt.Errorf("failed to write account data to pogreb: %w", err)
 	}
 
@@ -241,7 +331,7 @@ func UpdateVault(account []byte, vaultPath string) error {
 	}
 
 	// Put will overwrite if key exists, or create if it doesn't
-	if err := db.Put(key, account); err != nil {
+	if err := putAccountPayload(db, key, account); err != nil {
 		return fmt.Errorf("failed to update account in pogreb: %w", err)
 	}
 
@@ -259,16 +349,19 @@ func VaultSourceSize(vaultPath string) (int64, error) {
 		return 0, err
 	}
 
-	// Pogreb doesn't have Stats() method, so we count items manually
+	// Count only account rows (exclude contract code / contract storage keys).
 	count := int64(0)
 	it := db.Items()
 	for {
-		_, _, err := it.Next()
+		k, _, err := it.Next()
 		if err == pogreb.ErrIterationDone {
 			break
 		}
 		if err != nil {
 			return 0, fmt.Errorf("failed to iterate database: %w", err)
+		}
+		if isContractOrStorageKey(k) {
+			continue
 		}
 		count++
 	}

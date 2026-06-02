@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"sync"
+
 	"github.com/tyler-smith/go-bip32"
 )
 
@@ -9,9 +11,14 @@ type Keys struct {
 	Pub  *bip32.Key
 }
 
-var k Keys
+var (
+	keysMu sync.RWMutex
+	k      Keys
+)
 
 func SetKeys(priv *bip32.Key, pub *bip32.Key) error {
+	keysMu.Lock()
+	defer keysMu.Unlock()
 	k = Keys{
 		Priv: priv,
 		Pub:  pub,
@@ -20,5 +27,7 @@ func SetKeys(priv *bip32.Key, pub *bip32.Key) error {
 }
 
 func GetKeys() (*bip32.Key, *bip32.Key, error) {
+	keysMu.RLock()
+	defer keysMu.RUnlock()
 	return k.Priv, k.Pub, nil
 }

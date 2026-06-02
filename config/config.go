@@ -129,7 +129,7 @@ func GenerageConfig() *Config {
 			VERSION: "ALPHA",
 			VER:     1,
 			Gossip:  "127.0.0.1:8091",
-			IN_MEM:  true,
+			IN_MEM:  false,
 		}
 		cfg.WriteConfigToFile()
 	} else {

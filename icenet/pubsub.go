@@ -61,6 +61,11 @@ type TxMessage struct {
 	Hash common.Hash         `json:"hash"`
 }
 
+// AccountStateMessage is the payload for a newly created account (StateAccount.Bytes()).
+type AccountStateMessage struct {
+	Account []byte `json:"account"`
+}
+
 // ConsensusPayload is the payload for consensus messages
 type ConsensusPayload struct {
 	ConsensusType int    `json:"consensusType"`
@@ -79,11 +84,13 @@ type PubSubManager struct {
 	blocksTopic    *pubsub.Topic
 	txsTopic       *pubsub.Topic
 	consensusTopic *pubsub.Topic
+	accountsTopic  *pubsub.Topic
 
 	// Subscriptions
 	blocksSub    *pubsub.Subscription
 	txsSub       *pubsub.Subscription
 	consensusSub *pubsub.Subscription
+	accountsSub  *pubsub.Subscription
 
 	// Message cache to prevent duplicates
 	seenMessages sync.Map
@@ -93,6 +100,7 @@ type PubSubManager struct {
 	onBlockHash func(common.Hash, int, peer.ID)
 	onTx        func(*types.GTransaction, peer.ID)
 	onConsensus func(int, []byte, peer.ID)
+	onAccount   func([]byte, peer.ID)
 
 	// Validation functions
 	validateBlock func(*block.Block) bool
@@ -146,6 +154,12 @@ func (psm *PubSubManager) Start() error {
 		return fmt.Errorf("failed to join consensus topic: %w", err)
 	}
 
+	// Join accounts topic (new account broadcasts)
+	psm.accountsTopic, err = psm.ps.Join(TopicAccounts)
+	if err != nil {
+		return fmt.Errorf("failed to join accounts topic: %w", err)
+	}
+
 	// Subscribe to topics
 	psm.blocksSub, err = psm.blocksTopic.Subscribe()
 	if err != nil {
@@ -162,16 +176,22 @@ func (psm *PubSubManager) Start() error {
 		return fmt.Errorf("failed to subscribe to consensus: %w", err)
 	}
 
+	psm.accountsSub, err = psm.accountsTopic.Subscribe()
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to accounts: %w", err)
+	}
+
 	// Start message handlers
 	go psm.handleBlocks()
 	go psm.handleTxs()
 	go psm.handleConsensus()
+	go psm.handleAccounts()
 
 	// Start cleanup loop for seen messages
 	go psm.cleanupLoop()
 
 	iceLogger().Infow("PubSub manager started",
-		"topics", []string{TopicBlocks, TopicTxs, TopicConsensus},
+		"topics", []string{TopicBlocks, TopicTxs, TopicConsensus, TopicAccounts},
 	)
 
 	return nil
@@ -190,6 +210,9 @@ func (psm *PubSubManager) Stop() {
 	if psm.consensusSub != nil {
 		psm.consensusSub.Cancel()
 	}
+	if psm.accountsSub != nil {
+		psm.accountsSub.Cancel()
+	}
 
 	if psm.blocksTopic != nil {
 		psm.blocksTopic.Close()
@@ -199,6 +222,9 @@ func (psm *PubSubManager) Stop() {
 	}
 	if psm.consensusTopic != nil {
 		psm.consensusTopic.Close()
+	}
+	if psm.accountsTopic != nil {
+		psm.accountsTopic.Close()
 	}
 
 	iceLogger().Infow("PubSub manager stopped")
@@ -355,6 +381,53 @@ func (psm *PubSubManager) handleConsensus() {
 	}
 }
 
+// handleAccounts processes incoming account-state messages (vault Create broadcast).
+func (psm *PubSubManager) handleAccounts() {
+	for {
+		msg, err := psm.accountsSub.Next(psm.ctx)
+		if err != nil {
+			if psm.ctx.Err() != nil {
+				return
+			}
+			iceLogger().Warnw("Error receiving account message", "error", err)
+			continue
+		}
+
+		if msg.ReceivedFrom == psm.host.ID() {
+			continue
+		}
+
+		var pubsubMsg PubSubMessage
+		if err := json.Unmarshal(msg.Data, &pubsubMsg); err != nil {
+			iceLogger().Warnw("Failed to unmarshal account pubsub message", "error", err)
+			continue
+		}
+
+		if pubsubMsg.Type != PubSubMsgTypeAccount {
+			continue
+		}
+
+		msgAge := time.Since(time.Unix(0, pubsubMsg.Timestamp))
+		if msgAge > MaxMessageAge {
+			continue
+		}
+
+		var accMsg AccountStateMessage
+		if err := json.Unmarshal(pubsubMsg.Payload, &accMsg); err != nil {
+			iceLogger().Warnw("Failed to unmarshal account payload", "error", err)
+			continue
+		}
+
+		if len(accMsg.Account) == 0 {
+			continue
+		}
+
+		if psm.onAccount != nil {
+			psm.onAccount(accMsg.Account, msg.ReceivedFrom)
+		}
+	}
+}
+
 // cleanupLoop periodically cleans up seen messages
 func (psm *PubSubManager) cleanupLoop() {
 	ticker := time.NewTicker(time.Minute)
@@ -482,6 +555,41 @@ func (psm *PubSubManager) BroadcastTx(tx *types.GTransaction) error {
 	return nil
 }
 
+// BroadcastAccountState publishes a serialized StateAccount (from Vault.Create) to all subscribers.
+func (psm *PubSubManager) BroadcastAccountState(accountBytes []byte) error {
+	if psm.accountsTopic == nil {
+		return fmt.Errorf("accounts topic not initialized")
+	}
+	if len(accountBytes) == 0 {
+		return fmt.Errorf("empty account payload")
+	}
+
+	accMsg := AccountStateMessage{Account: accountBytes}
+	payload, err := json.Marshal(accMsg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal account message: %w", err)
+	}
+
+	msg := PubSubMessage{
+		Type:      PubSubMsgTypeAccount,
+		Timestamp: time.Now().UnixNano(),
+		From:      psm.host.ID().String(),
+		Payload:   payload,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal pubsub message: %w", err)
+	}
+
+	if err := psm.accountsTopic.Publish(psm.ctx, data); err != nil {
+		return fmt.Errorf("failed to publish account message: %w", err)
+	}
+
+	iceLogger().Debugw("Account state broadcast", "bytes", len(accountBytes))
+	return nil
+}
+
 // BroadcastConsensus broadcasts a consensus message
 func (psm *PubSubManager) BroadcastConsensus(consensusType int, data []byte, signature []byte) error {
 	if psm.consensusTopic == nil {
@@ -532,6 +640,11 @@ func (psm *PubSubManager) SetOnTx(callback func(*types.GTransaction, peer.ID)) {
 // SetOnConsensus sets the callback for consensus messages
 func (psm *PubSubManager) SetOnConsensus(callback func(int, []byte, peer.ID)) {
 	psm.onConsensus = callback
+}
+
+// SetOnAccount sets the callback for merged account state from peers.
+func (psm *PubSubManager) SetOnAccount(callback func([]byte, peer.ID)) {
+	psm.onAccount = callback
 }
 
 // SetBlockValidator sets the block validation function

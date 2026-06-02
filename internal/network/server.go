@@ -10,6 +10,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	_ "net/http/pprof"
 )
 
 var httpLogger = logger.Named("http")
