@@ -261,8 +261,7 @@ This project is licensed under the GNU General Public License v2.0 — see the [
 
 ## Links
 
-- **Website**: [cerera-chain.ru](https://cerera-сhain.ru)
-- **Documentation**: [docs.cerera-chain.ru](https://docs.cerera-сhain.ru)
+TODO
 
 ---
 
