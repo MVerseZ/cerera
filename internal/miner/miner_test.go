@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"context"
 	"math/big"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var testCtx = context.Background()
 
 // mockTxPool is a mock implementation of pool.TxPool for testing
 type mockTxPool struct {
@@ -114,7 +117,7 @@ func (m *mockTxPool) GetTopN(n int) []*types.GTransaction {
 }
 
 func TestMiner_Init(t *testing.T) {
-	m, err := Init()
+	m, err := Init(testCtx)
 	require.NoError(t, err)
 	assert.NotNil(t, m)
 	assert.Equal(t, MINER_ID, m.GetID())
@@ -309,7 +312,7 @@ func TestMiner_Start_Errors(t *testing.T) {
 		{
 			name: "Service registry not found",
 			setupFunc: func() *miner {
-				m, _ := Init()
+				m, _ := Init(testCtx)
 				return m.(*miner)
 			},
 			checkError: func(t *testing.T, err error) {
@@ -320,7 +323,7 @@ func TestMiner_Start_Errors(t *testing.T) {
 		{
 			name: "Miner status reset on error",
 			setupFunc: func() *miner {
-				m, _ := Init()
+				m, _ := Init(testCtx)
 				miner := m.(*miner)
 				miner.status = 0x1
 				miner.mining = true
@@ -328,7 +331,7 @@ func TestMiner_Start_Errors(t *testing.T) {
 			},
 			checkError: func(t *testing.T, err error) {
 				require.Error(t, err)
-				m, _ := Init()
+				m, _ := Init(testCtx)
 				miner := m.(*miner)
 				// После ошибки статус должен быть сброшен
 				assert.Equal(t, byte(0x0), miner.status)
@@ -347,7 +350,7 @@ func TestMiner_Start_Errors(t *testing.T) {
 }
 
 func TestMiner_Start_ChainServiceNotFound(t *testing.T) {
-	m, err := Init()
+	m, err := Init(testCtx)
 	require.NoError(t, err)
 
 	// Создаем registry без chain service
@@ -361,7 +364,7 @@ func TestMiner_Start_ChainServiceNotFound(t *testing.T) {
 }
 
 func TestMiner_Start_PoolServiceNotFound(t *testing.T) {
-	m, err := Init()
+	m, err := Init(testCtx)
 	require.NoError(t, err)
 
 	// Создаем registry с chain service, но без pool service
@@ -379,7 +382,7 @@ func TestMiner_Start_PoolServiceNotFound(t *testing.T) {
 }
 
 func TestMiner_Start_LatestBlockNotFound(t *testing.T) {
-	m, err := Init()
+	m, err := Init(testCtx)
 	require.NoError(t, err)
 
 	// Создаем registry с сервисами, но без chain service, возвращающего блок

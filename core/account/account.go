@@ -38,8 +38,9 @@ type StateAccount struct {
 	Type       byte        // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
 	Passphrase common.Hash // hash of password
 	// non serialized fields
-	balance *big.Int `json:"-"` // не сериализуем balance в JSON
-	Inputs  *Input   `json:"-"` // не сериализуем Inputs в JSON из-за mutex
+	balance     *big.Int `json:"-"` // не сериализуем balance в JSON
+	Inputs      *Input   `json:"-"` // не сериализуем Inputs в JSON из-за mutex
+	InputsCount uint32   `json:"-"` // count of inputs
 }
 
 // TODO
@@ -58,6 +59,7 @@ func NewStateAccount(address address.Address, balance float64, root common.Hash)
 			RWMutex: &sync.RWMutex{},
 			M:       make(map[common.Hash]*big.Int),
 		},
+		InputsCount: 0,
 	}
 }
 
@@ -114,6 +116,7 @@ func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
 	sa.Inputs.Lock()
 	defer sa.Inputs.Unlock()
 	// Store a copy of cnt to avoid external modifications
+	sa.InputsCount += 1
 	if cnt != nil {
 		sa.Inputs.M[txHash] = new(big.Int).Set(cnt)
 	} else {

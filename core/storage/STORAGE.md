@@ -8,3 +8,8 @@ No AI
 - Marshall/unmarshall onto bit protocol with high efficiency
 - Reduce disk READ/WRITE ops
 - Account inputs (UTXO map) are not persisted; rebuilt from chain state
+
+
+
+IF account has UTXO txs then consume to 1 UTXO with ...
+

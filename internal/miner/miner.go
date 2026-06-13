@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -26,6 +27,7 @@ import (
 )
 
 const MINER_ID = "CERERA_MINER:937"
+const REF_COUNT_INPUTS = 50 // TODO refactor this shit
 
 var (
 	ErrServiceRegistryNotFound = errors.New("service registry not found")
@@ -147,6 +149,7 @@ type HeightLockChecker interface {
 }
 
 type miner struct {
+	ctx    context.Context
 	status byte
 	config *config.Config
 	// chain    *chain.Chain
@@ -163,6 +166,8 @@ type miner struct {
 	cachedPkg   []*types.GTransaction
 	cachedPkgMu sync.Mutex
 	pkgReady    chan struct{} // cap=1: coalesced signal to rebuild package immediately
+
+	MinerTimeout time.Duration
 }
 
 func (m *miner) GetID() string {
@@ -176,6 +181,7 @@ func (m *miner) Start() error {
 	minerStatus.Set(1)
 
 	minerLogger().Infow("[MINER] Starting miner", "id", m.GetID())
+	m.MinerTimeout = 2 * time.Second
 
 	// Получаем конфигурацию
 	m.config = config.GenerageConfig()
@@ -271,6 +277,11 @@ func (m *miner) miningLoop() {
 					m.printConsensusStatus()
 					minerLogger().Warnw("[MINER] Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
 				}
+				// create consuming tx from many UTXO's
+				// this method scan all accounts and consume
+				// if account.GetInputs() > REF_COUNT_INPUTS {
+				// }
+
 				// Read the package prepared by packageBuilderLoop.
 				// This is a single mutex-protected pointer copy — never blocks on pool.
 				pkg := m.getCachedPkg()
@@ -331,7 +342,7 @@ func (m *miner) packageBuilderLoop() {
 	// Build an initial snapshot before the first mining tick fires.
 	m.refreshPackage()
 
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(m.MinerTimeout)
 	defer ticker.Stop()
 
 	for {
@@ -646,16 +657,16 @@ func (m *miner) performMining(block *block.Block) error {
 	for blockHashInt.Cmp(target) >= 0 {
 		// Check for cancellation periodically
 		if cancelChan != nil && nonceSearchAttempts%checkCancelInterval == 0 {
-		select {
-		case <-cancelChan:
-			atomic.StoreInt32(&m.miningCancelled, 1)
-			minerLogger().Infow("Mining cancelled by external block",
-				"height", block.Header().Height,
-				"attempts", nonceSearchAttempts)
-			return fmt.Errorf("mining cancelled: received block from network")
-		default:
-			// Continue mining
-		}
+			select {
+			case <-cancelChan:
+				atomic.StoreInt32(&m.miningCancelled, 1)
+				minerLogger().Infow("Mining cancelled by external block",
+					"height", block.Header().Height,
+					"attempts", nonceSearchAttempts)
+				return fmt.Errorf("mining cancelled: received block from network")
+			default:
+				// Continue mining
+			}
 		}
 
 		// Also check if height is now locked
@@ -788,10 +799,11 @@ func (m *miner) Update(tx *types.GTransaction) {
 		"tx_hash", tx.Hash())
 }
 
-func Init() (Miner, error) {
+func Init(ctx context.Context) (Miner, error) {
 	m := &miner{
 		status:   0x0,
 		pkgReady: make(chan struct{}, 1),
+		ctx:      ctx,
 	}
 	minerStatus.Set(0)
 	return m, nil

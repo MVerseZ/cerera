@@ -1,5 +1,4 @@
 package miner
 
 func Search() {
-
 }

@@ -1,12 +1,12 @@
 
 ### GET BC INFO
 POST http://localhost:1337/app HTTP/1.1
-
 Content-Type: application/json
+
 {
-    "method": "cerera.chain.getInfo",
-    "jsonrpc": "2.0",
-    "id": 6525
+  "method": "cerera.chain.getInfo",
+  "id": 121,
+  "jsonrpc": "2.0",
 }
 
 ### GET BLOCK INFO
@@ -93,8 +93,8 @@ Content-Type: application/json
     "jsonrpc": "2.0",
     "id": 11231,
     "params": [
-        "0x721a9a4a22f84936fff5ce197a87c832ddb2b71a9c64bbe80879ea8cb42c886a99b0ee140ad60176e5fe5ee3611f3345",
-        5000
+        "0xaaaf6e4794289b74241bdb9f1b6197cf4b9b17114b3ca69c1bc01f011d9ccc26",
+        10
     ]
 }
 
@@ -160,5 +160,15 @@ Content-Type: application/json
     "method": "cerera.account.inputs",
     "jsonrpc": "2.0",
     "id": 11231,
-    "params": ["0x08331087d34b42b9c6a0fcde2135c2a6d56cebab6c65227256072e93250a897c"]
+    "params": ["0xf50a50974397f8caa8c9fd37b438d00f54e71a4795007024bcb0f7492ca773ba"]
+}
+
+### GET ALL ACCOUNTS
+POST http://localhost:1337/app HTTP/1.1
+Content-Type: application/json
+
+{
+  "method": "cerera.account.getAll",
+  "params": [],
+  "id": 11
 }

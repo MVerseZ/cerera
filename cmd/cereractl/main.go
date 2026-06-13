@@ -82,7 +82,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	}
 
 	// Инициализация майнера
-	miner, err := miner.Init()
+	miner, err := miner.Init(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
