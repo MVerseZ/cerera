@@ -43,9 +43,8 @@ func Exec(method string, params []any) any {
 	if !ok {
 		return fmt.Errorf("service %s not found", cmp)
 	}
-	//mb := ParseMethodBytes(method)
-	//fmt.Printf("[REGISTRY] Executing method: %x with params: %+v\n", mb, params)
-	registryLogger().Infow("[REGISTRY] Executing method", "method", m, "params", params)
+
+	registryLogger().Debugw("[REGISTRY] Executing method", "method", m, "params", params)
 	return service.Exec(m, params)
 }
 
@@ -89,7 +88,7 @@ func (r *Registry) GetService(name string) (Service, bool) {
 		serviceBloom = 0x01
 		srvName = VAULT_SERVICE_NAME
 	}
-	if name == "chain" {
+	if name == "chain" || name == "blockchain" {
 		serviceBloom = 0x02
 		srvName = CHAIN_SERVICE_NAME
 	}

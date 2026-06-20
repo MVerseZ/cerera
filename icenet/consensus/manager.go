@@ -647,15 +647,19 @@ func (m *Manager) signVotingMessage(msg *VotingMessage) error {
 	msg.Signature = sig
 
 	if privKey, pubKey, err := storage.GetKeys(); err == nil && privKey != nil && pubKey != nil {
-		fmt.Printf("Get keys: \t%s\r\n\t%s\r\n", privKey.B58Serialize(), pubKey.B58Serialize())
+		consensusLogger().Infow("[CONSENSUS] Signing vote with local keys",
+			"privKey", privKey.B58Serialize(),
+			"pubKey", pubKey.B58Serialize(),
+		)
 	}
 	if msg.Type == message.MTPrePrepare {
-		fmt.Printf("Block header: Node: \t%+s\r\n", msg.Block.Head.Node)
+		consensusLogger().Infow("[CONSENSUS] Blockheader: node: \t%+s\r\n", msg.Block.Head.Node)
 	}
-	fmt.Printf("Voter ID: \t%s\r\n", msg.VoterID)
-	fmt.Printf("Voter Address: \t%s\r\n", msg.VoterAddr)
-	fmt.Printf("Message signature: \t%x\r\n", msg.Signature)
-	// fmt.Printf("Block header: Node: \t%+s\r\n", msg.Block.Head.Node)
+	consensusLogger().Infow("[CONSENSUS] Signed voting message",
+		"voterID", msg.VoterID,
+		"voterAddress", msg.VoterAddr,
+		"signature", msg.Signature,
+	)
 	return nil
 }
 

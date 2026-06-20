@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -141,28 +140,6 @@ func setupLogging() error {
 	return err
 }
 
-// twin live change famous blue aspect control edge choose dragon sleep tissue drip match predict leopard weekend orient clap aim fluid toy fall nuclear
-// parseFlags разбирает аргументы командной строки.
-func parseFlags() (config.Config, string, string, int, bool, bool) {
-	port := flag.String("port", "31000", "p2p port for connection")
-	keyPath := flag.String("key", "", "path to pem key")
-	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
-	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
-	http := flag.Int("http", 8080, "Порт для http сервера")
-	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
-	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
-	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
-	flag.Parse()
-
-	cfg := config.GenerageConfig()
-	cfg.SetNodeKey(*keyPath)
-	cfg.SetAutoGen(true)
-	cfg.SetInMem(*inMem)
-	cfg.SEC.HTTP.TLS = *tls
-
-	return *cfg, *mode, *port, *http, *mine, *inMem
-}
-
 func main() {
 
 	// Настройка логирования
@@ -173,7 +150,7 @@ func main() {
 	defer logger.Sync()
 
 	// Парсинг флагов и создание конфигурации
-	cfg, mode, port, httpPort, mine, _ := parseFlags()
+	cfg, mode, port, httpPort, mine, _ := config.ParseFlags()
 
 	// Создание контекста с обработкой сигналов
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

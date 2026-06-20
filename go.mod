@@ -7,7 +7,6 @@ require (
 	github.com/anacrolix/utp v0.2.0
 	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792
 	github.com/ccding/go-stun/stun v0.0.0-20200514191101-4dc67bcdb029
-	github.com/chzyer/readline v1.5.1
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/jbenet/go-base58 v0.0.0-20150317085156-6237cf65f3a6
 	github.com/libp2p/go-libp2p v0.47.0

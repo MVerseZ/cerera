@@ -139,6 +139,11 @@ type BlockChainStatus struct {
 	Difficulty uint64      `json:"difficulty,omitempty"`
 }
 
+func (bcs BlockChainStatus) String() string {
+	return fmt.Sprintf("Total: %d, ChainWork: %d, Latest: %s, Size: %d bytes, AvgTime: %.2f seconds, Txs: %d, Gas: %d, GasPrice: %.2f, Difficulty: %d",
+		bcs.Total, bcs.ChainWork, bcs.Latest.Hex(), bcs.Size, bcs.AvgTime, bcs.Txs, bcs.Gas, bcs.GasPrice, bcs.Difficulty)
+}
+
 type Chain struct {
 	autoGen        bool
 	chainId        int
