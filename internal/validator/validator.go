@@ -84,8 +84,6 @@ func (err decError) Error() string { return err.msg }
 var v Validator
 
 type Validator interface {
-	// CheckAddress(addr types.Address) bool
-	// GasPrice() *big.Int
 	GetVersion() string
 	Exec(method string, params []any) any
 	ExecuteTransaction(tx types.GTransaction) error
@@ -97,8 +95,6 @@ type Validator interface {
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
 	ValidateRawTransaction(tx *types.GTransaction) bool
-	// ValidateTransaction(t *types.GTransaction, from types.Address) bool
-	ValidateBlock(b block.Block) bool
 	// observer methods
 	GetID() string
 	Update(tx *types.GTransaction)
@@ -112,24 +108,6 @@ type CoreValidator struct {
 	balance        *big.Int
 	currentAddress types.Address
 	currentVersion string
-}
-
-// Exec DTOs (typed request objects)
-type CreateTxParams struct {
-	Key    string
-	Nonce  uint64
-	To     types.Address
-	Amount string // decimal string CER, e.g. "1.23"
-	Gas    float64
-	Msg    string
-}
-
-type SendTxParams struct {
-	Key    string
-	ToHex  string
-	Amount string // decimal string CER
-	Gas    float64
-	Msg    string
 }
 
 func Get() Validator {
@@ -155,8 +133,6 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 			}
 		}
 	}
-	// preconfig chain
-	ConfigChain(v)
 	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
 	return v, nil
@@ -173,10 +149,6 @@ func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address,
 	if err != nil {
 		return nil, err
 	}
-	// calculate fee and add to value
-	// creating tx not here
-	// TODO
-	// valTxCreated.Inc()
 	return tx, nil
 }
 
@@ -196,9 +168,12 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 	case types.FaucetTxType:
 		// Faucet transactions: no sender balance check needed
 		if tx.To() == nil {
+			valExecuteError.Inc()
 			return errors.New("faucet transaction missing recipient address")
+
 		}
 		if err := localVault.DropFaucet(*tx.To(), val, tx.Hash()); err != nil {
+			valExecuteError.Inc()
 			return err
 		}
 		// add tx to tx tree
@@ -210,9 +185,11 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		// Coinbase transactions: reward goes directly to miner
 		// Create shadow account for miner if it doesn't exist
 		if tx.To() == nil {
+			valExecuteError.Inc()
 			return errors.New("coinbase transaction missing recipient address")
 		}
 		if err := localVault.RewardMiner(*tx.To(), val, tx.Hash()); err != nil {
+			valExecuteError.Inc()
 			return err
 		}
 
@@ -224,17 +201,20 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 	case types.LegacyTxType:
 		// Regular transactions: check sender balance and deduct gas
 		if tx.To() == nil {
+			valExecuteError.Inc()
 			return errors.New("legacy transaction missing recipient address")
 		}
 		// check if sender has enough balance
 		senderAcc := localVault.Get(tx.From())
 		if senderAcc == nil {
+			valExecuteError.Inc()
 			return NotEnoughtInputs
 		}
 		gasCost := tx.Cost()
 		totalDebit := new(big.Int).Add(new(big.Int).Set(val), gasCost)
 		senderBal := senderAcc.GetBalanceBI()
 		if senderBal.Cmp(totalDebit) < 0 {
+			valExecuteError.Inc()
 			return NotEnoughtInputs
 		}
 
@@ -242,6 +222,7 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		// tx.Data() contains a text message, not bytecode — PreCompile on it is incorrect.
 		gasLimit := uint64(tx.Gas())
 		if gasLimit > 0 && gasLimit < pallada.MinTransferGas {
+			valExecuteError.Inc()
 			return fmt.Errorf("gas limit below minimum: got %d, need %d", gasLimit, pallada.MinTransferGas)
 		}
 
@@ -260,6 +241,7 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 			"type", tx.Type(),
 			"from", tx.From(),
 		)
+		valExecuteError.Inc()
 		return fmt.Errorf("unknown transaction type: %d", tx.Type())
 	}
 
@@ -566,7 +548,7 @@ func (v *CoreValidator) UpdateTxTree(tx *types.GTransaction, bIndex int) {
 	storage.GetTxTable().UpdateIndex(tx, bIndex)
 }
 
-func (v *CoreValidator) ValidateBlock(b block.Block) bool {
+func (v *CoreValidator) _ValidateBlock(b block.Block) bool {
 	// move logic to consensus
 	// return consensus.ConfirmBlock(b)
 	return true
@@ -585,11 +567,11 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 				if p.Gas < 0 {
 					return errors.New("negative gas or value")
 				}
-			dust, err := types.DecimalStringToDust(p.Amount)
-			if err != nil {
-				return err
-			}
-			tx, err := types.CreateUnbroadcastTransactionDust(p.Nonce, p.To, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
+				dust, err := types.DecimalStringToDust(p.Amount)
+				if err != nil {
+					return err
+				}
+				tx, err := types.CreateUnbroadcastTransactionDust(p.Nonce, p.To, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
 				if err != nil {
 					return err
 				}
@@ -628,12 +610,12 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 					return errors.New("negative gas or value")
 				}
 				addrTo := types.HexToAddress(p.ToHex)
-			dust, err := types.DecimalStringToDust(p.Amount)
-			if err != nil {
-				return err
-			}
-			nonce := gigea.GetAndIncrementNonce()
-			tx, err := types.CreateUnbroadcastTransactionDust(nonce, addrTo, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
+				dust, err := types.DecimalStringToDust(p.Amount)
+				if err != nil {
+					return err
+				}
+				nonce := gigea.GetAndIncrementNonce()
+				tx, err := types.CreateUnbroadcastTransactionDust(nonce, addrTo, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
 				if err != nil {
 					return err
 				}
@@ -644,7 +626,7 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 				pool.Get().QueueTransaction(tx)
 				registry, _ := service.GetRegistry()
 				iceService, _ := registry.GetService("ice")
-				iceService.Exec("broadcastTx", []interface{}{tx})
+				iceService.Exec("broadcastTx", []any{tx})
 				return tx.Hash()
 			}
 		}
@@ -678,7 +660,7 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 		// Broadcast tx to all nodes (same as in structured send path)
 		if registry, err := service.GetRegistry(); err == nil {
 			if iceService, ok := registry.GetService("ice"); ok {
-				iceService.Exec("broadcastTx", []interface{}{tx})
+				iceService.Exec("broadcastTx", []any{tx})
 			}
 		}
 		return tx.Hash()
@@ -716,10 +698,3 @@ func (v *CoreValidator) Exec(method string, params []any) any {
 	}
 	return nil
 }
-
-func ConfigChain(validator Validator) {
-	// Placeholder for chain configuration
-	// Currently no-op, can be extended in the future if needed
-}
-
-// common methods
