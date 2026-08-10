@@ -14,9 +14,7 @@ import (
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/gigea"
-	"github.com/cerera/icenet"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/miner"
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validator"
@@ -32,8 +30,8 @@ type Cerera struct {
 	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
 	v        *storage.Vault
 	registry *service.Registry
-	ice      *icenet.Ice
-	status   [8]byte
+	// ice      *icenet.Ice
+	status [8]byte
 }
 
 // NewCerera создаёт и инициализирует экземпляр Cerera.
@@ -42,6 +40,9 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service registry: %w", err)
 	}
+	ctx = service.WithRegistry(ctx, registry)
+
+	// TODO Инициализация внутреннего пайплайна
 
 	// Инициализация внутренних компонентов
 	if err := gigea.Init(ctx, cfg.NetCfg.ADDR); err != nil {
@@ -53,21 +54,30 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	if err != nil {
 		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
-	registry.Register(vault.ServiceName(), vault)
+	registry.Register(&service.Service{
+		Name:    vault.ServiceName(),
+		Methods: vault.Methods(),
+	})
 
 	//  цепочки
 	chain, err := chain.Mold(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
-	registry.Register(chain.ServiceName(), chain)
+	registry.Register(&service.Service{
+		Name:    chain.ServiceName(),
+		Methods: chain.Methods(),
+	})
 
 	// инициализация валидатора
 	validator, err := validator.NewValidator(ctx, *cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init validator: %w", err)
 	}
-	registry.Register(validator.ServiceName(), validator)
+	registry.Register(&service.Service{
+		Name:    validator.ServiceName(),
+		Methods: validator.Methods(),
+	})
 
 	// инициализация пула
 	mempool, err := pool.InitPool(cfg.POOL.MaxSize)
@@ -75,7 +85,10 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		return nil, fmt.Errorf("failed to init pool: %w", err)
 	}
 	// register pool in registry
-	registry.Register(mempool.ServiceName(), mempool)
+	registry.Register(&service.Service{
+		Name:    mempool.ServiceName(),
+		Methods: mempool.Methods(),
+	})
 
 	// Инициализация http сервера
 	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
@@ -83,42 +96,47 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	}
 
 	// Инициализация майнера
-	minerInstance, err := miner.Init(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init miner: %w", err)
-	}
-	if mine {
-		if err := minerInstance.Start(); err != nil {
-			appLog.Errorw("Failed to start miner", "err", err)
-			return nil, fmt.Errorf("failed to start miner: %w", err)
-		}
-	}
+	// minerInstance, err := miner.Init(ctx)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to init miner: %w", err)
+	// }
+	// if mine {
+	// 	if err := minerInstance.Start(); err != nil {
+	// 		appLog.Errorw("Failed to start miner", "err", err)
+	// 		return nil, fmt.Errorf("failed to start miner: %w", err)
+	// 	}
+	// }
 
-	// gigea.E.Register(chain)
-	// gigea.E.Register(miner.GetMiner())
-	mempool.Register(minerInstance)
+	// mempool.Register(minerInstance)
 
 	// Инициализация Ice компонента
-	ice, err := icenet.Start(cfg, ctx, port)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Ice: %w", err)
-	}
+	// ice, err := icenet.Start(cfg, ctx, port)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to initialize Ice: %w", err)
+	// }
 
 	// Connect components to Ice (sync + handler use same ApiProvider)
-	if ice != nil {
-		// Register Ice in service registry for broadcasting
-		registry.Register(ice.ServiceName(), ice)
-		registry.Register("ice", ice) // Also register with short name
-	}
+	// if ice != nil {
+	// Register Ice in service registry for broadcasting
+	// 	registry.Register(ice.ServiceName(), ice)
+	// 	registry.Register("ice", ice) // Also register with short name
+	// }
 
 	// Shared service provider for network/consensus access to chain, vault, pool, etc.
-	sp := service.GetServiceProvider()
-	ice.SetServiceProvider(sp)
+	// sp := service.GetServiceProvider()
+	// ice.SetServiceProvider(sp)
 
 	// Wire gigea-level consensus manager to the underlying icenet consensus engine.
 	// This keeps node logic decoupled from transport while still allowing future
 	// use of gigea.ConsensusManager as a façade.
-	_ = gigea.NewConsensusManager(ctx, icenet.NewNetworkAdapter(ice), cfg.NetCfg.ADDR, sp)
+	// _ = gigea.NewConsensusManager(ctx, icenet.NewNetworkAdapter(ice), cfg.NetCfg.ADDR, sp)
+
+	// setup pipeline for internal services
+	// pipeline is a sequence of stages that process data and events in the system.
+	err = service.SetupPipeline(ctx, cfg, registry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup pipeline: %w", err)
+	}
 
 	return &Cerera{
 		bc:       chain,
@@ -126,8 +144,8 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		p:        mempool,
 		v:        &vault,
 		registry: registry,
-		ice:      ice,
-		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
+		// ice:      ice,
+		status: [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 
@@ -203,10 +221,10 @@ func main() {
 			}
 		}
 		// Закрываем Ice компонент
-		if app != nil && app.ice != nil {
-			appLog.Infow("Shutting down Ice component...")
-			app.ice.Stop(ctx)
-		}
+		// if app != nil && app.ice != nil {
+		// 	appLog.Infow("Shutting down Ice component...")
+		// 	app.ice.Stop(ctx)
+		// }
 		time.Sleep(2 * time.Second)
 		done <- true
 	}()

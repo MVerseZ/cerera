@@ -7,14 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/crypto"
-	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/gigea"
@@ -81,11 +79,8 @@ type decError struct{ msg string }
 
 func (err decError) Error() string { return err.msg }
 
-var v Validator
-
 type Validator interface {
 	GetVersion() string
-	Exec(method string, params []any) any
 	ExecuteTransaction(tx types.GTransaction) error
 	FindTransaction(hash common.Hash) *types.GTransaction
 	CreateTransaction(nonce uint64, addressTo types.Address, count float64, gas uint64, message string) (*types.GTransaction, error)
@@ -94,11 +89,10 @@ type Validator interface {
 	Signer() types.Signer
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
-	ValidateRawTransaction(tx *types.GTransaction) bool
-	// observer methods
+	ValidateRawTransaction(tx types.GTransaction) bool
 	GetID() string
 	Update(tx *types.GTransaction)
-	ProposeBlock(b *block.Block)
+	Methods() map[string]service.RPCHandler
 }
 
 type CoreValidator struct {
@@ -110,14 +104,10 @@ type CoreValidator struct {
 	currentVersion string
 }
 
-func Get() Validator {
-	return v
-}
-
 func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 	var p = crypto.DecodePrivKey(cfg.NetCfg.PRIV)
 	storage.InitTxTable()
-	v = &CoreValidator{
+	v := &CoreValidator{
 		signatureKey:   p,
 		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))),
 		balance:        big.NewInt(0), // Initialize balance
@@ -125,14 +115,14 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 		currentAddress: cfg.NetCfg.ADDR,
 	}
 	// Get chain from registry if not set
-	registry, err := service.GetRegistry()
-	if err == nil {
-		if ch, ok := registry.GetService(chain.CHAIN_SERVICE_NAME); ok {
-			if chainPtr, ok := ch.(*chain.Chain); ok {
-				v.(*CoreValidator).Chain = chainPtr
-			}
-		}
-	}
+	// registry, err := service.GetRegistry()
+	// if err == nil {
+	// 	if ch, ok := registry.GetService(chain.CHAIN_SERVICE_NAME); ok {
+	// 		if chainPtr, ok := ch.(*chain.Chain); ok {
+	// 			v.(*CoreValidator).Chain = chainPtr
+	// 		}
+	// 	}
+	// }
 	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
 	return v, nil
@@ -265,180 +255,61 @@ func (v *CoreValidator) GetVersion() string {
 	return v.currentVersion
 }
 
-func (v *CoreValidator) ProposeBlock(b *block.Block) {
-	// Проверка на nil блок
-	if b == nil {
-		return
-	}
-
-	// Проверяем, что блок имеет валидный header
-	header := b.Header()
-	if header == nil {
-		return
-	}
-
-	// Безопасно получаем hash блока
-	var blockHash common.Hash
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// Если GetHash вызывает панику, используем пустой hash
-				blockHash = common.EmptyHash()
-			}
-		}()
-		blockHash = b.GetHash()
-	}()
-
-	// Проверяем готовность Ice (bootstrap соединение) с защитой от паники
-	iceReady := func() bool {
-		defer func() {
-			if r := recover(); r != nil {
-				// Игнорируем панику при проверке Ice
-			}
-		}()
-		return v.isIceReady()
-	}()
-
-	if !iceReady {
-		// Ice не готов, продолжаем локально
-	} else {
-		// Ice готов
-	}
-
-	// Проверяем, начался ли консенсус с защитой от паники
-	consensusStarted := func() bool {
-		defer func() {
-			if r := recover(); r != nil {
-				// Игнорируем панику при проверке консенсуса
-			}
-		}()
-		return v.isConsensusStarted()
-	}()
-
-	if !consensusStarted {
-		// Консенсус не начался, продолжаем локально
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					// Игнорируем панику при выводе статуса
-				}
-			}()
-			v.printConsensusStatus(blockHash)
-		}()
-	} else {
-		// Консенсус начался - предлагаем блок для консенсуса
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					vlogger.Warnw("Failed to propose block for consensus", "error", r, "blockHash", blockHash)
-				}
-			}()
-			registry, err := service.GetRegistry()
-			if err != nil {
-				vlogger.Debugw("Registry not available for consensus proposal", "err", err)
-				return
-			}
-
-			iceService, ok := registry.GetService("ice")
-			if !ok {
-				iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-				if !ok {
-					vlogger.Debugw("Ice service not found for consensus proposal")
-					return
-				}
-			}
-
-			result := iceService.Exec("proposeBlock", []interface{}{b})
-			if err, ok := result.(error); ok && err != nil {
-				vlogger.Warnw("Failed to propose block for consensus", "err", err, "blockHash", blockHash, "height", header.Height)
-			} else {
-				vlogger.Infow("Block proposed for consensus", "blockHash", blockHash, "height", header.Height)
-			}
-		}()
-	}
-
-	if b.Transactions != nil {
-		for _, btx := range b.Transactions {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// Игнорируем панику при выполнении транзакции
-					}
-				}()
-				v.ExecuteTransaction(btx)
-				v.UpdateTxTree(&btx, int(header.Index))
-			}()
-		}
-	}
-	if v.Chain != nil {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					// Игнорируем панику при обновлении цепи
-				}
-			}()
-			if err := v.UpdateChain(b); err != nil {
-				vlogger.Errorw("Failed to update chain", "err", err)
-			}
-		}()
-	}
-}
-
 // isIceReady проверяет, готов ли Ice компонент (bootstrap соединение установлено)
-func (v *CoreValidator) isIceReady() bool {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		vlogger.Debugw("Registry not available for Ice check", "err", err)
-		return false
-	}
+// func (v *CoreValidator) isIceReady() bool {
+// 	registry, err := service.GetRegistry()
+// 	if err != nil {
+// 		vlogger.Debugw("Registry not available for Ice check", "err", err)
+// 		return false
+// 	}
 
-	// Пробуем найти Ice сервис по имени "ice" или по полному имени
-	iceService, ok := registry.GetService("ice")
-	if !ok {
-		// Пробуем найти по полному имени сервиса
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			vlogger.Debugw("Ice service not found in registry")
-			return false
-		}
-	}
+// 	// Пробуем найти Ice сервис по имени "ice" или по полному имени
+// 	iceService, ok := registry.GetService("ice")
+// 	if !ok {
+// 		// Пробуем найти по полному имени сервиса
+// 		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+// 		if !ok {
+// 			vlogger.Debugw("Ice service not found in registry")
+// 			return false
+// 		}
+// 	}
 
-	// Вызываем метод проверки готовности через Exec
-	result := iceService.Exec("isBootstrapReady", nil)
-	if ready, ok := result.(bool); ok {
-		return ready
-	}
+// 	// Вызываем метод проверки готовности через Exec
+// 	result := iceService.Exec("isBootstrapReady", nil)
+// 	if ready, ok := result.(bool); ok {
+// 		return ready
+// 	}
 
-	return false
-}
+// 	return false
+// }
 
 // isConsensusStarted проверяет, начался ли консенсус
-func (v *CoreValidator) isConsensusStarted() bool {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		vlogger.Debugw("Registry not available for consensus check", "err", err)
-		return false
-	}
+// func (v *CoreValidator) isConsensusStarted() bool {
+// 	registry, err := service.GetRegistry()
+// 	if err != nil {
+// 		vlogger.Debugw("Registry not available for consensus check", "err", err)
+// 		return false
+// 	}
 
-	// Пробуем найти Ice сервис по имени "ice" или по полному имени
-	iceService, ok := registry.GetService("ice")
-	if !ok {
-		// Пробуем найти по полному имени сервиса
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			vlogger.Debugw("Ice service not found in registry for consensus check")
-			return false
-		}
-	}
+// 	// Пробуем найти Ice сервис по имени "ice" или по полному имени
+// 	iceService, ok := registry.GetService("ice")
+// 	if !ok {
+// 		// Пробуем найти по полному имени сервиса
+// 		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
+// 		if !ok {
+// 			vlogger.Debugw("Ice service not found in registry for consensus check")
+// 			return false
+// 		}
+// 	}
 
-	// Вызываем метод проверки консенсуса через Exec
-	result := iceService.Exec("isConsensusStarted", nil)
-	if started, ok := result.(bool); ok {
-		return started
-	}
+// 	// Вызываем метод проверки консенсуса через Exec
+// 	result := iceService.Exec("isConsensusStarted", nil)
+// 	if started, ok := result.(bool); ok {
+// 		return started
+// 	}
 
-	return false
-}
+// 	return false
+// }
 
 // printConsensusStatus выводит текущий статус консенсуса
 func (v *CoreValidator) printConsensusStatus(blockHash common.Hash) {
@@ -554,147 +425,103 @@ func (v *CoreValidator) _ValidateBlock(b block.Block) bool {
 	return true
 }
 
-func (validator *CoreValidator) ValidateRawTransaction(tx *types.GTransaction) bool {
+func (v *CoreValidator) ValidateRawTransaction(tx types.GTransaction) bool {
 	return true
 }
 
-func (v *CoreValidator) Exec(method string, params []any) any {
-	switch method {
-	case "_create":
-		// Prefer typed DTO in params[0]
-		if len(params) == 1 {
-			if p, ok := params[0].(CreateTxParams); ok {
-				if p.Gas < 0 {
-					return errors.New("negative gas or value")
+func (v *CoreValidator) Methods() map[string]service.RPCHandler {
+	return map[string]service.RPCHandler{
+		"_create": func(ctx context.Context, params []any) (any, error) {
+			if len(params) == 1 {
+				if p, ok := params[0].(CreateTxParams); ok {
+					if p.Gas < 0 {
+						return nil, errors.New("negative gas or value")
+					}
+					dust, err := types.DecimalStringToDust(p.Amount)
+					if err != nil {
+						return nil, err
+					}
+					tx, err := types.CreateUnbroadcastTransactionDust(p.Nonce, p.To, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
+					if err != nil {
+						return nil, err
+					}
+					if err := v.SignRawTransactionWithKey(tx, p.Key); err != nil {
+						return nil, err
+					}
+					return tx, nil
 				}
-				dust, err := types.DecimalStringToDust(p.Amount)
-				if err != nil {
-					return err
-				}
-				tx, err := types.CreateUnbroadcastTransactionDust(p.Nonce, p.To, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
-				if err != nil {
-					return err
-				}
-				if err := v.SignRawTransactionWithKey(tx, p.Key); err != nil {
-					return err
-				}
-				return tx
 			}
-		}
-		// Fallback: legacy positional parameters
-		if len(params) < 6 {
-			return errors.New("invalid parameters for create")
-		}
-		key, ok0 := params[0].(string)
-		nonce, ok1 := params[1].(uint64)
-		to, ok2 := params[2].(types.Address)
-		count, ok3 := params[3].(float64)
-		gas, ok4 := params[4].(float64)
-		msg, ok5 := params[5].(string)
-		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
-			return errors.New("parameter type mismatch for create")
-		}
-		tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, uint64(gas), v.GasPrice(), msg)
-		if err != nil {
-			return err
-		}
-		if err := v.SignRawTransactionWithKey(tx, key); err != nil {
-			return err
-		}
-		return tx
-	case "send":
-		// Prefer typed DTO in params[0]
-		if len(params) == 1 {
-			if p, ok := params[0].(SendTxParams); ok {
-				if p.Gas < 0 {
-					return errors.New("negative gas or value")
-				}
-				addrTo := types.HexToAddress(p.ToHex)
-				dust, err := types.DecimalStringToDust(p.Amount)
-				if err != nil {
-					return err
-				}
-				nonce := gigea.GetAndIncrementNonce()
-				tx, err := types.CreateUnbroadcastTransactionDust(nonce, addrTo, dust, uint64(p.Gas), v.GasPrice(), p.Msg)
-				if err != nil {
-					return err
-				}
-				if err := v.SignRawTransactionWithKey(tx, p.Key); err != nil {
-					return err
-				}
-				time.Sleep(1 * time.Second) // prefer spam
-				pool.Get().QueueTransaction(tx)
-				registry, _ := service.GetRegistry()
-				iceService, _ := registry.GetService("ice")
-				iceService.Exec("broadcastTx", []any{tx})
-				return tx.Hash()
+			if len(params) < 6 {
+				return nil, errors.New("invalid parameters for create")
 			}
-		}
-		// Fallback: legacy positional parameters
-		if len(params) < 5 {
-			return errors.New("invalid parameters for send")
-		}
-		spk, ok0 := params[0].(string)
-		addrStr, ok1 := params[1].(string)
-		count, ok2 := params[2].(float64)
-		gas, ok3 := params[3].(float64)
-		msg, ok4 := params[4].(string)
-		// if len(msg) > 1024 {
-		// 	return errors.New("message too long")
-		// }
-		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
-			return errors.New("parameter type mismatch for send")
-		}
-		var addrTo = types.HexToAddress(addrStr)
-		tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gas), v.GasPrice(), msg)
-		if err != nil {
-			return err.Error()
-		}
-		valTxCreated.Inc() // temporary move metrics here
-		if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
-			return err.Error()
-		}
-		valSignSuccess.Inc() // temporary move metrics here
-		valTxValidated.Inc() // temporary move metrics here
-		pool.Get().QueueTransaction(tx)
-		// Broadcast tx to all nodes (same as in structured send path)
-		if registry, err := service.GetRegistry(); err == nil {
-			if iceService, ok := registry.GetService("ice"); ok {
-				iceService.Exec("broadcastTx", []any{tx})
+			key, ok0 := params[0].(string)
+			nonce, ok1 := params[1].(uint64)
+			to, ok2 := params[2].(types.Address)
+			count, ok3 := params[3].(float64)
+			gas, ok4 := params[4].(float64)
+			msg, ok5 := params[5].(string)
+			if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
+				return nil, errors.New("parameter type mismatch for create")
 			}
-		}
-		return tx.Hash()
-	case "get":
-		// params[0]: hash string
-		if len(params) == 1 {
-			if p, ok := params[0].(string); ok {
-				hash := common.HexToHash(p)
-				var index = storage.GetTxTable().Get(hash)
-				if index != -1 {
-					txBlock := v.GetBlockByNumber(index)
-					for _, btx := range txBlock.Transactions {
-						if btx.Hash() == hash {
-							// Return only selected fields with unified format
-							result := map[string]interface{}{
-								"hash":  btx.Hash().Hex(),
-								"from":  btx.From().Hex(),
-								"value": btx.Value().String(),              // decimal string
-								"gas":   uint64(btx.Gas()),                 // number, not hex
-								"data":  common.Bytes(btx.Data()).String(), // hex string
+			tx, err := types.CreateUnbroadcastTransaction(nonce, to, count, uint64(gas), v.GasPrice(), msg)
+			if err != nil {
+				return nil, err
+			}
+			if err := v.SignRawTransactionWithKey(tx, key); err != nil {
+				return nil, err
+			}
+			return tx, nil
+		},
+		"send": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 5 {
+				return nil, errors.New("invalid parameters for send")
+			}
+			spk, ok0 := params[0].(string)
+			addrStr, ok1 := params[1].(string)
+			count, ok2 := params[2].(float64)
+			gas, ok3 := params[3].(float64)
+			msg, ok4 := params[4].(string)
+			if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 {
+				return nil, errors.New("parameter type mismatch for send")
+			}
+			var addrTo = types.HexToAddress(addrStr)
+			tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gas), v.GasPrice(), msg)
+			if err != nil {
+				return nil, err
+			}
+			if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
+				return nil, err
+			}
+			return tx.Hash(), nil
+		},
+		"get": func(ctx context.Context, params []any) (any, error) {
+			if len(params) == 1 {
+				if p, ok := params[0].(string); ok {
+					hash := common.HexToHash(p)
+					var index = storage.GetTxTable().Get(hash)
+					if index != -1 {
+						txBlock := v.GetBlockByNumber(index)
+						for _, btx := range txBlock.Transactions {
+							if btx.Hash() == hash {
+								result := map[string]interface{}{
+									"hash":  btx.Hash().Hex(),
+									"from":  btx.From().Hex(),
+									"value": btx.Value().String(),
+									"gas":   uint64(btx.Gas()),
+									"data":  common.Bytes(btx.Data()).String(),
+								}
+								if to := btx.To(); to != nil {
+									result["to"] = to.Hex()
+								} else {
+									result["to"] = nil
+								}
+								return result, nil
 							}
-							// Handle To() which can be nil
-							if to := btx.To(); to != nil {
-								result["to"] = to.Hex()
-							} else {
-								result["to"] = nil
-							}
-							return result
 						}
 					}
 				}
 			}
-		}
-		return nil
+			return nil, nil
+		},
 	}
-	return nil
 }

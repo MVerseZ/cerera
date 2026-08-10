@@ -13,15 +13,12 @@ import (
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
-	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/types"
-	"github.com/cerera/gigea"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
-	"github.com/cerera/internal/validator"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -137,7 +134,6 @@ type Miner interface {
 	Start() error
 	Stop()
 	Status() byte
-	Update(tx *types.GTransaction)
 }
 
 // HeightLockChecker interface for checking height locks from main package
@@ -183,75 +179,6 @@ func (m *miner) Start() error {
 	minerLogger().Infow("[MINER] Starting miner", "id", m.GetID())
 	m.MinerTimeout = 2 * time.Second
 
-	// Получаем конфигурацию
-	m.config = config.GenerageConfig()
-	minerLogger().Infow("[MINER] Chain config loaded",
-		"chain_id", m.config.Chain.ChainID,
-		"type", m.config.Chain.Type)
-
-	// Получаем доступ к сервисам через реестр
-	registry, err := service.GetRegistry()
-	if err != nil {
-		minerLogger().Errorw("Failed to get service registry", "err", err)
-		m.status = 0x0
-		m.mining = false
-		return fmt.Errorf("%w: %v", ErrServiceRegistryNotFound, err)
-	}
-
-	// Получаем цепочку
-	_, ok := registry.GetService("chain")
-	if !ok {
-		minerLogger().Errorw("Chain service not found")
-		m.status = 0x0
-		m.mining = false
-		return ErrChainServiceNotFound
-	}
-	minerLogger().Info("[MINER] Chain service connected")
-
-	// Получаем пул транзакций
-	_, ok = registry.GetService("pool")
-	if !ok {
-		minerLogger().Errorw("Pool service not found")
-		m.status = 0x0
-		m.mining = false
-		return ErrPoolServiceNotFound
-	}
-	m.pool = pool.Get()
-	minerLogger().Info("[MINER] Pool service connected")
-
-	// Получаем последний блок
-	lastBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
-	if lastBlockResult == nil {
-		minerLogger().Errorw("Failed to get latest block: result is nil")
-		m.status = 0x0
-		m.mining = false
-		return ErrLatestBlockNotFound
-	}
-	lastBlock, ok := lastBlockResult.(*block.Block)
-	if !ok || lastBlock == nil || lastBlock.Head == nil {
-		minerLogger().Errorw("Failed to get latest block: block is nil or invalid",
-			"ok", ok,
-			"block_nil", lastBlock == nil,
-			"head_nil", lastBlock != nil && lastBlock.Head == nil)
-		m.status = 0x0
-		m.mining = false
-		return ErrInvalidBlock
-	}
-	header := lastBlock.Header()
-	if header == nil {
-		minerLogger().Errorw("Failed to get latest block: header is nil")
-		m.status = 0x0
-		m.mining = false
-		return ErrBlockHeaderNil
-	}
-	minerLogger().Infow("[MINER] Last block retrieved",
-		"height", header.Height,
-		"hash", lastBlock.GetHash())
-
-	// packageBuilderLoop fetches the pool package independently so that
-	// miningLoop never blocks on pool lock contention.
-	go m.packageBuilderLoop()
-	go m.miningLoop()
 	return nil
 }
 
@@ -265,138 +192,6 @@ func (m *miner) Stop() {
 	minerLogger().Info("[MINER] Miner stopped")
 }
 
-func (m *miner) miningLoop() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if m.mining {
-				if !m.isConsensusStarted() {
-					m.printConsensusStatus()
-					minerLogger().Warnw("[MINER] Consensus not started, but attempting to mine block anyway - validator will handle consensus check")
-				}
-				// create consuming tx from many UTXO's
-				// this method scan all accounts and consume
-				// if account.GetInputs() > REF_COUNT_INPUTS {
-				// }
-
-				// Read the package prepared by packageBuilderLoop.
-				// This is a single mutex-protected pointer copy — never blocks on pool.
-				pkg := m.getCachedPkg()
-				m.mineBlock(pkg)
-			}
-		case <-m.stopChan:
-			minerLogger().Info("[MINER] Mining loop stopped")
-			return
-		}
-	}
-}
-
-// isConsensusStarted проверяет, начался ли консенсус
-func (m *miner) isConsensusStarted() bool {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		return false
-	}
-
-	iceService, ok := registry.GetService("ice")
-	if !ok {
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			return false
-		}
-	}
-
-	result := iceService.Exec("isConsensusStarted", nil)
-	if started, ok := result.(bool); ok {
-		return started
-	}
-
-	return false
-}
-
-// printConsensusStatus выводит текущий статус консенсуса
-func (m *miner) printConsensusStatus() {
-	consensusInfo := gigea.GetConsensusInfo()
-	minerLogger().Debugw("Consensus not started, skipping block creation",
-		"status", consensusInfo["status"],
-		"voters", consensusInfo["voters"],
-		"nodes", consensusInfo["nodes"],
-		"nonce", consensusInfo["nonce"],
-		"address", consensusInfo["address"])
-}
-
-// packageBuilderLoop runs in a dedicated goroutine and rebuilds the mining
-// package independently of the nonce-search loop.
-//
-// Separation rationale: GetMiningPackage holds graph.mu (RLock) for an O(n)
-// traversal + O(n log n) sort. Under high pool load this blocks AddTx/RemoveTx
-// writers and, via write-lock priority in sync.RWMutex, also queues subsequent
-// miner reads — starving the nonce-search loop of CPU time.
-//
-// By moving pool access here, the miner goroutine only does a single mutex read
-// (getCachedPkg) per mining cycle instead of a potentially long pool traversal.
-func (m *miner) packageBuilderLoop() {
-	// Build an initial snapshot before the first mining tick fires.
-	m.refreshPackage()
-
-	ticker := time.NewTicker(m.MinerTimeout)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-m.pkgReady:
-			// Coalesce bursts: many transactions arriving at once → one rebuild.
-			for len(m.pkgReady) > 0 {
-				<-m.pkgReady
-			}
-			m.refreshPackage()
-		case <-ticker.C:
-			m.refreshPackage()
-		case <-m.stopChan:
-			return
-		}
-	}
-}
-
-// refreshPackage calls GetMiningPackage and stores the result under cachedPkgMu.
-// The mutex is held only for the pointer swap (nanoseconds), not for the pool
-// traversal — so miningLoop is never blocked for more than a pointer copy.
-func (m *miner) refreshPackage() {
-	pkg := m.pool.GetMiningPackage(10_000)
-	m.cachedPkgMu.Lock()
-	m.cachedPkg = pkg
-	m.cachedPkgMu.Unlock()
-	minerLogger().Debugw("[MINER] Package refreshed", "txs", len(pkg))
-}
-
-// getCachedPkg returns the latest package prepared by packageBuilderLoop.
-// Lock is held only for a slice-header copy — no pool traversal involved.
-func (m *miner) getCachedPkg() []*types.GTransaction {
-	m.cachedPkgMu.Lock()
-	pkg := m.cachedPkg
-	m.cachedPkgMu.Unlock()
-	return pkg
-}
-
-// getHeightLockChecker retrieves the HeightLockChecker from the chain (registered in service registry).
-func (m *miner) getHeightLockChecker() HeightLockChecker {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		return nil
-	}
-	chainSvc, ok := registry.GetService(chain.CHAIN_SERVICE_NAME)
-	if !ok {
-		return nil
-	}
-	if checker, ok := chainSvc.(HeightLockChecker); ok {
-		return checker
-	}
-	return nil
-}
-
 // mineBlock assembles and mines one block using the pre-built pkgTxs snapshot.
 // pkgTxs is supplied by miningLoop from the cache maintained by packageBuilderLoop,
 // so this function never touches the pool lock — the nonce-search hot-loop is
@@ -407,21 +202,21 @@ func (m *miner) mineBlock(pkgTxs []*types.GTransaction) {
 	atomic.StoreInt32(&m.miningCancelled, 0)
 
 	// Получаем последний блок
-	latestBlockResult := service.ExecTyped("cerera.chain.getLatestBlock", nil)
+	latestBlockResult := any(nil)
 	if latestBlockResult == nil {
 		minerLogger().Warnw("No last block found, skipping mining cycle")
 		minerMiningErrorsTotal.Inc()
 		return
 	}
-	latestBlock, ok := latestBlockResult.(*block.Block)
-	if !ok || latestBlock == nil || latestBlock.Head == nil {
-		minerLogger().Warnw("Invalid last block, skipping mining cycle",
-			"ok", ok,
-			"block_nil", latestBlock == nil,
-			"head_nil", latestBlock != nil && latestBlock.Head == nil)
-		minerMiningErrorsTotal.Inc()
-		return
-	}
+	latestBlock, _ := latestBlockResult.(*block.Block)
+	// if !ok || latestBlock == nil || latestBlock.Head == nil {
+	// 	minerLogger().Warnw("Invalid last block, skipping mining cycle",
+	// 		"ok", ok,
+	// 		"block_nil", latestBlock == nil,
+	// 		"head_nil", latestBlock != nil && latestBlock.Head == nil)
+	// 	minerMiningErrorsTotal.Inc()
+	// 	return
+	// }
 	header := latestBlock.Header()
 	if header == nil {
 		minerLogger().Warnw("Last block header is nil, skipping mining cycle")
@@ -432,17 +227,6 @@ func (m *miner) mineBlock(pkgTxs []*types.GTransaction) {
 	// Determine the height we're mining for
 	targetHeight := header.Height + 1
 	m.miningHeight = targetHeight
-
-	// Check if this height is already locked (another node has already mined a block)
-	heightLock := m.getHeightLockChecker()
-	if heightLock != nil {
-		if heightLock.IsHeightLocked(targetHeight) {
-			minerLogger().Infow("Height already locked by another node, skipping mining",
-				"targetHeight", targetHeight,
-				"lockedHeight", heightLock.GetLockedHeight())
-			return
-		}
-	}
 
 	// pkgTxs is a snapshot built by packageBuilderLoop — no pool lock needed here.
 	pendingTxs := make([]types.GTransaction, 0, len(pkgTxs))
@@ -481,17 +265,6 @@ func (m *miner) mineBlock(pkgTxs []*types.GTransaction) {
 		return
 	}
 
-	// Final check: make sure height is still not locked before proposing
-	if heightLock != nil && heightLock.IsHeightLocked(targetHeight) {
-		minerLogger().Infow("Height locked during mining, discarding mined block",
-			"height", targetHeight,
-			"lockedHeight", heightLock.GetLockedHeight())
-		return
-	}
-
-	// Добавляем блок в цепочку через validator
-	var validator = validator.Get()
-	validator.ProposeBlock(newBlock)
 	minerBlocksMinedTotal.Inc()
 	duration := time.Since(startTime).Seconds()
 	minerMiningDurationSeconds.Observe(duration)
@@ -503,11 +276,6 @@ func (m *miner) mineBlock(pkgTxs []*types.GTransaction) {
 		"duration_seconds", duration)
 	minerLogger().Infow("New block: transactions count", "count", txCount, "height", newBlock.Header().Height)
 
-	// Broadcast the block to other nodes
-	m.broadcastBlock(newBlock)
-
-	// Очищаем пул от обработанных транзакций
-	m.clearProcessedTransactions(newBlock.Transactions)
 }
 
 func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
@@ -606,10 +374,10 @@ func (m *miner) createNewBlock(lastBlock *block.Block, transactions []types.GTra
 func (m *miner) performMining(block *block.Block) error {
 	// Get cancel channel for this mining operation
 	var cancelChan <-chan struct{}
-	heightLock := m.getHeightLockChecker()
-	if heightLock != nil {
-		cancelChan = heightLock.GetCancelChannel()
-	}
+	// heightLock := m.getHeightLockChecker()
+	// if heightLock != nil {
+	// 	cancelChan = heightLock.GetCancelChannel()
+	// }
 
 	// Обновляем метрику difficulty
 	minerCurrentDifficulty.Set(float64(block.Header().Difficulty))
@@ -666,17 +434,6 @@ func (m *miner) performMining(block *block.Block) error {
 				return fmt.Errorf("mining cancelled: received block from network")
 			default:
 				// Continue mining
-			}
-		}
-
-		// Also check if height is now locked
-		if heightLock != nil && nonceSearchAttempts%checkCancelInterval == 0 {
-			if heightLock.IsHeightLocked(block.Header().Height) {
-				atomic.StoreInt32(&m.miningCancelled, 1)
-				minerLogger().Infow("Mining cancelled - height now locked",
-					"height", block.Header().Height,
-					"lockedHeight", heightLock.GetLockedHeight())
-				return fmt.Errorf("mining cancelled: height locked")
 			}
 		}
 
@@ -737,66 +494,16 @@ func (m *miner) performMining(block *block.Block) error {
 	return nil
 }
 
-// broadcastBlock sends the mined block to other nodes via Ice
-func (m *miner) broadcastBlock(newBlock *block.Block) {
-	registry, err := service.GetRegistry()
-	if err != nil {
-		minerLogger().Warnw("Failed to get registry for broadcast", "err", err)
-		return
-	}
-
-	iceService, ok := registry.GetService("ice")
-	if !ok {
-		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-		if !ok {
-			minerLogger().Warnw("Ice service not found for block broadcast")
-			return
-		}
-	}
-
-	result := iceService.Exec("broadcastBlock", []interface{}{newBlock})
-	if err, ok := result.(error); ok && err != nil {
-		minerLogger().Warnw("Failed to broadcast block", "err", err, "height", newBlock.Header().Height)
-	} else {
-		minerLogger().Infow("Block broadcasted to network", "height", newBlock.Header().Height, "hash", newBlock.GetHash())
-	}
-}
-
-func (m *miner) clearProcessedTransactions(processedTxs []types.GTransaction) {
-	for _, tx := range processedTxs {
-		if tx.Type() == types.CoinbaseTxType {
-			continue
-		}
-		err := m.pool.RemoveFromPool(tx.Hash())
-		if err != nil {
-			minerLogger().Warnw("Error removing transaction from pool",
-				"tx_hash", tx.Hash(),
-				"err", err)
-		}
-	}
-}
-
 func (m *miner) Status() byte {
 	return m.status
 }
 
-func (m *miner) Update(tx *types.GTransaction) {
-	if m.status != 0x1 || !m.mining {
-		minerLogger().Debugw("Miner not active, ignoring transaction update",
-			"status", m.status,
-			"mining", m.mining,
-			"tx_hash", tx.Hash())
-		return
-	}
+func (m *miner) ServiceName() string {
+	return MINER_ID
+}
 
-	// Signal packageBuilderLoop to rebuild the cached package immediately.
-	// Non-blocking: if a rebuild is already queued, the signal is coalesced.
-	select {
-	case m.pkgReady <- struct{}{}:
-	default:
-	}
-	minerLogger().Debugw("Signalled package builder to refresh",
-		"tx_hash", tx.Hash())
+func (m *miner) Methods() map[string]service.RPCHandler {
+	return nil
 }
 
 func Init(ctx context.Context) (Miner, error) {

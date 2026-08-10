@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"github.com/cerera/core/common"
-	"github.com/cerera/internal/service"
 )
 
 type Status struct {
@@ -22,22 +21,22 @@ func NewStatus(chainID int, genesisHash common.Hash) *Status {
 // GetStatus builds a Status value from the provided ServiceProvider.
 // If the provider is nil or genesis block is unavailable, fields fall back
 // to their zero values.
-func GetStatus(serviceProvider service.ServiceProvider) (Status, error) {
-	status := Status{}
+// func GetStatus(serviceProvider service.ServiceProvider) (Status, error) {
+// 	status := Status{}
 
-	if serviceProvider != nil {
-		status.ChainID = serviceProvider.GetChainID()
+// 	if serviceProvider != nil {
+// 		status.ChainID = serviceProvider.GetChainID()
 
-		// Storage fingerprint (service name / implementation type).
-		status.StorageService = serviceProvider.GetStorageServiceName()
+// 		// Storage fingerprint (service name / implementation type).
+// 		status.StorageService = serviceProvider.GetStorageServiceName()
 
-		if genesis := serviceProvider.GetBlockByHeight(0); genesis != nil {
-			status.GenesisHash = genesis.Hash
-		}
+// 		if genesis := serviceProvider.GetBlockByHeight(0); genesis != nil {
+// 			status.GenesisHash = genesis.Hash
+// 		}
 
-		// storage data (number of accounts)
-		status.StorageData = serviceProvider.GetStorageSize()
-	}
+// 		// storage data (number of accounts)
+// 		status.StorageData = serviceProvider.GetStorageSize()
+// 	}
 
-	return status, nil
-}
+// 	return status, nil
+// }

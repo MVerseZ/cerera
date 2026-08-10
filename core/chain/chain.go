@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -14,6 +15,7 @@ import (
 	"github.com/cerera/core/common"
 
 	"github.com/cerera/internal/logger"
+	"github.com/cerera/internal/service"
 
 	"github.com/cerera/core/types"
 	"github.com/cerera/core/types/trie"
@@ -668,4 +670,45 @@ func (bc *Chain) SetChainConfigStatus(status byte) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.status = status
+}
+
+func (bc *Chain) Methods() map[string]service.RPCHandler {
+	return map[string]service.RPCHandler{
+		"getLatestBlock": func(ctx context.Context, params []any) (any, error) {
+			return bc.GetLatestBlock(), nil
+		},
+		"getBlockByHeight": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("height required")
+			}
+			height, ok := params[0].(int)
+			if !ok {
+				return nil, fmt.Errorf("height must be int")
+			}
+			return bc.GetBlockByNumber(height), nil
+		},
+		"getBlockByHash": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("hash required")
+			}
+			hashStr, ok := params[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("hash must be string")
+			}
+			return bc.GetBlock(common.HexToHash(hashStr)), nil
+		},
+		"getCurrentHeight": func(ctx context.Context, params []any) (any, error) {
+			latest := bc.GetLatestBlock()
+			if latest == nil || latest.Head == nil {
+				return 0, nil
+			}
+			return latest.Header().Height, nil
+		},
+		"getChainId": func(ctx context.Context, params []any) (any, error) {
+			return bc.GetChainId(), nil
+		},
+		"getInfo": func(ctx context.Context, params []any) (any, error) {
+			return bc.GetInfo(), nil
+		},
+	}
 }
