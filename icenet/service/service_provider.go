@@ -41,7 +41,7 @@ func (sp *ServiceProvider) GetGenesisHash() common.Hash {
 	// For demonstration purposes, we return an empty hash to indicate that the genesis hash is not available.
 	return common.Hash{}
 }
-func (sp *ServiceProvider) ApplyStorageAccounts(ccounts [][]byte) error {
+func (sp *ServiceProvider) ApplyStorageAccounts(accounts [][]byte) error {
 	// This is a stub implementation. In a real implementation, this function would apply the provided storage accounts to the ServiceProvider.
 	// For demonstration purposes, we simply return nil to indicate success.
 	return nil

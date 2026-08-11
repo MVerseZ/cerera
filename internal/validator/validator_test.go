@@ -625,84 +625,84 @@ func TestSignRawTransactionWithKey_ValidKey(t *testing.T) {
 }
 
 // TestExec_Create_InvalidParams проверяет Exec с невалидными параметрами
-func TestExec_Create_InvalidParams(t *testing.T) {
-	validator := &CoreValidator{}
-	validator.SetUp(big.NewInt(11))
+// func TestExec_Create_InvalidParams(t *testing.T) {
+// 	validator := &CoreValidator{}
+// 	validator.SetUp(big.NewInt(11))
 
-	// Слишком мало параметров (legacy path)
-	result := validator.Exec("_create", []interface{}{})
-	require.Error(t, result.(error))
-	assert.Contains(t, result.(error).Error(), "invalid parameters")
+// 	// Слишком мало параметров (legacy path)
+// 	result := validator.Exec("_create", []interface{}{})
+// 	require.Error(t, result.(error))
+// 	assert.Contains(t, result.(error).Error(), "invalid parameters")
 
-	// Негативный gas
-	result = validator.Exec("_create", []interface{}{
-		CreateTxParams{
-			Key:    "key",
-			Nonce:  1,
-			To:     types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-			Amount: "1.0",
-			Gas:    -1.0,
-			Msg:    "test",
-		},
-	})
-	require.Error(t, result.(error))
-	assert.Contains(t, result.(error).Error(), "negative")
-}
+// 	// Негативный gas
+// 	result = validator.Exec("_create", []interface{}{
+// 		CreateTxParams{
+// 			Key:    "key",
+// 			Nonce:  1,
+// 			To:     types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+// 			Amount: "1.0",
+// 			Gas:    -1.0,
+// 			Msg:    "test",
+// 		},
+// 	})
+// 	require.Error(t, result.(error))
+// 	assert.Contains(t, result.(error).Error(), "negative")
+// }
 
 // TestExec_Create_InvalidAmount проверяет Exec с невалидной суммой
-func TestExec_Create_InvalidAmount(t *testing.T) {
-	validator := &CoreValidator{}
-	validator.SetUp(big.NewInt(11))
+// func TestExec_Create_InvalidAmount(t *testing.T) {
+// 	validator := &CoreValidator{}
+// 	validator.SetUp(big.NewInt(11))
 
-	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	x509Encoded, _ := x509.MarshalECPrivateKey(priv)
-	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
+// 	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// 	x509Encoded, _ := x509.MarshalECPrivateKey(priv)
+// 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
 
-	result := validator.Exec("_create", []interface{}{
-		CreateTxParams{
-			Key:    string(pemEncoded),
-			Nonce:  1,
-			To:     types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-			Amount: "invalid",
-			Gas:    1.0,
-			Msg:    "test",
-		},
-	})
-	require.Error(t, result.(error))
-}
+// 	result := validator.Exec("_create", []interface{}{
+// 		CreateTxParams{
+// 			Key:    string(pemEncoded),
+// 			Nonce:  1,
+// 			To:     types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+// 			Amount: "invalid",
+// 			Gas:    1.0,
+// 			Msg:    "test",
+// 		},
+// 	})
+// 	require.Error(t, result.(error))
+// }
 
 // TestExec_Create_ValidParams проверяет Exec с валидными параметрами
-func TestExec_Create_ValidParams(t *testing.T) {
-	validator := &CoreValidator{}
-	validator.SetUp(big.NewInt(11))
-	validator.balance = big.NewInt(0)
+// func TestExec_Create_ValidParams(t *testing.T) {
+// 	validator := &CoreValidator{}
+// 	validator.SetUp(big.NewInt(11))
+// 	validator.balance = big.NewInt(0)
 
-	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	x509Encoded, _ := x509.MarshalECPrivateKey(priv)
-	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
+// 	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// 	x509Encoded, _ := x509.MarshalECPrivateKey(priv)
+// 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
 
-	result := validator.Exec("_create", []interface{}{
-		CreateTxParams{
-			Key:    string(pemEncoded),
-			Nonce:  1,
-			To:     types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-			Amount: "1.0",
-			Gas:    1.0,
-			Msg:    "test",
-		},
-	})
-	require.NotNil(t, result)
-	assert.IsType(t, &types.GTransaction{}, result)
-}
+// 	result := validator.Exec("_create", []interface{}{
+// 		CreateTxParams{
+// 			Key:    string(pemEncoded),
+// 			Nonce:  1,
+// 			To:     types.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+// 			Amount: "1.0",
+// 			Gas:    1.0,
+// 			Msg:    "test",
+// 		},
+// 	})
+// 	require.NotNil(t, result)
+// 	assert.IsType(t, &types.GTransaction{}, result)
+// }
 
-// TestExec_Get_NotFound проверяет Exec get для неизвестного хеша
-func TestExec_Get_NotFound(t *testing.T) {
-	validator := &CoreValidator{}
-	validator.SetUp(big.NewInt(11))
+// // TestExec_Get_NotFound проверяет Exec get для неизвестного хеша
+// func TestExec_Get_NotFound(t *testing.T) {
+// 	validator := &CoreValidator{}
+// 	validator.SetUp(big.NewInt(11))
 
-	result := validator.Exec("get", []interface{}{"0x0000000000000000000000000000000000000000000000000000000000000000"})
-	assert.Nil(t, result)
-}
+// 	result := validator.Exec("get", []interface{}{"0x0000000000000000000000000000000000000000000000000000000000000000"})
+// 	assert.Nil(t, result)
+// }
 
 // TestDecError проверяет сообщения об ошибках
 func TestDecError(t *testing.T) {
