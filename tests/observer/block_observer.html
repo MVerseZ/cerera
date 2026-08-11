@@ -296,6 +296,16 @@
     .ws-log .entry.time { color: var(--muted); }
     .ws-log .entry.msg { color: var(--text); }
     .ws-log .entry.err { color: var(--error); }
+
+    /* Стили для аккаунтов */
+    .accounts-grid { display: flex; flex-direction: column; gap: 12px; }
+    .accounts-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .accounts-card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent); word-break: break-all; }
   </style>
 </head>
 <body>
@@ -341,6 +351,20 @@
       </div>
       <div class="mempool-grid" id="mempoolGrid"></div>
     </div>
+  </div>
+
+  <!-- НОВАЯ ПАНЕЛЬ АККАУНТОВ -->
+  <div class="panel accounts-section">
+    <h2>Аккаунты всех нод (cerera.account.getAll)</h2>
+    <p style="color: var(--muted); font-size: 13px; margin: 0 0 12px 0;">
+      Сравнение балансов аккаунтов по всем добавленным нодам.
+    </p>
+    <div class="actions">
+      <button type="button" class="primary" id="fetchAccountsBtn">Обновить аккаунты всех нод</button>
+    </div>
+    <div id="accountsSummary" class="check-summary" style="display: none;"></div>
+    <div id="accountsViz" class="check-viz" style="display: none;"></div>
+    <div id="accountsResult" class="block-result empty">Результат появится здесь.</div>
   </div>
 
   <div class="panel ws-panels-section">
@@ -407,6 +431,12 @@
     const mempoolGridEl = document.getElementById('mempoolGrid');
     const fetchMempoolsBtn = document.getElementById('fetchMempoolsBtn');
     const nodeHeights = {}; // url -> height
+
+    // Элементы для аккаунтов
+    const accountsResultEl = document.getElementById('accountsResult');
+    const accountsSummaryEl = document.getElementById('accountsSummary');
+    const accountsVizEl = document.getElementById('accountsViz');
+    const fetchAccountsBtn = document.getElementById('fetchAccountsBtn');
 
     const wsPanelsGridEl = document.getElementById('wsPanelsGrid');
     const wsConnectAllBtn = document.getElementById('wsConnectAllBtn');
@@ -525,6 +555,16 @@
       }
     }
 
+    // Новая функция для получения всех аккаунтов
+    async function getAllAccounts(baseUrl) {
+      try {
+        const result = await jsonRpc(baseUrl, 'cerera.account.getAll', []);
+        return { ok: true, accounts: result };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    }
+
     function renderNodes() {
       if (urls.length === 0) {
         nodesGridEl.innerHTML = '<p style="color: var(--muted);">Добавьте URL ноды выше.</p>';
@@ -565,6 +605,116 @@
       const hasBlocks = Object.values(nodeHeights).some(h => h > 0);
       checkBlocksBtn.disabled = !hasBlocks;
     }
+
+    // Функция для отображения аккаунтов
+    async function renderAccounts() {
+      if (urls.length === 0) {
+        accountsResultEl.textContent = 'Добавьте URL нод, чтобы получить аккаунты.';
+        accountsResultEl.className = 'block-result empty';
+        accountsSummaryEl.style.display = 'none';
+        accountsVizEl.style.display = 'none';
+        return;
+      }
+
+      accountsResultEl.textContent = 'Запрос аккаунтов со всех нод…';
+      accountsResultEl.className = 'block-result loading';
+      accountsSummaryEl.style.display = 'none';
+      accountsVizEl.style.display = 'none';
+
+      // Запрашиваем у каждой ноды
+      const results = await Promise.all(
+        urls.map(async (url) => {
+          const res = await getAllAccounts(url);
+          return { url, ...res };
+        })
+      );
+
+      // Собираем все адреса (множество)
+      const allAddresses = new Set();
+      for (const r of results) {
+        if (r.ok && typeof r.accounts === 'object' && r.accounts !== null) {
+          for (const addr of Object.keys(r.accounts)) {
+            allAddresses.add(addr);
+          }
+        }
+      }
+
+      if (allAddresses.size === 0) {
+        accountsResultEl.textContent = 'Не найдено ни одного аккаунта ни на одной ноде.';
+        accountsResultEl.className = 'block-result empty';
+        return;
+      }
+
+      const addrArray = Array.from(allAddresses);
+      // Для каждого адреса собираем баланс по каждой ноде
+      const rows = addrArray.map(addr => {
+        const row = { address: addr, balances: [] };
+        for (const r of results) {
+          if (r.ok && r.accounts && r.accounts.hasOwnProperty(addr)) {
+            row.balances.push(r.accounts[addr]);
+          } else {
+            row.balances.push(null); // нет такого аккаунта на этой ноде
+          }
+        }
+        return row;
+      });
+
+      // Определяем, совпадают ли все балансы (учитываем null как отсутствие)
+      rows.forEach(row => {
+        const nonNull = row.balances.filter(b => b !== null);
+        if (nonNull.length === 0) {
+          row.match = false; // нет данных ни на одной ноде (не должно случиться)
+        } else {
+          const first = nonNull[0];
+          row.match = nonNull.every(b => b === first);
+        }
+      });
+
+      const mismatches = rows.filter(r => !r.match).length;
+      const total = rows.length;
+
+      // Сводка
+      accountsSummaryEl.style.display = 'block';
+      accountsSummaryEl.innerHTML = `
+        <strong>Всего аккаунтов:</strong> ${total} · 
+        <span class="cell-ok">Совпадают на всех нодах: ${total - mismatches}</span>
+        ${mismatches ? ` · <span class="cell-err">Расхождения: ${mismatches}</span>` : ''}
+      `;
+
+      // Таблица
+      const thead = results.map(r => `<th>${escapeHtml(nodeLabel(r.url))}</th>`).join('');
+      let tbody = '';
+      for (const row of rows) {
+        const rowClass = row.match ? 'match' : 'mismatch';
+        const cells = row.balances.map(b => {
+          if (b === null) return `<td>—</td>`;
+          return `<td>${b}</td>`;
+        }).join('');
+        const status = row.match ? '<span class="cell-ok">✅</span>' : '<span class="cell-err">⚠️</span>';
+        tbody += `<tr class="${rowClass}"><td style="font-family:monospace; font-size:11px; word-break:break-all;">${escapeHtml(row.address)}</td>${cells}<td>${status}</td></tr>`;
+      }
+
+      accountsVizEl.style.display = 'block';
+      accountsVizEl.innerHTML = `
+        <table>
+          <thead><tr><th>Адрес</th>${thead}<th>Статус</th></tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      `;
+
+      if (mismatches > 0) {
+        accountsResultEl.textContent = `Обнаружены расхождения в балансах ${mismatches} аккаунтов.`;
+        accountsResultEl.className = 'block-result error';
+      } else {
+        accountsResultEl.textContent = `Все ${total} аккаунтов имеют одинаковые балансы на всех нодах.`;
+        accountsResultEl.className = 'block-result ok';
+      }
+    }
+
+    // Обработчик кнопки аккаунтов
+    fetchAccountsBtn.addEventListener('click', renderAccounts);
+
+    // Остальные обработчики
 
     async function runCheckBlocks() {
       const nodesToCheck = urls.filter(u => (nodeHeights[u] || 0) > 0);
@@ -756,6 +906,10 @@
         blockResultEl.className = 'block-result error';
       }
     });
+
+    // ----- WebSocket панели (без изменений) -----
+    // (код WebSocket здесь опущен для краткости, но в полной версии он присутствует)
+    // В этом файле он полностью сохранён, но я его не буду дублировать для краткости.
 
     renderUrlList();
     renderNodes();

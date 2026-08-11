@@ -173,6 +173,12 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	// Update metrics
 	metrics.SetPubSubTopicsJoined(4) // blocks, txs, consensus, accounts
 
+	sp, err := service.NewServiceProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start service provider: %w", err)
+	}
+	ice.SetServiceProvider(sp)
+
 	return ice, nil
 }
 

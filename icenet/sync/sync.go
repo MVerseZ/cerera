@@ -408,6 +408,10 @@ func (m *Manager) syncStorageWithPeer(peerID peer.ID, startStorageSize, targetSi
 // HandleNewPeer handles a newly connected peer
 func (m *Manager) HandleNewPeer(peerID peer.ID) {
 
+	syncLogger().Infow("[SYNC] Start sync with:",
+		"peer", peerID,
+	)
+
 	// Request status from the peer
 	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
