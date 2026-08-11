@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -393,7 +392,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		vltlogger().Infow("Account saved to vault", "address", address.Hex())
 	}
 
-	restoredPrivateKey := crypto.RXor(masterKey, &privateKey.PublicKey, xorResult)
+	restoredPrivateKey := crypto.RXor(masterKey, xorResult)
 	vltlogger().Infow("Account created", "restored private key without offset", restoredPrivateKey)
 	vltlogger().Infow("Account created", "keys equality", bytes.Equal(restoredPrivateKey, etaKeyBytes))
 
@@ -433,9 +432,7 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
 	}
 
-	var publicKey *ecdsa.PublicKey
-
-	privateKeyBytes := crypto.RXor(masterKey, publicKey, account.Data)
+	privateKeyBytes := crypto.RXor(masterKey, account.Data)
 	privateKey, err := crypto.DecodeBytesToPrivateKey(privateKeyBytes)
 	if err != nil {
 		return types.EmptyAddress(), "", fmt.Errorf("failed to decode private key: %w", err)

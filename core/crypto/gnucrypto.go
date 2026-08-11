@@ -254,17 +254,18 @@ func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.
 }
 
 func Xor(privateKey *ecdsa.PrivateKey, masterKey *bip32.Key) []byte {
-	// Выполняем побитовый XOR для приватных ключей: privateKey и masterKey
 	privateKeyBytes := EncodePrivateKeyToByte(privateKey)
 	masterKeyBytes, _ := masterKey.Serialize()
-	//master key + public ecdsa xor private key (178+82 xor 221+offset (39))
-	xorLen := len(masterKeyBytes) + len(EncodePublicKeyToByte(&privateKey.PublicKey))
-	if len(privateKeyBytes) < xorLen {
-		// add ending bytes
-		offset := make([]byte, xorLen-len(privateKeyBytes))
-		privateKeyBytes = append(privateKeyBytes, offset...)
+	xorLen := len(privateKeyBytes)
+	if len(masterKeyBytes) > xorLen {
+		xorLen = len(masterKeyBytes)
 	}
-	masterKeyBytes = append(masterKeyBytes, EncodePublicKeyToByte(&privateKey.PublicKey)...)
+	if len(privateKeyBytes) < xorLen {
+		privateKeyBytes = append(privateKeyBytes, make([]byte, xorLen-len(privateKeyBytes))...)
+	}
+	if len(masterKeyBytes) < xorLen {
+		masterKeyBytes = append(masterKeyBytes, make([]byte, xorLen-len(masterKeyBytes))...)
+	}
 	xorResult := make([]byte, xorLen)
 	for i := range xorLen {
 		xorResult[i] = privateKeyBytes[i] ^ masterKeyBytes[i]
@@ -272,15 +273,19 @@ func Xor(privateKey *ecdsa.PrivateKey, masterKey *bip32.Key) []byte {
 	return xorResult
 }
 
-func RXor(masterKey *bip32.Key, pub *ecdsa.PublicKey, data []byte) []byte {
+func RXor(masterKey *bip32.Key, data []byte) []byte {
 	masterKeyBytes, _ := masterKey.Serialize()
-	masterKeyBytes = append(masterKeyBytes, EncodePublicKeyToByte(pub)...)
-	restoredPrivateKey := make([]byte, len(data))
-	for i := range len(data) {
+	xorLen := len(data)
+	if len(masterKeyBytes) > xorLen {
+		xorLen = len(masterKeyBytes)
+	}
+	if len(masterKeyBytes) < xorLen {
+		masterKeyBytes = append(masterKeyBytes, make([]byte, xorLen-len(masterKeyBytes))...)
+	}
+	restoredPrivateKey := make([]byte, xorLen)
+	for i := range xorLen {
 		restoredPrivateKey[i] = data[i] ^ masterKeyBytes[i]
 	}
-	// trim offset from restored private key
-	restoredPrivateKey = restoredPrivateKey[:len(restoredPrivateKey)-39]
 	return restoredPrivateKey
 }
 

@@ -567,7 +567,7 @@ func TestXorRXorRoundTrip(t *testing.T) {
 		t.Fatal("Xor should return non-empty data")
 	}
 
-	restored := RXor(masterKey, &privateKey.PublicKey, xorData)
+	restored := RXor(masterKey, xorData)
 	if len(restored) == 0 {
 		t.Fatal("RXor should return non-empty data")
 	}

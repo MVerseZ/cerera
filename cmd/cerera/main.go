@@ -14,6 +14,7 @@ import (
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/gigea"
+	"github.com/cerera/icenet"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"
@@ -110,10 +111,10 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	// mempool.Register(minerInstance)
 
 	// Инициализация Ice компонента
-	// ice, err := icenet.Start(cfg, ctx, port)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to initialize Ice: %w", err)
-	// }
+	_, err = icenet.Start(cfg, ctx, port)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Ice: %w", err)
+	}
 
 	// Connect components to Ice (sync + handler use same ApiProvider)
 	// if ice != nil {
