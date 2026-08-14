@@ -203,7 +203,7 @@ func InitSecureVault(rootSa *account.StateAccount, vaultPath string) error {
 	}
 
 	if err := putAccountPayload(db, key, accountData); err != nil {
-		return fmt.Errorf("failed to write account data to pogreb: %w", err)
+		// return fmt.Errorf("failed to write account data to pogreb: %w", err)
 	}
 
 	return nil

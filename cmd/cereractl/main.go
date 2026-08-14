@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -17,12 +14,15 @@ import (
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/gigea"
+	"github.com/cerera/icenet"
+	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/miner"
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validator"
-	"github.com/chzyer/readline"
 )
+
+var appLog = logger.Named("cmd.cerera")
 
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
@@ -32,11 +32,12 @@ type Cerera struct {
 	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
 	v        *storage.Vault
 	registry *service.Registry
+	ice      *icenet.Ice
 	status   [8]byte
 }
 
 // NewCerera создаёт и инициализирует экземпляр Cerera.
-func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, httpPort int, mine bool) (*Cerera, error) {
+func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpPort int, mine bool) (*Cerera, error) {
 	registry, err := service.NewRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service registry: %w", err)
@@ -54,10 +55,10 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 	}
 	registry.Register(vault.ServiceName(), vault)
 
-	// Инициализация цепочки
+	//  цепочки
 	chain, err := chain.Mold(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to init blockchain: %w", err)
+		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
 	registry.Register(chain.ServiceName(), chain)
 
@@ -78,24 +79,46 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 
 	// Инициализация http сервера
 	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
-		log.Printf("HTTP server error: %v", err)
+		appLog.Warnw("HTTP server error", "err", err)
 	}
 
 	// Инициализация майнера
-	miner, err := miner.Init(ctx)
+	minerInstance, err := miner.Init(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
 	if mine {
-		if err := miner.Start(); err != nil {
-			log.Printf("Failed to start miner: %v", err)
+		if err := minerInstance.Start(); err != nil {
+			appLog.Errorw("Failed to start miner", "err", err)
 			return nil, fmt.Errorf("failed to start miner: %w", err)
 		}
 	}
 
 	// gigea.E.Register(chain)
 	// gigea.E.Register(miner.GetMiner())
-	mempool.Register(miner)
+	mempool.Register(minerInstance)
+
+	// Инициализация Ice компонента
+	ice, err := icenet.Start(cfg, ctx, port)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Ice: %w", err)
+	}
+
+	// Connect components to Ice (sync + handler use same ApiProvider)
+	if ice != nil {
+		// Register Ice in service registry for broadcasting
+		registry.Register(ice.ServiceName(), ice)
+		registry.Register("ice", ice) // Also register with short name
+	}
+
+	// Shared service provider for network/consensus access to chain, vault, pool, etc.
+	sp := service.GetServiceProvider()
+	ice.SetServiceProvider(sp)
+
+	// Wire gigea-level consensus manager to the underlying icenet consensus engine.
+	// This keeps node logic decoupled from transport while still allowing future
+	// use of gigea.ConsensusManager as a façade.
+	_ = gigea.NewConsensusManager(ctx, icenet.NewNetworkAdapter(ice), cfg.NetCfg.ADDR, sp)
 
 	return &Cerera{
 		bc:       chain,
@@ -103,101 +126,19 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, address string, ht
 		p:        mempool,
 		v:        &vault,
 		registry: registry,
+		ice:      ice,
 		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 
 // setupLogging настраивает логирование в файл.
 func setupLogging() error {
-	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		return fmt.Errorf("error opening log file: %w", err)
-	}
-	log.SetOutput(f)
-	return nil
-}
-
-// parseInteractive запрашивает параметры в интерактивном режиме.
-func parseInteractive() (config.Config, string, string, int, bool, bool) {
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Println("=== Cerera Configuration ===")
-	fmt.Println()
-
-	// P2P Port
-	fmt.Print("P2P port for connection [31000]: ")
-	portInput, _ := reader.ReadString('\n')
-	port := strings.TrimSpace(portInput)
-	if port == "" {
-		port = "31000"
-	}
-
-	// Key path
-	fmt.Print("Path to PEM key (optional, press Enter to set to [ddddd.nodekey.pem]): ")
-	keyInput, _ := reader.ReadString('\n')
-	keyPath := strings.TrimSpace(keyInput)
-	if keyPath == "" {
-		keyPath = "ddddd.nodekey.pem"
-	}
-
-	// Mode
-	fmt.Print("Mode (server/client/p2p) [p2p]: ")
-	modeInput, _ := reader.ReadString('\n')
-	mode := strings.TrimSpace(modeInput)
-	if mode == "" {
-		mode = "p2p"
-	}
-	for mode != "server" && mode != "client" && mode != "p2p" {
-		fmt.Print("Invalid mode. Please enter server, client, or p2p: ")
-		modeInput, _ = reader.ReadString('\n')
-		mode = strings.TrimSpace(modeInput)
-	}
-
-	// HTTP Port
-	fmt.Print("HTTP server port [1337]: ")
-	httpInput, _ := reader.ReadString('\n')
-	httpStr := strings.TrimSpace(httpInput)
-	http := 1337
-	if httpStr != "" {
-		if parsed, err := strconv.Atoi(httpStr); err == nil {
-			http = parsed
-		}
-	}
-
-	// Miner
-	fmt.Print("Enable mining? (y/n) [y]: ")
-	mineInput, _ := reader.ReadString('\n')
-	mineStr := strings.ToLower(strings.TrimSpace(mineInput))
-	mine := true
-	if mineStr == "n" || mineStr == "no" {
-		mine = false
-	}
-
-	// In Memory
-	fmt.Print("Store data in memory? (y/n) [y]: ")
-	memInput, _ := reader.ReadString('\n')
-	memStr := strings.ToLower(strings.TrimSpace(memInput))
-	inMem := true
-	if memStr == "n" || memStr == "no" {
-		inMem = false
-	}
-
-	fmt.Println()
-	fmt.Println("Configuration:")
-	fmt.Printf("  P2P Port: %s\n", port)
-	fmt.Printf("  Key Path: %s\n", keyPath)
-	fmt.Printf("  Mode: %s\n", mode)
-	fmt.Printf("  HTTP Port: %d\n", http)
-	fmt.Printf("  Mining: %v\n", mine)
-	fmt.Printf("  In Memory: %v\n", inMem)
-	fmt.Println()
-
-	cfg := config.GenerageConfig()
-	cfg.SetNodeKey(keyPath)
-	cfg.SetAutoGen(true)
-	cfg.SetInMem(inMem)
-
-	return *cfg, mode, port, http, mine, inMem
+	_, err := logger.Init(logger.Config{
+		Path:    "logfile",
+		Level:   "info",
+		Console: false,
+	})
+	return err
 }
 
 func main() {
@@ -206,48 +147,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
 		os.Exit(1)
 	}
+	defer logger.Sync()
 
-	// Проверяем наличие конфига
-	var cfg config.Config
-	var mode string
-	var port string
-	var httpPort int
-	var mine bool
-
-	if _, err := os.Stat("config.json"); err == nil {
-		// Конфиг существует, загружаем его
-		cfgPtr := config.GenerageConfig()
-		cfg = *cfgPtr
-
-		// Используем значения из конфига
-		if cfg.NetCfg.P2P != 0 {
-			port = strconv.Itoa(cfg.NetCfg.P2P)
-		} else {
-			port = "31000"
-		}
-		if cfg.NetCfg.RPC != 0 {
-			httpPort = cfg.NetCfg.RPC
-		} else {
-			httpPort = 1337
-		}
-
-		// Значения по умолчанию для параметров, которых нет в конфиге
-		mode = "p2p"
-		mine = true
-	} else {
-		// Конфига нет, используем интерактивный ввод
-		cfg, mode, port, httpPort, mine, _ = parseInteractive()
-	}
+	// Парсинг флагов и создание конфигурации
+	cfg, mode, port, httpPort, mine, _ := config.ParseFlags()
 
 	// Создание контекста с обработкой сигналов
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	fmt.Println("cfg: ", cfg)
-	fmt.Println("mode: ", mode)
-	fmt.Println("port: ", port)
-	fmt.Println("httpPort: ", httpPort)
-	fmt.Println("mine: ", mine)
 
 	// Инициализация приложения
 	app, err := NewCerera(&cfg, ctx, mode, port, httpPort, mine)
@@ -256,90 +163,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	// dht, err := mesh.Start(&cfg, ctx, port)
-	// if err != nil {
-	// 	log.Printf("Failed to initialize DHT: %v", err)
-	// 	os.Exit(1)
-	// }
-	// mesh.Connect(app.cmdChan)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	rl, err := readline.New("> ")
-	if err != nil {
-		panic(err)
-	}
-	defer rl.Close()
-	for {
-		line, err := rl.Readline()
-		if err != nil { // io.EOF, readline.ErrInterrupt
-			break
+	done := make(chan bool, 1)
+
+	cmdHandler := NewCommandHandler(sigs)
+	cmdHandler.Start()
+
+	go func() {
+		sig := <-sigs
+		fmt.Println("Received signal: ", sig)
+		// Закрываем vault (закрывает bitcask базу данных)
+		if app != nil && app.v != nil {
+			if err := (*app.v).Close(); err != nil {
+				appLog.Errorw("Ошибка при закрытии vault", "err", err)
+			} else {
+				appLog.Infow("Vault успешно закрыт")
+			}
 		}
-		input := strings.Split(line, " ")
-		switch input[0] {
-		// case "store":
-		// 	id, err := dht.Store([]byte(input[1]))
-		// 	if err != nil {
-		// 		fmt.Println(err.Error())
-		// 	}
-		// 	fmt.Println("Stored ID: " + id)
-		// case "get":
-		// 	data, exists, err := dht.Get(input[1])
-		// 	if err != nil {
-		// 		fmt.Println(err.Error())
-		// 	}
-		// 	fmt.Println("Searching for", input[1])
-		// 	if exists {
-		// 		fmt.Println("..Found data:", string(data))
-		// 	} else {
-		// 		fmt.Println("..Nothing found for this key!")
-		// 	}
-		// case "info":
-		// 	nodes := dht.NumNodes()
-		// 	self := dht.GetSelfID()
-		// 	addr := dht.GetNetworkAddr()
-		// 	fmt.Println("Addr: " + addr)
-		// 	fmt.Println("ID: " + self)
-		// 	fmt.Println("Known Nodes: " + strconv.Itoa(nodes))
-		case "balance", "b":
-			// app.ExecuteCli("balance")
-			fmt.Println("Node balance")
-		case "send":
-			fmt.Println("Send transaction")
-		case "status":
-			fmt.Printf("Status: %x\n", app.status)
-		case "help":
-			fmt.Println(Usage())
-		case "exit":
-			os.Exit(0)
-		default:
-			fmt.Println("Unknown command, use help to see available commands")
+		// Закрываем Ice компонент
+		if app != nil && app.ice != nil {
+			appLog.Infow("Shutting down Ice component...")
+			app.ice.Stop(ctx)
 		}
-	}
+		time.Sleep(2 * time.Second)
+		done <- true
+	}()
 
-	// Ожидание сигнала завершения
-	<-ctx.Done()
-
-	log.Println("Получен сигнал завершения, начинаем graceful shutdown...")
-
-	// Закрываем vault (закрывает bitcask базу данных)
-	if app.v != nil {
-		if err := (*app.v).Close(); err != nil {
-			log.Printf("Ошибка при закрытии vault: %v", err)
-		} else {
-			log.Println("Vault успешно закрыт")
-		}
-	}
-
-	// Создаем контекст с таймаутом для graceful shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-
-	// Ждем завершения или таймаута
-	select {
-	case <-shutdownCtx.Done():
-		log.Println("Таймаут graceful shutdown, принудительное завершение")
-		os.Exit(1)
-	default:
-		log.Println("Приложение корректно завершено")
-	}
+	<-done
 
 }
