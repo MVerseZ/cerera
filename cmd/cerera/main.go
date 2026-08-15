@@ -19,6 +19,7 @@ import (
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validator"
+	"github.com/cerera/miner"
 )
 
 var appLog = logger.Named("cmd.cerera")
@@ -31,8 +32,8 @@ type Cerera struct {
 	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
 	v        *storage.Vault
 	registry *service.Registry
-	// ice      *icenet.Ice
-	status [8]byte
+	ice      *icenet.Ice
+	status   [8]byte
 }
 
 // NewCerera создаёт и инициализирует экземпляр Cerera.
@@ -96,25 +97,32 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		appLog.Warnw("HTTP server error", "err", err)
 	}
 
-	// Инициализация майнера
-	// minerInstance, err := miner.Init(ctx)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to init miner: %w", err)
-	// }
-	// if mine {
-	// 	if err := minerInstance.Start(); err != nil {
-	// 		appLog.Errorw("Failed to start miner", "err", err)
-	// 		return nil, fmt.Errorf("failed to start miner: %w", err)
-	// 	}
-	// }
-
-	// mempool.Register(minerInstance)
-
 	// Инициализация Ice компонента
-	_, err = icenet.Start(cfg, ctx, port)
+	ice, err := icenet.Start(cfg, ctx, port)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Ice: %w", err)
 	}
+
+	//
+	validator.SetPool(mempool)
+	validator.SetChain(chain)
+
+	// Инициализация майнера
+	minerInstance, err := miner.Init(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init miner: %w", err)
+	}
+	minerInstance.SetChain(chain)
+	minerInstance.SetPool(mempool)
+	minerInstance.SetValidator(validator)
+	if mine {
+		if err := minerInstance.Start(); err != nil {
+			appLog.Errorw("Failed to start miner", "err", err)
+			return nil, fmt.Errorf("failed to start miner: %w", err)
+		}
+	}
+
+	mempool.Register(minerInstance)
 
 	// Connect components to Ice (sync + handler use same ApiProvider)
 	// if ice != nil {
@@ -145,8 +153,8 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		p:        mempool,
 		v:        &vault,
 		registry: registry,
-		// ice:      ice,
-		status: [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
+		ice:      ice,
+		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 

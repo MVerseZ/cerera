@@ -13,6 +13,7 @@ import (
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/crypto"
+	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/gigea"
@@ -92,7 +93,11 @@ type Validator interface {
 	ValidateRawTransaction(tx types.GTransaction) bool
 	GetID() string
 	Update(tx *types.GTransaction)
+	UpdateTxTree(tx *types.GTransaction, bIndex int)
 	Methods() map[string]service.RPCHandler
+
+	SetPool(pool pool.TxPool)
+	SetChain(chain *chain.Chain)
 }
 
 type CoreValidator struct {
@@ -102,6 +107,16 @@ type CoreValidator struct {
 	balance        *big.Int
 	currentAddress types.Address
 	currentVersion string
+
+	pool pool.TxPool
+}
+
+func (v *CoreValidator) SetPool(pool pool.TxPool) {
+	v.pool = pool
+}
+
+func (v *CoreValidator) SetChain(bc *chain.Chain) {
+	v.Chain = bc
 }
 
 func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
@@ -239,6 +254,7 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 	storage.GetTxTable().Add(&tx)
 
 	valExecuteSuccess.Inc()
+	v.pool.RemoveFromPool(tx.Hash())
 	return nil
 }
 
@@ -254,62 +270,6 @@ func (v *CoreValidator) GetID() string {
 func (v *CoreValidator) GetVersion() string {
 	return v.currentVersion
 }
-
-// isIceReady проверяет, готов ли Ice компонент (bootstrap соединение установлено)
-// func (v *CoreValidator) isIceReady() bool {
-// 	registry, err := service.GetRegistry()
-// 	if err != nil {
-// 		vlogger.Debugw("Registry not available for Ice check", "err", err)
-// 		return false
-// 	}
-
-// 	// Пробуем найти Ice сервис по имени "ice" или по полному имени
-// 	iceService, ok := registry.GetService("ice")
-// 	if !ok {
-// 		// Пробуем найти по полному имени сервиса
-// 		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-// 		if !ok {
-// 			vlogger.Debugw("Ice service not found in registry")
-// 			return false
-// 		}
-// 	}
-
-// 	// Вызываем метод проверки готовности через Exec
-// 	result := iceService.Exec("isBootstrapReady", nil)
-// 	if ready, ok := result.(bool); ok {
-// 		return ready
-// 	}
-
-// 	return false
-// }
-
-// isConsensusStarted проверяет, начался ли консенсус
-// func (v *CoreValidator) isConsensusStarted() bool {
-// 	registry, err := service.GetRegistry()
-// 	if err != nil {
-// 		vlogger.Debugw("Registry not available for consensus check", "err", err)
-// 		return false
-// 	}
-
-// 	// Пробуем найти Ice сервис по имени "ice" или по полному имени
-// 	iceService, ok := registry.GetService("ice")
-// 	if !ok {
-// 		// Пробуем найти по полному имени сервиса
-// 		iceService, ok = registry.GetService("ICE_CERERA_001_1_0")
-// 		if !ok {
-// 			vlogger.Debugw("Ice service not found in registry for consensus check")
-// 			return false
-// 		}
-// 	}
-
-// 	// Вызываем метод проверки консенсуса через Exec
-// 	result := iceService.Exec("isConsensusStarted", nil)
-// 	if started, ok := result.(bool); ok {
-// 		return started
-// 	}
-
-// 	return false
-// }
 
 // printConsensusStatus выводит текущий статус консенсуса
 func (v *CoreValidator) printConsensusStatus(blockHash common.Hash) {
@@ -492,6 +452,10 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
 				return nil, err
 			}
+			err = v.pool.AddRawTransaction(tx)
+			if err != nil {
+				return nil, err
+			}
 			return tx.Hash(), nil
 		},
 		"get": func(ctx context.Context, params []any) (any, error) {
@@ -521,6 +485,9 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 					}
 				}
 			}
+			return nil, nil
+		},
+		"stake": func(ctx context.Context, params []any) (any, error) {
 			return nil, nil
 		},
 	}
