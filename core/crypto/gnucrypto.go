@@ -171,7 +171,7 @@ func PublicKeyToString(publicKey *ecdsa.PublicKey) (string, error) {
 func GenerateAccount() (*ecdsa.PrivateKey, error) {
 	pk, err := ecdsa.GenerateKey(chainElliptic, rand.Reader)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return pk, nil
 }
