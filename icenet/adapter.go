@@ -82,4 +82,3 @@ func (a *NetworkAdapter) PeerCount() int {
 	}
 	return a.ice.GetPeerCount()
 }
-

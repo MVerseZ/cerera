@@ -171,7 +171,7 @@ func PublicKeyToString(publicKey *ecdsa.PublicKey) (string, error) {
 func GenerateAccount() (*ecdsa.PrivateKey, error) {
 	pk, err := ecdsa.GenerateKey(chainElliptic, rand.Reader)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return pk, nil
 }
@@ -232,16 +232,25 @@ func DecodeByteToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
 	return ecdsaPub, nil
 }
 
-func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {
+func DecodePrivKey(pemEncoded string) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(pemEncoded))
+	if block == nil {
+		return nil, errors.New("cannot decode pem")
+	}
 	x509Encoded := block.Bytes
-	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
+	privateKey, err := x509.ParseECPrivateKey(x509Encoded)
+	if err != nil {
+		return nil, err
+	}
 
-	return privateKey
+	return privateKey, nil
 }
 
-func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.PrivateKey, *ecdsa.PublicKey) {
+func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.PrivateKey, *ecdsa.PublicKey, error) {
 	block, _ := pem.Decode([]byte(pemEncoded))
+	if block == nil {
+		return nil, nil, errors.New("cannot decode pem")
+	}
 	x509Encoded := block.Bytes
 	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
 
@@ -250,21 +259,22 @@ func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.
 	genericPublicKey, _ := x509.ParsePKIXPublicKey(x509EncodedPub)
 	publicKey := genericPublicKey.(*ecdsa.PublicKey)
 
-	return privateKey, publicKey
+	return privateKey, publicKey, nil
 }
 
 func Xor(privateKey *ecdsa.PrivateKey, masterKey *bip32.Key) []byte {
-	// Выполняем побитовый XOR для приватных ключей: privateKey и masterKey
 	privateKeyBytes := EncodePrivateKeyToByte(privateKey)
 	masterKeyBytes, _ := masterKey.Serialize()
-	//master key + public ecdsa xor private key (178+82 xor 221+offset (39))
-	xorLen := len(masterKeyBytes) + len(EncodePublicKeyToByte(&privateKey.PublicKey))
-	if len(privateKeyBytes) < xorLen {
-		// add ending bytes
-		offset := make([]byte, xorLen-len(privateKeyBytes))
-		privateKeyBytes = append(privateKeyBytes, offset...)
+	xorLen := len(privateKeyBytes)
+	if len(masterKeyBytes) > xorLen {
+		xorLen = len(masterKeyBytes)
 	}
-	masterKeyBytes = append(masterKeyBytes, EncodePublicKeyToByte(&privateKey.PublicKey)...)
+	if len(privateKeyBytes) < xorLen {
+		privateKeyBytes = append(privateKeyBytes, make([]byte, xorLen-len(privateKeyBytes))...)
+	}
+	if len(masterKeyBytes) < xorLen {
+		masterKeyBytes = append(masterKeyBytes, make([]byte, xorLen-len(masterKeyBytes))...)
+	}
 	xorResult := make([]byte, xorLen)
 	for i := range xorLen {
 		xorResult[i] = privateKeyBytes[i] ^ masterKeyBytes[i]
@@ -272,15 +282,19 @@ func Xor(privateKey *ecdsa.PrivateKey, masterKey *bip32.Key) []byte {
 	return xorResult
 }
 
-func RXor(masterKey *bip32.Key, pub *ecdsa.PublicKey, data []byte) []byte {
+func RXor(masterKey *bip32.Key, data []byte) []byte {
 	masterKeyBytes, _ := masterKey.Serialize()
-	masterKeyBytes = append(masterKeyBytes, EncodePublicKeyToByte(pub)...)
-	restoredPrivateKey := make([]byte, len(data))
-	for i := range len(data) {
+	xorLen := len(data)
+	if len(masterKeyBytes) > xorLen {
+		xorLen = len(masterKeyBytes)
+	}
+	if len(masterKeyBytes) < xorLen {
+		masterKeyBytes = append(masterKeyBytes, make([]byte, xorLen-len(masterKeyBytes))...)
+	}
+	restoredPrivateKey := make([]byte, xorLen)
+	for i := range xorLen {
 		restoredPrivateKey[i] = data[i] ^ masterKeyBytes[i]
 	}
-	// trim offset from restored private key
-	restoredPrivateKey = restoredPrivateKey[:len(restoredPrivateKey)-39]
 	return restoredPrivateKey
 }
 

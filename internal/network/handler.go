@@ -2,14 +2,12 @@ package network
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/btcsuite/websocket"
-	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -76,34 +74,29 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			return
 		}
 
-		var request types.Request
-		err = json.Unmarshal(body, &request)
+		request, err := parseRequest(body)
 		if err != nil {
+			rpcRequestsErrorsTotal.WithLabelValues("parse_body").Inc()
 			fmt.Println(err)
 			http.Error(w, "Failed to parse request body", http.StatusBadRequest)
-			rpcRequestsErrorsTotal.WithLabelValues("parse_body").Inc()
 			return
 		}
+
+		ctx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
 
 		method = request.Method
-
-		result := Execute(request.Method, request.Params)
-		response := types.Response{
-			JSONRPC: "2.0",
-			ID:      request.ID,
-		}
-		if err, ok := result.(error); ok && err != nil {
-			response.Error = &types.Error{Code: -32603, Message: err.Error()}
-			// JSON-RPC 2.0: omit result when error is present
-		} else {
-			response.Result = result
-		}
-
-		responseData, err := json.Marshal(response)
+		result, err := Execute(ctx, request.Method, request.Params)
 		if err != nil {
-			http.Error(w, "Failed to serialize response", http.StatusInternalServerError)
 			rpcRequestsErrorsTotal.WithLabelValues(method).Inc()
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		response, err := constructResponse(request.ID, result)
+		if err != nil {
+			rpcRequestsErrorsTotal.WithLabelValues(method).Inc()
+			http.Error(w, "Failed to serialize response", http.StatusInternalServerError)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -112,8 +105,7 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Request-Headers", "X-Custom-Header")
 
-		_, err = w.Write(responseData)
-		// m.Inc()
+		_, err = w.Write(response)
 		if err != nil {
 			handlerLogger.Errorw("Failed to write response", "err", err)
 			rpcRequestsErrorsTotal.WithLabelValues(method).Inc()
@@ -123,13 +115,6 @@ func HandleRequest(ctx context.Context) http.HandlerFunc { //, poa *dddddpoa.DDD
 			rpcRequestsTotal.WithLabelValues(method).Inc()
 			rpcRequestsDurationSeconds.WithLabelValues(method).Observe(duration)
 		}
-
-		// select {
-		// case <-ctx.Done():
-		// 	fmt.Println("Context is done.")
-		// default:
-		// 	fmt.Println("Context is still valid.")
-		// }
 	}
 }
 

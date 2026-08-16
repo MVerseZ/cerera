@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -14,6 +15,7 @@ import (
 	"github.com/cerera/core/common"
 
 	"github.com/cerera/internal/logger"
+	"github.com/cerera/internal/service"
 
 	"github.com/cerera/core/types"
 	"github.com/cerera/core/types/trie"
@@ -250,7 +252,6 @@ func Mold(cfg *config.Config) (*Chain, error) {
 func loadGenesisBlock(chainID int) (*block.Block, error) {
 	genesisHead := block.GenesisHead(chainID)
 	genesisBlock := block.NewBlockWithHeaderAndHash(genesisHead)
-	genesisBlock.UpdateHash()
 	return genesisBlock, nil
 }
 
@@ -272,6 +273,9 @@ func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainP
 		clogger.Info("Using in-memory storage")
 		stats.Total = 1
 		stats.ChainWork = genesisBlock.Head.Size
+		stats.Latest = genesisBlock.GetHash()
+		stats.Size = int64(genesisBlock.Head.Size)
+		stats.Difficulty = genesisBlock.Head.Difficulty
 		return []*block.Block{genesisBlock}, stats, nil
 	}
 
@@ -280,6 +284,7 @@ func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainP
 	if _, err := os.Stat(chainPath); os.IsNotExist(err) {
 		stats.Total = 1
 		stats.ChainWork = genesisBlock.Head.Size
+		stats.Latest = genesisBlock.GetHash()
 		if err := storage.Init(genesisBlock, chainPath); err != nil {
 			return nil, stats, err
 		}
@@ -291,10 +296,12 @@ func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainP
 		clogger.Warnw("Failed to sync vault, using genesis block", "err", err)
 		stats.Total = 1
 		stats.ChainWork = genesisBlock.Head.Size
+		stats.Latest = genesisBlock.GetHash()
 		return []*block.Block{genesisBlock}, stats, nil
 	}
 
 	if len(readBlocks) == 0 {
+		stats.Latest = genesisBlock.GetHash()
 		stats.Total = 1
 		stats.ChainWork = genesisBlock.Head.Size
 		if err := storage.Init(genesisBlock, chainPath); err != nil {
@@ -578,6 +585,10 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 		return fmt.Errorf("height %d already locked", height)
 	}
 
+	if newBlock.Header().PrevHash != bc.currentBlock.Hash {
+		return errors.New("Prev hash diff from current head")
+	}
+
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
@@ -668,4 +679,52 @@ func (bc *Chain) SetChainConfigStatus(status byte) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.status = status
+}
+
+func (bc *Chain) Methods() map[string]service.RPCHandler {
+	return map[string]service.RPCHandler{
+		"getLatestBlock": func(ctx context.Context, params []any) (any, error) {
+			return bc.GetLatestBlock(), nil
+		},
+		"getBlockByIndex": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("height required")
+			}
+			height, ok := params[0].(float64)
+			if !ok {
+				return nil, fmt.Errorf("height must be int")
+			}
+			return bc.GetBlockByNumber(int(height)), nil
+		},
+		"getBlockByHash": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("hash required")
+			}
+			hashStr, ok := params[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("hash must be string")
+			}
+			return bc.GetBlock(common.HexToHash(hashStr)), nil
+		},
+		"getCurrentHeight": func(ctx context.Context, params []any) (any, error) {
+			latest := bc.GetLatestBlock()
+			if latest == nil || latest.Head == nil {
+				return 0, nil
+			}
+			return latest.Header().Height, nil
+		},
+		"getChainId": func(ctx context.Context, params []any) (any, error) {
+			return bc.GetChainId(), nil
+		},
+		"getInfo": func(ctx context.Context, params []any) (any, error) {
+			return bc.GetInfo(), nil
+		},
+		"height": func(ctx context.Context, params []any) (any, error) {
+			latest := bc.GetLatestBlock()
+			if latest == nil || latest.Head == nil {
+				return 0, nil
+			}
+			return latest.Header().Height, nil
+		},
+	}
 }

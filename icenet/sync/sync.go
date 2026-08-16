@@ -10,8 +10,8 @@ import (
 	"github.com/cerera/core/common"
 	"github.com/cerera/icenet/peers"
 	"github.com/cerera/icenet/protocol"
+	"github.com/cerera/icenet/service"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/service"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
@@ -48,7 +48,7 @@ type Manager struct {
 	host            host.Host
 	handler         *protocol.Handler
 	peerManager     *peers.Manager
-	serviceProvider service.ServiceProvider
+	serviceProvider *service.ServiceProvider
 	progress        *SyncProgress
 	peerTracker     *PeerSyncTracker
 	fetcher         *Fetcher
@@ -70,7 +70,7 @@ func NewManager(
 	h host.Host,
 	handler *protocol.Handler,
 	peerManager *peers.Manager,
-	provider service.ServiceProvider,
+	provider *service.ServiceProvider,
 ) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -407,6 +407,10 @@ func (m *Manager) syncStorageWithPeer(peerID peer.ID, startStorageSize, targetSi
 
 // HandleNewPeer handles a newly connected peer
 func (m *Manager) HandleNewPeer(peerID peer.ID) {
+
+	syncLogger().Infow("[SYNC] Start sync with:",
+		"peer", peerID,
+	)
 
 	// Request status from the peer
 	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)

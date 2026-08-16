@@ -13,9 +13,9 @@ import (
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/metrics"
 	"github.com/cerera/icenet/peers"
+	"github.com/cerera/icenet/service"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/message"
-	"github.com/cerera/internal/service"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
@@ -32,7 +32,7 @@ type Manager struct {
 	peerScorer  *peers.Scorer
 	voting      *VotingManager
 
-	serviceProvider service.ServiceProvider
+	serviceProvider *service.ServiceProvider
 
 	blocksMu sync.RWMutex
 	blocks   map[common.Hash]*block.Block
@@ -55,7 +55,7 @@ func NewManager(
 	peerManager *peers.Manager,
 	peerScorer *peers.Scorer,
 	localPeerAddr types.Address,
-	serviceProvider service.ServiceProvider,
+	serviceProvider *service.ServiceProvider,
 ) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -101,7 +101,7 @@ func (m *Manager) Stop() {
 	consensusLogger().Infow("Consensus manager stopped")
 }
 
-func (m *Manager) SetServiceProvider(serviceProvider service.ServiceProvider) {
+func (m *Manager) SetServiceProvider(serviceProvider *service.ServiceProvider) {
 	m.serviceProvider = serviceProvider
 }
 

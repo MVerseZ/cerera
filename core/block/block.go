@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"unsafe"
 
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/common"
@@ -59,9 +58,9 @@ func (h *Header) Bytes() []byte {
 
 type Block struct {
 	Head          *Header              `json:"header" gencodec:"required"` //
-	Transactions  []types.GTransaction `json:"transactions," gencodec:"required"`
-	Confirmations int                  `json:"confirmations," gencodec:"required"`
-	Hash          common.Hash          `json:"hash," gencodec:"required"`
+	Transactions  []types.GTransaction `json:"transactions" gencodec:"required"`
+	Confirmations int                  `json:"confirmations" gencodec:"required"`
+	Hash          common.Hash          `json:"hash" gencodec:"required"`
 }
 
 type UnconfirmedBlock struct {
@@ -169,13 +168,65 @@ func CopyHeader(h *Header) *Header {
 }
 
 func CalculateSize(b Block) int {
-	var txSize = 0
-	if len(b.Transactions) > 0 {
-		for _, tx := range b.Transactions {
-			txSize += int(unsafe.Sizeof(tx))
-		}
+	totalSize := 0
+
+	// Header
+	if b.Head != nil {
+		totalSize += headerSize()
 	}
-	return txSize + int(unsafe.Sizeof(b))
+
+	// Транзакции
+	for _, tx := range b.Transactions {
+		totalSize += txSize(tx) // Реализуйте в зависимости от типа tx
+	}
+
+	// Hash
+	totalSize += len(b.Hash.Bytes())
+
+	// Confirmations
+	totalSize += 8
+
+	return totalSize
+}
+
+func headerSize() int {
+	return 4 + 8 + 8 + 8 + 8 + 8 + 8 + address.AddressSize +
+		8 + common.HashSize + common.HashSize + 8 + 8 + 8 + 8
+}
+
+func txSize(tx types.GTransaction) int {
+
+	size := 0
+
+	// Основные поля
+	size += 8 // nonce (uint64)
+	size += 8 // gas (uint64)
+	size += 8 // timestamp (int64)
+
+	// big.Int поля (газпрайс, значение, V, R, S)
+	size += tx.GasPrice().BitLen()/8 + 1
+	size += tx.Value().BitLen()/8 + 1
+
+	v, r, s := tx.RawSignatureValues()
+	size += v.BitLen()/8 + 1
+	size += r.BitLen()/8 + 1
+	size += s.BitLen()/8 + 1
+
+	// data
+	size += len(tx.Data())
+
+	// dna
+	size += len(tx.Dna())
+
+	// to (Address)
+	if to := tx.To(); to != nil {
+		size += len(to.Bytes())
+	}
+
+	// тип транзакции (1 байт)
+	size += 1
+
+	return size
 }
 
 func GenerateGenesis(nodeAddress address.Address) *Block {
@@ -242,9 +293,6 @@ func (b *Block) SetNonceBytes(newNonce []byte) {
 	b.Head.Nonce = binary.BigEndian.Uint64(bts)
 }
 
-func (b *Block) UpdateHash() {
-}
-
 func FromBytes(b []byte) (*Block, error) {
 	var blockData *Block
 	err := json.Unmarshal(b, &blockData)
@@ -277,8 +325,27 @@ func CrvBlockHash(block Block) (h common.Hash) {
 }
 
 func CrvHeaderHash(header Header) (h common.Hash) {
-	hw, _ := blake2b.New256(nil)
-	h.SetBytes(hw.Sum(nil))
+	buf := new(bytes.Buffer)
+
+	// Записываем все поля последовательно
+	binary.Write(buf, binary.BigEndian, header.Ctx)            // 4 bytes
+	binary.Write(buf, binary.BigEndian, header.Difficulty)     // 8 bytes
+	buf.Write(header.Extra[:])                                 // 8 bytes
+	binary.Write(buf, binary.BigEndian, header.GasLimit)       // 8 bytes
+	binary.Write(buf, binary.BigEndian, header.GasUsed)        // 8 bytes
+	binary.Write(buf, binary.BigEndian, int64(header.Height))  // 8 bytes
+	binary.Write(buf, binary.BigEndian, header.Index)          // 8 bytes
+	buf.Write(header.Node.Bytes())                             // 20 bytes
+	binary.Write(buf, binary.BigEndian, int64(header.ChainId)) // 8 bytes
+	buf.Write(header.PrevHash.Bytes())                         // 32 bytes
+	buf.Write(header.Root.Bytes())                             // 32 bytes
+	binary.Write(buf, binary.BigEndian, header.Timestamp)      // 8 bytes
+	buf.Write(header.V[:])                                     // 8 bytes
+	binary.Write(buf, binary.BigEndian, header.Nonce)          // 8 bytes
+
+	// Вычисляем хеш
+	hash := blake2b.Sum256(buf.Bytes())
+	h.SetBytes(hash[:])
 	return h
 }
 

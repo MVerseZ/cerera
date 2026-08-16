@@ -68,7 +68,7 @@ type Config struct {
 	IN_MEM  bool // storage inmem?
 }
 
-func GenerageConfig() *Config {
+func GenerageConfig() (*Config, error) {
 	configFilePath := "config.json"
 	cfg := &Config{}
 	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
@@ -135,7 +135,7 @@ func GenerageConfig() *Config {
 	} else {
 		cfg, err = ReadConfig(configFilePath)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		// Override seed nodes from environment variable if set
@@ -154,7 +154,7 @@ func GenerageConfig() *Config {
 			}
 		}
 	}
-	return cfg
+	return cfg, nil
 }
 
 // splitAndTrim splits a string by separator and trims whitespace from each part
@@ -181,7 +181,7 @@ func (cfg *Config) SetPorts(rpc int, p2p int) {
 	}
 	cfg.WriteConfigToFile()
 }
-func (cfg *Config) SetNodeKey(pemFilePath string) {
+func (cfg *Config) SetNodeKey(pemFilePath string) error {
 	if pemFilePath == "" {
 		// use dafault
 		pemFilePath = "ddddd.nodekey.pem"
@@ -193,15 +193,18 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 		if _, err := os.Stat(pemFilePath); err == nil {
 			f, err := os.Open(pemFilePath)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			b1 := make([]byte, 221)
 			n1, err := f.Read(b1)
 			if err != nil {
-				panic(err)
+				return err
 			}
 			ppk = string(b1[:n1])
-			nodeK = crypto.DecodePrivKey(ppk)
+			nodeK, err = crypto.DecodePrivKey(ppk)
+			if err != nil {
+				return err
+			}
 			ppk = crypto.EncodePrivateKeyToToString(nodeK)
 			currentNodeAddress = crypto.PubkeyToAddress(nodeK.PublicKey)
 		} else {
@@ -210,7 +213,7 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 			ppk = crypto.EncodePrivateKeyToToString(nodeK)
 			err := os.WriteFile(pemFilePath, []byte(ppk), 0644)
 			if err != nil {
-				panic(err)
+				return err
 			}
 		}
 	}
@@ -219,6 +222,7 @@ func (cfg *Config) SetNodeKey(pemFilePath string) {
 	cfg.NetCfg.PUB = crypto.EncodePublicKeyToByte(&nodeK.PublicKey)
 
 	cfg.WriteConfigToFile()
+	return nil
 }
 func (cfg *Config) SetAutoGen(f bool) {
 	if !cfg.AUTOGEN {
@@ -244,11 +248,11 @@ func (cfg *Config) UpdateChainPath(newPath string) {
 func (cfg *Config) WriteConfigToFile() error {
 	fileData, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	err = os.WriteFile("config.json", fileData, 0644)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	return nil
 }

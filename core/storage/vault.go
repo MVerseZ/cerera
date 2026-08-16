@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -21,6 +20,7 @@ import (
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/coinbase"
 	"github.com/cerera/internal/logger"
+	"github.com/cerera/internal/service"
 	"golang.org/x/crypto/blake2b"
 
 	"github.com/akrylysov/pogreb"
@@ -88,6 +88,8 @@ type Vault interface {
 	// Contract storage methods (key-value storage)
 	SetStorage(address types.Address, key *big.Int, value *big.Int) error
 	GetStorage(address types.Address, key *big.Int) (*big.Int, error)
+
+	Methods() map[string]service.RPCHandler
 }
 
 type D5Vault struct {
@@ -111,7 +113,10 @@ type D5Vault struct {
 	dbMu sync.RWMutex
 }
 
-var vlt D5Vault
+var (
+	vlt  D5Vault
+	once sync.Once
+)
 
 // AccountCreatedHook is invoked with StateAccount.Bytes() after a successful Vault.Create.
 // The node wires this to P2P (e.g. GossipSub) so peers can merge the same account state.
@@ -210,13 +215,14 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	gob.Register(account.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
-	vlt = D5Vault{
-		accounts:          GetAccountsTrie(),
-		rootHash:          common.EmptyHash(),
-		inMem:             cfg.IN_MEM,
-		faucetLastRequest: make(map[types.Address]time.Time),
-		// stChan:   make(chan [32]byte),
-	}
+	once.Do(func() {
+		vlt = D5Vault{
+			accounts:          GetAccountsTrie(),
+			rootHash:          common.EmptyHash(),
+			inMem:             cfg.IN_MEM,
+			faucetLastRequest: make(map[types.Address]time.Time),
+		}
+	})
 
 	vltlogger().Infow("Init vault",
 		"address", rootHashAddress.String(),
@@ -390,7 +396,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		vltlogger().Infow("Account saved to vault", "address", address.Hex())
 	}
 
-	restoredPrivateKey := crypto.RXor(masterKey, &privateKey.PublicKey, xorResult)
+	restoredPrivateKey := crypto.RXor(masterKey, xorResult)
 	vltlogger().Infow("Account created", "restored private key without offset", restoredPrivateKey)
 	vltlogger().Infow("Account created", "keys equality", bytes.Equal(restoredPrivateKey, etaKeyBytes))
 
@@ -430,9 +436,7 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrAccountNotFound, err)
 	}
 
-	var publicKey *ecdsa.PublicKey
-
-	privateKeyBytes := crypto.RXor(masterKey, publicKey, account.Data)
+	privateKeyBytes := crypto.RXor(masterKey, account.Data)
 	privateKey, err := crypto.DecodeBytesToPrivateKey(privateKeyBytes)
 	if err != nil {
 		return types.EmptyAddress(), "", fmt.Errorf("failed to decode private key: %w", err)
@@ -610,12 +614,9 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	if v.faucetLastRequest == nil {
 		v.faucetLastRequest = make(map[types.Address]time.Time)
 	}
-	v.faucetMu.Unlock()
 
 	// Check cooldown period
-	v.faucetMu.RLock()
 	lastRequest, exists := v.faucetLastRequest[to]
-	v.faucetMu.RUnlock()
 
 	if exists {
 		cooldownDuration := time.Duration(coinbase.FaucetCooldownHours) * time.Hour
@@ -632,7 +633,6 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	}
 
 	// Update last request time
-	v.faucetMu.Lock()
 	v.faucetLastRequest[to] = time.Now()
 	v.faucetMu.Unlock()
 
@@ -1234,4 +1234,137 @@ func (v *D5Vault) Exec(method string, params []any) any {
 		return account.GetAllInputs()
 	}
 	return nil
+}
+
+func (v *D5Vault) Methods() map[string]service.RPCHandler {
+	return map[string]service.RPCHandler{
+		"getAll": func(ctx context.Context, params []any) (any, error) {
+			return v.GetAll(), nil
+		},
+		"getCount": func(ctx context.Context, params []any) (any, error) {
+			return v.GetCount(), nil
+		},
+		"create": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("passphrase required")
+			}
+			passphrase, ok := params[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("passphrase must be string")
+			}
+			mk, pk, m, addr, err := v.Create(passphrase)
+			if err != nil {
+				return nil, err
+			}
+			type res struct {
+				Address  *types.Address `json:"address,omitempty"`
+				Priv     string         `json:"priv,omitempty"`
+				Pub      string         `json:"pub,omitempty"`
+				Mnemonic string         `json:"mnemonic,omitempty"`
+			}
+			return &res{
+				Address:  addr,
+				Priv:     mk,
+				Pub:      pk,
+				Mnemonic: m,
+			}, nil
+		},
+		"restore": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 2 {
+				return nil, fmt.Errorf("mnemonic and passphrase required")
+			}
+			mnemonic, ok0 := params[0].(string)
+			pass, ok1 := params[1].(string)
+			if !ok0 || !ok1 {
+				return nil, fmt.Errorf("mnemonic and passphrase must be strings")
+			}
+			addr, pk, err := v.Restore(mnemonic, pass)
+			if err != nil {
+				return nil, err
+			}
+			type res struct {
+				Addr types.Address `json:"address,omitempty"`
+				Priv string        `json:"priv,omitempty"`
+				Pub  string        `json:"pub,omitempty"`
+			}
+			return &res{
+				Priv: pk,
+				Addr: addr,
+			}, nil
+		},
+		"verify": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 2 {
+				return nil, fmt.Errorf("address and passphrase required")
+			}
+			addrHex, ok0 := params[0].(string)
+			pass, ok1 := params[1].(string)
+			if !ok0 || !ok1 {
+				return nil, fmt.Errorf("address and passphrase must be strings")
+			}
+			rAddr, err := v.VerifyAccount(types.HexToAddress(addrHex), pass)
+			if err != nil {
+				return false, nil
+			}
+			return rAddr.Hex() == addrHex, nil
+		},
+		"getBalance": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("address required")
+			}
+			addrHex, ok := params[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("address must be string")
+			}
+			acc := v.Get(types.HexToAddress(addrHex))
+			if acc == nil {
+				return big.NewInt(0), nil
+			}
+			return acc.GetBalance(), nil
+		},
+		"faucet": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 2 {
+				return nil, fmt.Errorf("address and amount required")
+			}
+			addrStr, ok0 := params[0].(string)
+			if !ok0 {
+				return nil, fmt.Errorf("address must be string")
+			}
+			addr := types.HexToAddress(addrStr)
+			var amountBigInt *big.Int
+			if s, ok := params[1].(string); ok {
+				dust, err := types.DecimalStringToDust(s)
+				if err != nil {
+					return nil, err
+				}
+				amountBigInt = dust
+			} else if f, ok := params[1].(float64); ok {
+				amountBigInt = common.FloatToBigInt(f)
+			} else {
+				return nil, fmt.Errorf("amount must be string or number")
+			}
+			txHash := common.BytesToHash([]byte("faucet_" + addrStr))
+			err := v.DropFaucet(addr, amountBigInt, txHash)
+			if err != nil {
+				return nil, err
+			}
+			return "Faucet successful", nil
+		},
+		"inputs": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("address required")
+			}
+			addrHex, ok := params[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("address must be string")
+			}
+			account := v.Get(types.HexToAddress(addrHex))
+			if account == nil {
+				return map[common.Hash]*big.Int{}, nil
+			}
+			return account.GetAllInputs(), nil
+		},
+		"getTotalSupply": func(ctx context.Context, params []any) (any, error) {
+			return v.GetTotalSupply(), nil
+		},
+	}
 }

@@ -15,9 +15,9 @@ import (
 	"github.com/cerera/icenet/metrics"
 	"github.com/cerera/icenet/peers"
 	"github.com/cerera/icenet/protocol"
+	"github.com/cerera/icenet/service"
 	icesync "github.com/cerera/icenet/sync"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/service"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -173,13 +173,19 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	// Update metrics
 	metrics.SetPubSubTopicsJoined(4) // blocks, txs, consensus, accounts
 
+	sp, err := service.NewServiceProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start service provider: %w", err)
+	}
+	ice.SetServiceProvider(sp)
+
 	return ice, nil
 }
 
 // SetApiProvider sets the api provider, creates sync manager and handler with it, and starts sync.
-func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
+func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.mu.Lock()
-	ice.ServiceProvider = provider
+	ice.ServiceProvider = *provider
 
 	// Initialize consensus engine if not yet created.
 	if ice.Consensus == nil {
