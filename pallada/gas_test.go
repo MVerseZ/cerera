@@ -100,7 +100,7 @@ func TestCalculateMemoryGas(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CalculateMemoryGas(tt.current, tt.new)
+			result, _ := CalculateMemoryGas(tt.current, tt.new)
 			if result < tt.expected/2 || result > tt.expected*2 {
 				// Проверяем приблизительно, так как формула может быть упрощенной
 				t.Logf("Memory gas: current=%d, new=%d, got=%d (expected ~%d)", tt.current, tt.new, result, tt.expected)

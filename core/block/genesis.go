@@ -15,7 +15,7 @@ func GenesisHead(chainId int) *Header {
 		Height:     0,
 		Index:      0,
 		Timestamp:  uint64(time.Date(2022, 6, 24, 0, 0, 0, 0, time.UTC).UnixMilli()),
-		GasLimit:   250000,
+		GasLimit:   750000,
 		GasUsed:    0,
 		ChainId:    chainId,
 		Node:       address.EmptyAddress(),

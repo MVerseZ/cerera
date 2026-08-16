@@ -504,17 +504,6 @@ func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	p.NotifyAll(stored)
 }
 
-// Exec dispatches a named method call on the pool.
-// func (p *Pool) Exec(method string, params []interface{}) interface{} {
-// 	switch method {
-// 	case "getInfo":
-// 		return p.GetInfo()
-// 	case "minGas":
-// 		return p.GetMinimalGasValue()
-// 	}
-// 	return nil
-// }
-
 func (p *Pool) Methods() map[string]service.RPCHandler {
 	return map[string]service.RPCHandler{
 		"getInfo": func(ctx context.Context, params []any) (any, error) {

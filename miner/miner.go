@@ -76,13 +76,13 @@ type HeightLockChecker interface {
 }
 
 type miner struct {
-	mu     sync.Mutex
-	ctx    context.Context
-	status byte
-	config *config.Config
-	chain  *chain.Chain
-	pool   pool.TxPool
-	valid  validator.Validator
+	mu       sync.Mutex
+	ctx      context.Context
+	status   byte
+	config   *config.Config
+	chain    *chain.Chain
+	pool     pool.TxPool
+	valid    validator.Validator
 	mining   bool
 	stopChan chan struct{}
 
@@ -164,7 +164,7 @@ func (m *miner) Start() error {
 	return nil
 }
 
-func (m *miner) newTask(txs []types.GTransaction) *Task {
+func (m *miner) newTask(txs []*types.GTransaction) *Task {
 	return &Task{
 		id:    m.config.NetCfg.ADDR,
 		chain: m.config.Chain.ChainID,
@@ -207,7 +207,7 @@ func (m *miner) handleResult(data Result) {
 	if err := m.chain.UpdateChain(data.Value); err != nil {
 		minerLogger().Errorw("[MINER] failed to update chain", "error", err)
 		current := m.worker.GetCurrentTask()
-		var txs []types.GTransaction
+		var txs []*types.GTransaction
 		if current != nil {
 			txs = current.txs
 		}
@@ -249,15 +249,7 @@ func (m *miner) Update(tx *types.GTransaction) {
 		return
 	}
 
-	var txs []types.GTransaction
-	if current := m.worker.GetCurrentTask(); current != nil {
-		if containsTx(current.txs, tx) {
-			return
-		}
-		txs = mergeTx(current.txs, *tx)
-	} else {
-		txs = []types.GTransaction{*tx}
-	}
+	txs := m.pool.GetMiningPackage(m.pool.GetInfo().Size)
 
 	minerLogger().Infow("[MINER] New pool tx, restarting miner", "tx", tx.Hash(), "txs", len(txs))
 	m.worker.Compute(m.newTask(txs))

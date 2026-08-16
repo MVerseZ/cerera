@@ -610,12 +610,9 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	if v.faucetLastRequest == nil {
 		v.faucetLastRequest = make(map[types.Address]time.Time)
 	}
-	v.faucetMu.Unlock()
 
 	// Check cooldown period
-	v.faucetMu.RLock()
 	lastRequest, exists := v.faucetLastRequest[to]
-	v.faucetMu.RUnlock()
 
 	if exists {
 		cooldownDuration := time.Duration(coinbase.FaucetCooldownHours) * time.Hour
@@ -632,7 +629,6 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	}
 
 	// Update last request time
-	v.faucetMu.Lock()
 	v.faucetLastRequest[to] = time.Now()
 	v.faucetMu.Unlock()
 

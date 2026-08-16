@@ -35,7 +35,7 @@ type Task struct {
 	id    types.Address
 	chain int
 	prev  *block.Block
-	txs   []types.GTransaction
+	txs   []*types.GTransaction
 }
 
 // Result представляет результат вычисления
@@ -141,7 +141,7 @@ func mergeTx(existing []types.GTransaction, tx types.GTransaction) []types.GTran
 	return out
 }
 
-func remainingTxs(task *Task, mined *block.Block) []types.GTransaction {
+func remainingTxs(task *Task, mined *block.Block) []*types.GTransaction {
 	if task == nil || len(task.txs) == 0 || mined == nil {
 		return nil
 	}
@@ -149,7 +149,7 @@ func remainingTxs(task *Task, mined *block.Block) []types.GTransaction {
 	for i := range mined.Transactions {
 		included[mined.Transactions[i].Hash()] = struct{}{}
 	}
-	out := make([]types.GTransaction, 0, len(task.txs))
+	out := make([]*types.GTransaction, 0, len(task.txs))
 	for i := range task.txs {
 		if _, ok := included[task.txs[i].Hash()]; !ok {
 			out = append(out, task.txs[i])
@@ -208,7 +208,7 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 
 		// Faucet-транзакции не учитываются в GasUsed, но добавляются в блок.
 		if txType == types.FaucetTxType {
-			selectedTxs = append(selectedTxs, tx)
+			selectedTxs = append(selectedTxs, *tx)
 			continue
 		}
 
@@ -223,7 +223,7 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 				"gas_limit", newHeader.GasLimit)
 			continue
 		}
-		selectedTxs = append(selectedTxs, tx)
+		selectedTxs = append(selectedTxs, *tx)
 		totalGasUsed += txGas
 	}
 
