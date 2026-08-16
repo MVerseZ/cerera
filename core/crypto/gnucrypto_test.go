@@ -73,7 +73,10 @@ func TestDecodePrivKey(t *testing.T) {
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: x509Encoded})
 
 	// Decode the private key
-	decodedPrivateKey := DecodePrivKey(string(pemEncoded))
+	decodedPrivateKey, err := DecodePrivKey(string(pemEncoded))
+	if err != nil {
+		t.Fatalf("Cannot decode pem key")
+	}
 
 	// Check if the decoded private key matches the original private key
 	if !privateKey.Equal(decodedPrivateKey) {
@@ -98,7 +101,7 @@ func TestDecodePrivateAndPublicKey(t *testing.T) {
 	pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
 
 	// Decode the private and public key
-	decodedPrivateKey, decodedPublicKey := DecodePrivateAndPublicKey(string(pemEncodedPriv), string(pemEncodedPub))
+	decodedPrivateKey, decodedPublicKey, _ := DecodePrivateAndPublicKey(string(pemEncodedPriv), string(pemEncodedPub))
 
 	// Check if the decoded private key matches the original private key
 	if !privateKey.Equal(decodedPrivateKey) {
@@ -662,7 +665,10 @@ func TestEncodeKeysRoundTrip(t *testing.T) {
 	}
 
 	// Decode private key via DecodePrivKey
-	decodedPriv := DecodePrivKey(privStr)
+	decodedPriv, err := DecodePrivKey(privStr)
+	if err != nil {
+		t.Fatal("Error while decode key")
+	}
 	if decodedPriv == nil {
 		t.Fatal("DecodePrivKey should not return nil")
 	}

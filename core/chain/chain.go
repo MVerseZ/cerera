@@ -252,7 +252,6 @@ func Mold(cfg *config.Config) (*Chain, error) {
 func loadGenesisBlock(chainID int) (*block.Block, error) {
 	genesisHead := block.GenesisHead(chainID)
 	genesisBlock := block.NewBlockWithHeaderAndHash(genesisHead)
-	genesisBlock.UpdateHash()
 	return genesisBlock, nil
 }
 
@@ -584,6 +583,10 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 		// genesis or invalid; allow without lock
 	} else if !bc.TryLockHeight(height) {
 		return fmt.Errorf("height %d already locked", height)
+	}
+
+	if newBlock.Header().PrevHash != bc.currentBlock.Hash {
+		return errors.New("Prev hash diff from current head")
 	}
 
 	bc.mu.Lock()

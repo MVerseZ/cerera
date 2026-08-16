@@ -118,8 +118,8 @@ func convertECDSAToLibp2p(cfg *config.Config) (crypto.PrivKey, error) {
 // decodeECDSAPrivateKey decodes an ECDSA private key from PEM string
 func decodeECDSAPrivateKey(pemStr string) (*ecdsa.PrivateKey, error) {
 	// Use the existing types.DecodePrivKey function
-	key := types.DecodePrivKey(pemStr)
-	if key == nil {
+	key, err := types.DecodePrivKey(pemStr)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode private key")
 	}
 	return key, nil

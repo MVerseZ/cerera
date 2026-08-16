@@ -181,7 +181,10 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
 	flag.Parse()
 
-	cfg := config.GenerageConfig()
+	cfg, err := config.GenerageConfig()
+	if err != nil {
+		panic(err)
+	}
 	cfg.SetNodeKey(*keyPath)
 	cfg.SetAutoGen(true)
 	cfg.SetInMem(*inMem)

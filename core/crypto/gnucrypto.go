@@ -232,16 +232,25 @@ func DecodeByteToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
 	return ecdsaPub, nil
 }
 
-func DecodePrivKey(pemEncoded string) *ecdsa.PrivateKey {
+func DecodePrivKey(pemEncoded string) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(pemEncoded))
+	if block == nil {
+		return nil, errors.New("cannot decode pem")
+	}
 	x509Encoded := block.Bytes
-	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
+	privateKey, err := x509.ParseECPrivateKey(x509Encoded)
+	if err != nil {
+		return nil, err
+	}
 
-	return privateKey
+	return privateKey, nil
 }
 
-func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.PrivateKey, *ecdsa.PublicKey) {
+func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.PrivateKey, *ecdsa.PublicKey, error) {
 	block, _ := pem.Decode([]byte(pemEncoded))
+	if block == nil {
+		return nil, nil, errors.New("cannot decode pem")
+	}
 	x509Encoded := block.Bytes
 	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
 
@@ -250,7 +259,7 @@ func DecodePrivateAndPublicKey(pemEncoded string, pemEncodedPub string) (*ecdsa.
 	genericPublicKey, _ := x509.ParsePKIXPublicKey(x509EncodedPub)
 	publicKey := genericPublicKey.(*ecdsa.PublicKey)
 
-	return privateKey, publicKey
+	return privateKey, publicKey, nil
 }
 
 func Xor(privateKey *ecdsa.PrivateKey, masterKey *bip32.Key) []byte {

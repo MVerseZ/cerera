@@ -120,7 +120,10 @@ func (v *CoreValidator) SetChain(bc *chain.Chain) {
 }
 
 func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
-	var p = crypto.DecodePrivKey(cfg.NetCfg.PRIV)
+	var p, err = crypto.DecodePrivKey(cfg.NetCfg.PRIV)
+	if err != nil {
+		return nil, err
+	}
 	storage.InitTxTable()
 	v := &CoreValidator{
 		signatureKey:   p,
@@ -129,16 +132,6 @@ func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
 	}
-	// Get chain from registry if not set
-	// registry, err := service.GetRegistry()
-	// if err == nil {
-	// 	if ch, ok := registry.GetService(chain.CHAIN_SERVICE_NAME); ok {
-	// 		if chainPtr, ok := ch.(*chain.Chain); ok {
-	// 			v.(*CoreValidator).Chain = chainPtr
-	// 		}
-	// 	}
-	// }
-	// Ensure validator invariants are initialized
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
 	return v, nil
 }
@@ -341,7 +334,15 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 	}
 
 	var aKey *ecdsa.PrivateKey
-	aKey = crypto.DecodePrivKey(signKey)
+	aKey, err := crypto.DecodePrivKey(signKey)
+	if err != nil {
+		vlogger.Errorw("error while decode key",
+			"hash", tx.Hash(),
+			"err", err,
+		)
+		valSignError.Inc()
+		return errors.New("error while sign tx")
+	}
 	// fmt.Printf("Sing tx: %s\r\n", tx.Hash())
 	signTx, err2 := types.SignTx(tx, v.signer, aKey)
 	if err2 != nil {

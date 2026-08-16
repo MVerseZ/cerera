@@ -18,6 +18,7 @@ import (
 
 const (
 	AddressLength = 32
+	AddressSize   = 32
 )
 
 var (

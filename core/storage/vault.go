@@ -113,7 +113,10 @@ type D5Vault struct {
 	dbMu sync.RWMutex
 }
 
-var vlt D5Vault
+var (
+	vlt  D5Vault
+	once sync.Once
+)
 
 // AccountCreatedHook is invoked with StateAccount.Bytes() after a successful Vault.Create.
 // The node wires this to P2P (e.g. GossipSub) so peers can merge the same account state.
@@ -212,13 +215,14 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	gob.Register(account.StateAccount{})
 	var rootHashAddress = cfg.NetCfg.ADDR
 
-	vlt = D5Vault{
-		accounts:          GetAccountsTrie(),
-		rootHash:          common.EmptyHash(),
-		inMem:             cfg.IN_MEM,
-		faucetLastRequest: make(map[types.Address]time.Time),
-		// stChan:   make(chan [32]byte),
-	}
+	once.Do(func() {
+		vlt = D5Vault{
+			accounts:          GetAccountsTrie(),
+			rootHash:          common.EmptyHash(),
+			inMem:             cfg.IN_MEM,
+			faucetLastRequest: make(map[types.Address]time.Time),
+		}
+	})
 
 	vltlogger().Infow("Init vault",
 		"address", rootHashAddress.String(),

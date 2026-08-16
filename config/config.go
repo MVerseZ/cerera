@@ -201,7 +201,10 @@ func (cfg *Config) SetNodeKey(pemFilePath string) error {
 				return err
 			}
 			ppk = string(b1[:n1])
-			nodeK = crypto.DecodePrivKey(ppk)
+			nodeK, err = crypto.DecodePrivKey(ppk)
+			if err != nil {
+				return err
+			}
 			ppk = crypto.EncodePrivateKeyToToString(nodeK)
 			currentNodeAddress = crypto.PubkeyToAddress(nodeK.PublicKey)
 		} else {
