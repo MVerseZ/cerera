@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cerera/core/types"
 	"github.com/cerera/config"
+	"github.com/cerera/core/types"
 )
 
 // createTestConfig создает тестовую конфигурацию
@@ -21,7 +21,7 @@ func createTestConfigForContract() *config.Config {
 			PATH: filepath.Join(os.TempDir(), "test_vault_contract"),
 		},
 		NetCfg: config.NetworkConfig{
-			ADDR: types.PubkeyToAddress(privateKey.PublicKey),
+			ADDR: types.PubkeyToAddress(&privateKey.PublicKey),
 			PRIV: privKeyString,
 		},
 		IN_MEM: false,
@@ -48,7 +48,7 @@ func TestD5Vault_StoreContractCode(t *testing.T) {
 
 	// Создаем тестовый адрес и код контракта
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 	contractCode := []byte{0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3} // Простой байткод
 
 	// Сохраняем код контракта
@@ -89,7 +89,7 @@ func TestD5Vault_GetContractCode(t *testing.T) {
 
 	// Создаем тестовый адрес и код контракта
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 	contractCode := []byte{0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}
 
 	// Сохраняем код
@@ -135,7 +135,7 @@ func TestD5Vault_GetContractCode_NotFound(t *testing.T) {
 
 	// Создаем несуществующий адрес
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 
 	// Пытаемся получить код
 	_, err = d5Vault.GetContractCode(address)
@@ -164,7 +164,7 @@ func TestD5Vault_HasContractCode(t *testing.T) {
 
 	// Создаем тестовый адрес
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 
 	// Проверяем, что кода нет
 	if d5Vault.HasContractCode(address) {
@@ -204,7 +204,7 @@ func TestD5Vault_StoreContractCode_EmptyCode(t *testing.T) {
 
 	// Создаем тестовый адрес
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 
 	// Пытаемся сохранить пустой код
 	err = d5Vault.StoreContractCode(address, []byte{})
@@ -233,7 +233,7 @@ func TestD5Vault_StoreContractCode_UpdateExisting(t *testing.T) {
 
 	// Создаем тестовый адрес
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 
 	// Сохраняем первый код
 	firstCode := []byte{0x60, 0x00, 0x52}
@@ -294,7 +294,7 @@ func TestD5Vault_DeleteContractCode(t *testing.T) {
 
 	// Создаем тестовый адрес и код контракта
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 	contractCode := []byte{0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3}
 
 	// Сохраняем код
@@ -346,7 +346,7 @@ func TestD5Vault_DeleteContractCode_NonExistent(t *testing.T) {
 
 	// Создаем несуществующий адрес
 	privateKey, _ := types.GenerateAccount()
-	address := types.PubkeyToAddress(privateKey.PublicKey)
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
 
 	// Удаление несуществующего кода не должно вызывать ошибку
 	err = d5Vault.DeleteContractCode(address)

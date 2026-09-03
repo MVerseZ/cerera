@@ -9,8 +9,8 @@ import (
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
+	"github.com/cerera/icenet/service"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/service"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -31,7 +31,7 @@ func protocolLogger() *zap.SugaredLogger {
 // Handler handles protocol messages
 type Handler struct {
 	host            host.Host
-	serviceProvider service.ServiceProvider
+	serviceProvider *service.ServiceProvider
 	nodeAddr        types.Address
 	version         string
 
@@ -43,7 +43,7 @@ type Handler struct {
 }
 
 // NewHandler creates a new protocol handler
-func NewHandler(h host.Host, serviceProvider service.ServiceProvider, nodeAddr types.Address, version string) *Handler {
+func NewHandler(h host.Host, serviceProvider *service.ServiceProvider, nodeAddr types.Address, version string) *Handler {
 	return &Handler{
 		host:            h,
 		serviceProvider: serviceProvider,

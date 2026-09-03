@@ -14,6 +14,8 @@ const (
 	AddressLenUgth = 20
 	HashLength     = 32
 	GnuHashLength  = 48 // up from 24 to 48 is secure move
+
+	HashSize = 32
 )
 
 var (

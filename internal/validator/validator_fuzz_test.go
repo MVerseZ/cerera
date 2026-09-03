@@ -49,7 +49,7 @@ func FuzzValidateRawTransaction(f *testing.F) {
 		var addr types.Address
 		tx, _ := types.CreateUnbroadcastTransaction(1, addr, 10.0, 2000, big.NewInt(1), "test")
 
-		result := validator.ValidateRawTransaction(tx)
+		result := validator.ValidateRawTransaction(*tx)
 		// Just check that it doesn't panic
 		_ = result
 	})

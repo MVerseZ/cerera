@@ -119,7 +119,10 @@ func executeHashOperations(vm *VM, op Opcode) error {
 	currentSize := vm.memory.Size()
 	endOffset := offset.Uint64() + length.Uint64()
 	if endOffset > currentSize {
-		gasCost := CalculateMemoryGas(currentSize, endOffset)
+		gasCost, errCalc := CalculateMemoryGas(currentSize, endOffset)
+		if errCalc != nil {
+			return errCalc
+		}
 		if err := vm.gasMeter.ConsumeGas(gasCost, "hash memory expansion"); err != nil {
 			return err
 		}
@@ -274,7 +277,10 @@ func executeMemoryOperations(vm *VM, op Opcode) error {
 		currentSize := vm.memory.Size()
 		newSize := offset.Uint64() + 32
 		if newSize > currentSize {
-			gasCost := CalculateMemoryGas(currentSize, newSize)
+			gasCost, errCalc := CalculateMemoryGas(currentSize, newSize)
+			if errCalc != nil {
+				return errCalc
+			}
 			if err := vm.gasMeter.ConsumeGas(gasCost, "MLOAD memory expansion"); err != nil {
 				return err
 			}
@@ -304,7 +310,10 @@ func executeMemoryOperations(vm *VM, op Opcode) error {
 		currentSize := vm.memory.Size()
 		newSize := offset.Uint64() + 32
 		if newSize > currentSize {
-			gasCost := CalculateMemoryGas(currentSize, newSize)
+			gasCost, errCalc := CalculateMemoryGas(currentSize, newSize)
+			if errCalc != nil {
+				return errCalc
+			}
 			if err := vm.gasMeter.ConsumeGas(gasCost, "MSTORE memory expansion"); err != nil {
 				return err
 			}
@@ -337,7 +346,10 @@ func executeMemoryOperations(vm *VM, op Opcode) error {
 		currentSize := vm.memory.Size()
 		newSize := offset.Uint64() + 1
 		if newSize > currentSize {
-			gasCost := CalculateMemoryGas(currentSize, newSize)
+			gasCost, errCalc := CalculateMemoryGas(currentSize, newSize)
+			if errCalc != nil {
+				return errCalc
+			}
 			if err := vm.gasMeter.ConsumeGas(gasCost, "MSTORE8 memory expansion"); err != nil {
 				return err
 			}
@@ -483,7 +495,10 @@ func executeCalldataOperations(vm *VM, op Opcode) error {
 		dest := destOffset.Uint64()
 		currentSize := vm.memory.Size()
 		if dest+l > currentSize {
-			gasMem := CalculateMemoryGas(currentSize, dest+l)
+			gasMem, errCalc := CalculateMemoryGas(currentSize, dest+l)
+			if errCalc != nil {
+				return errCalc
+			}
 			if err := vm.gasMeter.ConsumeGas(gasMem, "CALLDATACOPY memory expansion"); err != nil {
 				return err
 			}
@@ -585,7 +600,10 @@ func executeLogOperations(vm *VM, op Opcode) error {
 	currentSize := vm.memory.Size()
 	endOffset := offset.Uint64() + dataLen
 	if endOffset > currentSize && dataLen > 0 {
-		gasMem := CalculateMemoryGas(currentSize, endOffset)
+		gasMem, errCalc := CalculateMemoryGas(currentSize, endOffset)
+		if errCalc != nil {
+			return errCalc
+		}
 		if err := vm.gasMeter.ConsumeGas(gasMem, "LOG memory expansion"); err != nil {
 			return err
 		}
@@ -813,7 +831,10 @@ func executeCallOperations(vm *VM, op Opcode) error {
 			currentSize := vm.memory.Size()
 			newSize := outputOffset.Uint64() + outputLen
 			if newSize > currentSize {
-				gasCost := CalculateMemoryGas(currentSize, newSize)
+				gasCost, errCalc := CalculateMemoryGas(currentSize, newSize)
+				if errCalc != nil {
+					return errCalc
+				}
 				if err := vm.gasMeter.ConsumeGas(gasCost, "CALL memory expansion"); err != nil {
 					return err
 				}

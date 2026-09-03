@@ -18,7 +18,7 @@ func CreateTestStateAccount() StateAccount {
 
 	privateKey, _ := crypto.GenerateAccount()
 	pubkey := &privateKey.PublicKey
-	address := crypto.PubkeyToAddress(*pubkey)
+	address := crypto.PubkeyToAddress(pubkey)
 
 	newAccount := StateAccount{
 		StateAccountData: StateAccountData{

@@ -38,7 +38,7 @@ func closeTestDB(t *testing.T) {
 func createTestStateAccountForSource(balance float64) *account.StateAccount {
 	privateKey, _ := types.GenerateAccount()
 	pubkey := &privateKey.PublicKey
-	address := types.PubkeyToAddress(*pubkey)
+	address := types.PubkeyToAddress(pubkey)
 
 	testStateAccount := &account.StateAccount{
 		StateAccountData: account.StateAccountData{

@@ -9,6 +9,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1337:1337"
       - "31100:31100"
@@ -28,6 +29,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1338:1338"
       - "31101:31101"
@@ -47,6 +49,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1339:1339"
       - "31102:31102"
@@ -66,6 +69,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.15/tcp/31104
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1340:1340"
       - "31103:31103"
@@ -85,6 +89,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1341:1341"
       - "31104:31104"
@@ -104,6 +109,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1342:1342"
       - "31105:31105"
@@ -123,6 +129,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1343:1343"
       - "31106:31106"
@@ -142,6 +149,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1344:1344"
       - "31107:31107"
@@ -161,6 +169,7 @@ services:
     command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--mem=true", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1345:1345"
       - "31108:31108"

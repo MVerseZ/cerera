@@ -8,6 +8,8 @@ services:
       dockerfile: Dockerfile
     container_name: cerera-node1
     command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    environment:
+      - ICE_DEV_VALIDATORS=1
     ports:
       - "1337:1337"
       - "31100:31100"

@@ -21,7 +21,7 @@ func TestKxAddress(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	var addr = PubkeyToAddress(k1.PublicKey)
+	var addr = PubkeyToAddress(&k1.PublicKey)
 	var s, _ = PublicKeyToString(&k1.PublicKey)
 	var pk, _ = PublicKeyFromString(s)
 	if pk.X == k1.X {
@@ -36,7 +36,7 @@ func TestKeyToAddress(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	var addrPub = PubkeyToAddress(k1.PublicKey)
+	var addrPub = PubkeyToAddress(&k1.PublicKey)
 	var addrPriv = PrivKeyToAddress(*k1)
 	if addrPub != addrPriv {
 		t.Fatalf("Different addresses: %s %s", addrPub.String(), addrPriv.String())
@@ -73,7 +73,10 @@ func TestDecodePrivKey(t *testing.T) {
 	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: x509Encoded})
 
 	// Decode the private key
-	decodedPrivateKey := DecodePrivKey(string(pemEncoded))
+	decodedPrivateKey, err := DecodePrivKey(string(pemEncoded))
+	if err != nil {
+		t.Fatalf("Cannot decode pem key")
+	}
 
 	// Check if the decoded private key matches the original private key
 	if !privateKey.Equal(decodedPrivateKey) {
@@ -98,7 +101,7 @@ func TestDecodePrivateAndPublicKey(t *testing.T) {
 	pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
 
 	// Decode the private and public key
-	decodedPrivateKey, decodedPublicKey := DecodePrivateAndPublicKey(string(pemEncodedPriv), string(pemEncodedPub))
+	decodedPrivateKey, decodedPublicKey, _ := DecodePrivateAndPublicKey(string(pemEncodedPriv), string(pemEncodedPub))
 
 	// Check if the decoded private key matches the original private key
 	if !privateKey.Equal(decodedPrivateKey) {
@@ -567,7 +570,7 @@ func TestXorRXorRoundTrip(t *testing.T) {
 		t.Fatal("Xor should return non-empty data")
 	}
 
-	restored := RXor(masterKey, &privateKey.PublicKey, xorData)
+	restored := RXor(masterKey, xorData)
 	if len(restored) == 0 {
 		t.Fatal("RXor should return non-empty data")
 	}
@@ -589,8 +592,8 @@ func TestPubkeyToAddressDeterministic(t *testing.T) {
 		t.Fatalf("Failed to generate key: %v", err)
 	}
 
-	addr1 := PubkeyToAddress(privateKey.PublicKey)
-	addr2 := PubkeyToAddress(privateKey.PublicKey)
+	addr1 := PubkeyToAddress(&privateKey.PublicKey)
+	addr2 := PubkeyToAddress(&privateKey.PublicKey)
 	if addr1 != addr2 {
 		t.Errorf("PubkeyToAddress should be deterministic: %s != %s", addr1.Hex(), addr2.Hex())
 	}
@@ -603,7 +606,7 @@ func TestPrivKeyToAddressMatchesPubkey(t *testing.T) {
 		t.Fatalf("Failed to generate key: %v", err)
 	}
 
-	addrPub := PubkeyToAddress(privateKey.PublicKey)
+	addrPub := PubkeyToAddress(&privateKey.PublicKey)
 	addrPriv := PrivKeyToAddress(*privateKey)
 	if addrPub != addrPriv {
 		t.Errorf("PrivKeyToAddress should match PubkeyToAddress: %s != %s", addrPub.Hex(), addrPriv.Hex())
@@ -662,7 +665,10 @@ func TestEncodeKeysRoundTrip(t *testing.T) {
 	}
 
 	// Decode private key via DecodePrivKey
-	decodedPriv := DecodePrivKey(privStr)
+	decodedPriv, err := DecodePrivKey(privStr)
+	if err != nil {
+		t.Fatal("Error while decode key")
+	}
 	if decodedPriv == nil {
 		t.Fatal("DecodePrivKey should not return nil")
 	}

@@ -15,9 +15,9 @@ import (
 	"github.com/cerera/icenet/metrics"
 	"github.com/cerera/icenet/peers"
 	"github.com/cerera/icenet/protocol"
+	"github.com/cerera/icenet/service"
 	icesync "github.com/cerera/icenet/sync"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/service"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -59,6 +59,8 @@ type Ice struct {
 
 	// Dev-mode: treat connected peers as validators.
 	devValidators bool
+
+	onBlockFinalized func(*block.Block)
 
 	mu sync.RWMutex // guards fields read by Exec() and written during Start()/SetServiceProvider()
 }
@@ -173,13 +175,19 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	// Update metrics
 	metrics.SetPubSubTopicsJoined(4) // blocks, txs, consensus, accounts
 
+	sp, err := service.NewServiceProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start service provider: %w", err)
+	}
+	ice.SetServiceProvider(sp)
+
 	return ice, nil
 }
 
 // SetApiProvider sets the api provider, creates sync manager and handler with it, and starts sync.
-func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
+func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.mu.Lock()
-	ice.ServiceProvider = provider
+	ice.ServiceProvider = *provider
 
 	// Initialize consensus engine if not yet created.
 	if ice.Consensus == nil {
@@ -196,6 +204,17 @@ func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
 		consMgr.SetOnBlockFinalized(func(b *block.Block) {
 			if b != nil && b.Head != nil {
 				metrics.SetBlockHeight(b.Head.Height)
+			}
+			if ice.PubSub != nil && b != nil {
+				if err := ice.BroadcastBlock(b); err != nil {
+					iceLogger().Warnw("BroadcastBlock after finalize failed", "err", err)
+				}
+			}
+			ice.mu.RLock()
+			cb := ice.onBlockFinalized
+			ice.mu.RUnlock()
+			if cb != nil {
+				cb(b)
 			}
 		})
 		ice.Consensus = consMgr
@@ -236,6 +255,13 @@ func (ice *Ice) SetServiceProvider(provider service.ServiceProvider) {
 	ice.SyncManager.Start()
 
 	iceLogger().Infow("API provider set, sync manager and handler started")
+}
+
+// SetOnBlockFinalized registers a callback invoked when consensus finalizes a block.
+func (ice *Ice) SetOnBlockFinalized(callback func(*block.Block)) {
+	ice.mu.Lock()
+	ice.onBlockFinalized = callback
+	ice.mu.Unlock()
 }
 
 // onPeerConnected handles new peer connections

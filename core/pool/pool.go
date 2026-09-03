@@ -2,6 +2,7 @@ package pool
 
 import (
 	"container/heap"
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/observer"
+	"github.com/cerera/internal/service"
 	"github.com/cerera/pallada"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -88,24 +90,26 @@ type Pool struct {
 
 	Status byte
 
+	sources   []observer.Source
 	observers []observer.Observer
 
 	Info MemPoolInfo
 
 	mu          sync.Mutex
 	observersMu sync.RWMutex
+	sourcesMu   sync.RWMutex
 }
 
-var (
-	gPoolMu sync.RWMutex
-	GPool   TxPool
-)
+// var (
+// 	gPoolMu sync.RWMutex
+// 	GPool   *TxPool
+// )
 
-func Get() TxPool {
-	gPoolMu.RLock()
-	defer gPoolMu.RUnlock()
-	return GPool
-}
+// func Get() *TxPool {
+// 	gPoolMu.RLock()
+// 	defer gPoolMu.RUnlock()
+// 	return GPool
+// }
 
 type TxPool interface {
 	AddRawTransaction(tx *types.GTransaction) error
@@ -122,12 +126,15 @@ type TxPool interface {
 	// packages are ranked by effective fee rate (ΣfeeChain / ΣgasChain) so a
 	// high-fee child can pull its cheap parent into the block.
 	GetMiningPackage(n int) []*types.GTransaction
-	Exec(method string, params []any) any
+	// Exec(method string, params []any) any
 	QueueTransaction(tx *types.GTransaction)
 	Register(observer observer.Observer)
+	RegisterSource(source observer.Source)
 	RemoveFromPool(txHash common.Hash) error
 	ServiceName() string
 	Stop()
+
+	Methods() map[string]service.RPCHandler
 }
 
 func InitPool(maxSize int) (TxPool, error) {
@@ -142,6 +149,7 @@ func InitPool(maxSize int) (TxPool, error) {
 		stopCh:         make(chan struct{}),
 		Status:         0xa,
 		observers:      make([]observer.Observer, 0),
+		sources:        make([]observer.Source, 0),
 	}
 	pLogger.Infow("Init pool",
 		"maxSize", p.maxSize,
@@ -162,9 +170,9 @@ func InitPool(maxSize int) (TxPool, error) {
 
 	go p.PoolServiceLoop()
 
-	gPoolMu.Lock()
-	GPool = p
-	gPoolMu.Unlock()
+	// gPoolMu.Lock()
+	// GPool = p
+	// gPoolMu.Unlock()
 
 	return p, nil
 }
@@ -298,14 +306,13 @@ func (p *Pool) calcInfo() {
 	}
 
 	p.Info = MemPoolInfo{
-		Size:             len(hashes),
-		Bytes:            txPoolSize,
-		Usage:            0,
-		UnbroadcastCount: len(hashes),
-		MaxMempool:       p.maxSize,
-		Mempoolminfee:    0,
-		Hashes:           hashes,
-		Txs:              cp,
+		Size:          len(hashes),
+		Bytes:         txPoolSize,
+		Usage:         0,
+		MaxMempool:    p.maxSize,
+		Mempoolminfee: 0,
+		Hashes:        hashes,
+		Txs:           cp,
 	}
 	poolSize.Set(float64(len(hashes)))
 	poolBytes.Set(float64(txPoolSize))
@@ -384,7 +391,7 @@ func (p *Pool) QueueTransaction(tx *types.GTransaction) {
 	_ = p.AddRawTransaction(tx)
 }
 
-// SendTransaction adds a transaction to the pool and returns its hash.
+// SendTransaction adds a FULL transaction to the pool and returns its hash even tx invalid. (tx will be dropped later).
 func (p *Pool) SendTransaction(tx types.GTransaction) (common.Hash, error) {
 	if err := p.AddRawTransaction(&tx); err != nil {
 		return common.Hash{}, err
@@ -435,6 +442,13 @@ func (p *Pool) Register(observer observer.Observer) {
 	defer p.observersMu.Unlock()
 	pLogger.Infow("Register new pool observer", "observerID", observer.GetID())
 	p.observers = append(p.observers, observer)
+}
+
+func (p *Pool) RegisterSource(source observer.Source) {
+	p.sourcesMu.Lock()
+	defer p.sourcesMu.Unlock()
+	pLogger.Infow("Register new pool source", "sourceID", source.GetID())
+	p.sources = append(p.sources, source)
 }
 
 // RemoveFromPool deletes a transaction from the pool by hash.
@@ -490,13 +504,57 @@ func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	p.NotifyAll(stored)
 }
 
-// Exec dispatches a named method call on the pool.
-func (p *Pool) Exec(method string, params []interface{}) interface{} {
-	switch method {
-	case "getInfo":
-		return p.GetInfo()
-	case "minGas":
-		return p.GetMinimalGasValue()
+func (p *Pool) Methods() map[string]service.RPCHandler {
+	return map[string]service.RPCHandler{
+		"getInfo": func(ctx context.Context, params []any) (any, error) {
+			return p.GetInfo(), nil
+		},
+		"minGas": func(ctx context.Context, params []any) (any, error) {
+			return p.GetMinimalGasValue(), nil
+		},
+		"getPendingTransactions": func(ctx context.Context, params []any) (any, error) {
+			return p.GetPendingTransactions(), nil
+		},
+		"getTransaction": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("transaction hash required")
+			}
+			hashStr, ok := params[0].(string)
+			if !ok {
+				return nil, errors.New("transaction hash must be string")
+			}
+			return p.GetTransaction(common.HexToHash(hashStr)), nil
+		},
+		"getTopN": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("n required")
+			}
+			n, ok := params[0].(int)
+			if !ok {
+				return nil, errors.New("n must be int")
+			}
+			return p.GetTopN(n), nil
+		},
+		"getMiningPackage": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("n required")
+			}
+			n, ok := params[0].(int)
+			if !ok {
+				return nil, errors.New("n must be int")
+			}
+			return p.GetMiningPackage(n), nil
+		},
+		"removeFromPool": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("transaction hash required")
+			}
+			hashStr, ok := params[0].(string)
+			if !ok {
+				return nil, errors.New("transaction hash must be string")
+			}
+			err := p.RemoveFromPool(common.HexToHash(hashStr))
+			return err == nil, err
+		},
 	}
-	return nil
 }

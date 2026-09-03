@@ -2,7 +2,7 @@ package protocol
 
 import (
 	"github.com/cerera/core/common"
-	"github.com/cerera/internal/service"
+	"github.com/cerera/icenet/service"
 )
 
 type Status struct {
@@ -22,7 +22,7 @@ func NewStatus(chainID int, genesisHash common.Hash) *Status {
 // GetStatus builds a Status value from the provided ServiceProvider.
 // If the provider is nil or genesis block is unavailable, fields fall back
 // to their zero values.
-func GetStatus(serviceProvider service.ServiceProvider) (Status, error) {
+func GetStatus(serviceProvider *service.ServiceProvider) (Status, error) {
 	status := Status{}
 
 	if serviceProvider != nil {

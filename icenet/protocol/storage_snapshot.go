@@ -28,7 +28,7 @@ const (
 	storageSnapshotDefaultLimit = 256
 	storageSnapshotMaxLimit     = 512
 	// MaxStorageAccountBlob caps a single serialized StateAccount on the wire.
-	MaxStorageAccountBlob = 16 * 1024 * 1024
+	MaxStorageAccountBlob   = 16 * 1024 * 1024
 	storageSnapshotReqSize  = 8
 	storageSnapshotHdrSize  = 13
 	storageSnapshotStreamTO = 5 * time.Minute

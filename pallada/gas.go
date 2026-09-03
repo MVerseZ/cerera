@@ -1,7 +1,9 @@
 package pallada
 
 import (
+	"errors"
 	"fmt"
+	"math"
 )
 
 const MAX_GAS_LIMIT = 100000000000
@@ -39,6 +41,10 @@ func NewGasMeter() *GasMeterImpl {
 
 // ConsumeGas потребляет указанное количество газа
 func (gm *GasMeterImpl) ConsumeGas(amount uint64, reason string) error {
+	if gm.gasUsed > gm.gasLimit {
+		return fmt.Errorf("out of gas: %s (used: %d, limit: %d, requested: %d)",
+			reason, gm.gasUsed, gm.gasLimit, amount)
+	}
 	if gm.gasUsed+amount > gm.gasLimit {
 		return fmt.Errorf("out of gas: %s (used: %d, limit: %d, requested: %d)",
 			reason, gm.gasUsed, gm.gasLimit, amount)
@@ -102,28 +108,31 @@ const (
 	GasJumpdest uint64 = 1  // JUMPDEST (маркер, дешевый)
 
 	// Calldata
-	GasCalldataLoad uint64 = 3  // CALLDATALOAD
-	GasCalldataSize uint64 = 2  // CALLDATASIZE
-	GasCalldataCopy uint64 = 3  // CALLDATACOPY базовая + 3 за каждые 32 байта
+	GasCalldataLoad uint64 = 3 // CALLDATALOAD
+	GasCalldataSize uint64 = 2 // CALLDATASIZE
+	GasCalldataCopy uint64 = 3 // CALLDATACOPY базовая + 3 за каждые 32 байта
 
 	// LOG события
-	GasLogBase    uint64 = 375  // Базовая стоимость LOG
-	GasLogData    uint64 = 8    // Стоимость за байт данных события
-	GasLogTopic   uint64 = 375  // Стоимость за каждый топик
+	GasLogBase  uint64 = 375 // Базовая стоимость LOG
+	GasLogData  uint64 = 8   // Стоимость за байт данных события
+	GasLogTopic uint64 = 375 // Стоимость за каждый топик
 )
 
 // CalculateMemoryGas вычисляет стоимость газа для операций с памятью
-func CalculateMemoryGas(currentSize, newSize uint64) uint64 {
+func CalculateMemoryGas(currentSize, newSize uint64) (uint64, error) {
 	if newSize <= currentSize {
-		return 0
+		return 0, nil
 	}
 
 	// Стоимость расширения памяти
 	expansion := newSize - currentSize
 	// Стоимость = (expansion^2 / 512) + (expansion * GasExtByte)
 	// Упрощенная формула для производительности
+	if expansion > math.MaxUint64/expansion {
+		return 0, errors.New("gas cost overflow: expansion^2")
+	}
 	cost := (expansion * expansion / 512) + (expansion * GasExtByte)
-	return cost
+	return cost, nil
 }
 
 // MinGasPrice returns the minimum gas price expressed in CER.
