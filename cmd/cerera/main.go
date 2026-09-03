@@ -14,8 +14,10 @@ import (
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
+	"github.com/cerera/core/types"
 	"github.com/cerera/gigea"
 	"github.com/cerera/icenet"
+	"github.com/cerera/icenet/fork"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"
@@ -63,14 +65,18 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	})
 
 	//  цепочки
-	chain, err := chain.Mold(cfg)
+	bc, err := chain.Mold(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
 	registry.Register(&service.Service{
-		Name:    chain.ServiceName(),
-		Methods: chain.Methods(),
+		Name:    bc.ServiceName(),
+		Methods: bc.Methods(),
 	})
+
+	if d5 := storage.GetVault(); d5 != nil {
+		d5.SaveBaseline()
+	}
 
 	// инициализация валидатора
 	validator, err := validator.NewValidator(ctx, *cfg)
@@ -106,18 +112,37 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 
 	//
 	validator.SetPool(mempool)
-	validator.SetChain(chain)
+	validator.SetChain(bc)
+
+	mempool.SetTxValidator(func(tx *types.GTransaction) bool {
+		return validator.ValidateRawTransaction(*tx)
+	})
+	ice.AttachBlockValidator(validator.GetBlockValidator())
+	ice.SetTxValidator(func(tx *types.GTransaction) bool {
+		return validator.ValidateRawTransaction(*tx)
+	})
+
+	chain.SetReorgHandler(validator.ReplayChain)
+	sp := ice.ServiceProviderPtr()
+	if sp != nil {
+		sp.SetChainRef(bc)
+	}
 
 	// Инициализация майнера
 	minerInstance, err := miner.Init(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
-	minerInstance.SetChain(chain)
+	minerInstance.SetChain(bc)
 	minerInstance.SetPool(mempool)
 	minerInstance.SetValidator(validator)
 	minerInstance.SetBlockPublisher(ice)
-	minerInstance.SetHeightLock(chain)
+	minerInstance.SetHeightLock(bc)
+
+	forkDet := fork.NewDetector(bc, sp)
+	forkDet.SetOnReorg(minerInstance.OnChainReorg)
+	ice.SetForkDetector(forkDet)
+
 	ice.SetOnBlockFinalized(minerInstance.OnBlockFinalized)
 	if mine {
 		if err := minerInstance.Start(); err != nil {
@@ -152,7 +177,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	}
 
 	return &Cerera{
-		bc:       chain,
+		bc:       bc,
 		g:        &validator,
 		p:        mempool,
 		v:        &vault,

@@ -1,0 +1,9 @@
+{
+  "pid": 23908,
+  "http_port": 1337,
+  "p2p_port": "31000",
+  "data_dir": "D:\\Projects\\GNU LAB\\cerera\\data",
+  "key_path": "ddddd.nodekey.pem",
+  "started_at": "2026-09-03T18:52:10.7962782+03:00",
+  "log_file": "D:\\Projects\\GNU LAB\\cerera\\data\\cerera.stdout.log"
+}

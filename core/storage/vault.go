@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -111,6 +112,8 @@ type D5Vault struct {
 	// Pogreb database (only for non-in-memory mode)
 	db   *pogreb.DB
 	dbMu sync.RWMutex
+
+	baselineSnapshot AccountSnapshot
 }
 
 var (
@@ -485,6 +488,7 @@ func (v *D5Vault) EnsureAccount(addr types.Address) {
 		return
 	}
 	acc := account.NewStateAccount(addr, 0, v.rootHash)
+	acc.Status = 3 // OP_ACC_NODE — visible in getAll, excluded from consensus state root
 	v.accounts.Append(addr, acc)
 	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	if !v.inMem && v.db != nil {
@@ -643,8 +647,16 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 
 // RewardMiner mints new coins for the miner (coinbase transaction execution).
 func (v *D5Vault) RewardMiner(to types.Address, cnt *big.Int, txHash common.Hash) error {
-	_, err := v.creditMintedAmount(to, cnt, txHash)
-	return err
+	acc, err := v.creditMintedAmount(to, cnt, txHash)
+	if err != nil {
+		return err
+	}
+	// Mining rewards must affect the consensus state root on every node.
+	// Initiator accounts start as OP_ACC_NODE (excluded) but coinbase pays head.Node.
+	if acc != nil && acc.Status == 3 {
+		acc.Status = 0
+	}
+	return nil
 }
 
 func (v *D5Vault) CheckRunnable(r *big.Int, s *big.Int, tx *types.GTransaction) bool {
@@ -687,6 +699,109 @@ func (v *D5Vault) ExportAccountRangeSortedByAddress(offset, limit int) ([][]byte
 		}
 	}
 	return out, total
+}
+
+// AccountSnapshot is a point-in-time copy of in-memory accounts for dry-run rollback.
+type AccountSnapshot map[types.Address]*account.StateAccount
+
+// SnapshotAccounts clones all accounts currently held in memory.
+func (v *D5Vault) SnapshotAccounts() AccountSnapshot {
+	if v == nil || v.accounts == nil {
+		return nil
+	}
+	v.accounts.mu.RLock()
+	defer v.accounts.mu.RUnlock()
+	snap := make(AccountSnapshot, len(v.accounts.accounts))
+	for addr, acc := range v.accounts.accounts {
+		if acc == nil {
+			continue
+		}
+		cp := *acc
+		cp.SetBalanceBI(acc.GetBalanceBI())
+		snap[addr] = &cp
+	}
+	return snap
+}
+
+// RestoreAccounts replaces in-memory accounts from a prior snapshot.
+func (v *D5Vault) RestoreAccounts(snap AccountSnapshot) {
+	if snap == nil || v == nil || v.accounts == nil {
+		return
+	}
+	v.accounts.mu.Lock()
+	defer v.accounts.mu.Unlock()
+	for addr, acc := range snap {
+		v.accounts.accounts[addr] = acc
+	}
+}
+
+// SaveBaseline stores the current account map for chain replay after reorg.
+func (v *D5Vault) SaveBaseline() {
+	if v == nil {
+		return
+	}
+	v.baselineSnapshot = v.SnapshotAccounts()
+}
+
+// RestoreBaseline resets accounts to the saved baseline (pre-chain-replay state).
+func (v *D5Vault) RestoreBaseline() {
+	if v == nil || v.baselineSnapshot == nil {
+		return
+	}
+	v.RestoreAccounts(v.baselineSnapshot)
+}
+
+// ComputeStateRoot returns the consensus state root (excludes OP_ACC_NODE accounts).
+func (v *D5Vault) ComputeStateRoot() common.Hash {
+	leaves := v.consensusAccountLeaves()
+	if len(leaves) == 0 {
+		return common.EmptyRootHash
+	}
+	var concat []byte
+	for _, leaf := range leaves {
+		concat = append(concat, leaf...)
+	}
+	sum := blake2b.Sum256(concat)
+	return common.BytesToHash(sum[:])
+}
+
+func (v *D5Vault) consensusAccountLeaves() [][]byte {
+	v.accounts.mu.RLock()
+	defer v.accounts.mu.RUnlock()
+
+	hexes := make([]string, 0, len(v.accounts.accounts))
+	for addr, acc := range v.accounts.accounts {
+		if acc == nil || acc.Status == 3 { // OP_ACC_NODE
+			continue
+		}
+		hexes = append(hexes, addr.Hex())
+	}
+	sort.Strings(hexes)
+
+	out := make([][]byte, 0, len(hexes))
+	for _, h := range hexes {
+		addr := types.HexToAddress(h)
+		if acc := v.accounts.accounts[addr]; acc != nil {
+			out = append(out, consensusAccountLeaf(acc))
+		}
+	}
+	return out
+}
+
+func consensusAccountLeaf(acc *account.StateAccount) []byte {
+	var buf bytes.Buffer
+	buf.Write(acc.Address.Bytes())
+	bal := acc.GetBalanceBI().Bytes()
+	padded := make([]byte, 32)
+	if len(bal) > 32 {
+		copy(padded, bal[len(bal)-32:])
+	} else {
+		copy(padded[32-len(bal):], bal)
+	}
+	buf.Write(padded)
+	_ = binary.Write(&buf, binary.LittleEndian, acc.Nonce)
+	sum := blake2b.Sum256(buf.Bytes())
+	return sum[:]
 }
 
 func (v *D5Vault) GetOwner() *account.StateAccount {

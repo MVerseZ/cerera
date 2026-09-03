@@ -10,12 +10,20 @@ import (
 	"github.com/cerera/core/storage"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
+	"github.com/cerera/internal/validation"
 )
 
 var splogger = logger.Named("chain")
 
 type ServiceProvider struct {
 	ctx context.Context
+
+	blockVal *validation.BlockValidator
+	chainRef *chain.Chain
+}
+
+func (sp *ServiceProvider) SetChainRef(bc *chain.Chain) {
+	sp.chainRef = bc
 }
 
 func NewServiceProvider(ctx context.Context) (*ServiceProvider, error) {
@@ -73,6 +81,21 @@ func (sp *ServiceProvider) AddBlock(b *block.Block) error {
 	return err
 }
 
+// Reorg switches canonical chain and replays state via chain.ReorgHandler.
+func (sp *ServiceProvider) Reorg(blocks []*block.Block) error {
+	if sp.chainRef == nil {
+		return fmt.Errorf("chain reference not configured")
+	}
+	return sp.chainRef.Reorg(blocks)
+}
+
+func (sp *ServiceProvider) ValidateOrphanBlock(b *block.Block, parent *block.Block) error {
+	if sp.blockVal == nil {
+		return fmt.Errorf("block validator not configured")
+	}
+	return sp.blockVal.ValidateOrphan(b, parent)
+}
+
 func (sp *ServiceProvider) GetBlockByHash(h common.Hash) *block.Block {
 	res, err := sp.callChain("getBlockByHash", h.Hex())
 	if err != nil {
@@ -84,6 +107,11 @@ func (sp *ServiceProvider) GetBlockByHash(h common.Hash) *block.Block {
 }
 
 func (sp *ServiceProvider) GetBlockByHeight(height int) *block.Block {
+	if sp.chainRef != nil {
+		if b := sp.chainRef.GetBlockByHeight(height); b != nil {
+			return b
+		}
+	}
 	res, err := sp.callChain("getBlockByIndex", float64(height))
 	if err != nil {
 		splogger.Debugw("GetBlockByHeight failed", "height", height, "error", err)
@@ -104,6 +132,11 @@ func (sp *ServiceProvider) GetChainID() int {
 }
 
 func (sp *ServiceProvider) GetCurrentHeight() int {
+	if sp.chainRef != nil {
+		if head := sp.chainRef.GetLatestBlock(); head != nil && head.Head != nil {
+			return head.Head.Height
+		}
+	}
 	res, err := sp.callChain("getCurrentHeight")
 	if err != nil {
 		splogger.Errorw("GetCurrentHeight failed", "error", err)
@@ -114,6 +147,11 @@ func (sp *ServiceProvider) GetCurrentHeight() int {
 }
 
 func (sp *ServiceProvider) GetLatestHash() common.Hash {
+	if sp.chainRef != nil {
+		if head := sp.chainRef.GetLatestBlock(); head != nil {
+			return head.Hash
+		}
+	}
 	res, err := sp.callChain("getLatestBlock")
 	if err != nil {
 		splogger.Errorw("GetLatestHash failed", "error", err)
@@ -143,6 +181,10 @@ func (sp *ServiceProvider) GetStorageServiceName() string {
 	return storage.VAULT_SERVICE_NAME
 }
 
+func (sp *ServiceProvider) SetBlockValidator(bv *validation.BlockValidator) {
+	sp.blockVal = bv
+}
+
 func (sp *ServiceProvider) ValidateBlock(b *block.Block) error {
 	if b == nil || b.Head == nil {
 		return fmt.Errorf("block is nil")
@@ -164,11 +206,17 @@ func (sp *ServiceProvider) ValidateBlock(b *block.Block) error {
 		}
 	}
 
+	if sp.blockVal != nil {
+		return sp.blockVal.ValidateContent(b)
+	}
 	_, err := chain.ValidateBlocks([]*block.Block{b})
 	return err
 }
 
 func (sp *ServiceProvider) ValidateBlockPoW(b *block.Block) bool {
+	if sp.blockVal != nil {
+		return sp.blockVal.ValidatePoW(b)
+	}
 	return b != nil && b.Head != nil
 }
 

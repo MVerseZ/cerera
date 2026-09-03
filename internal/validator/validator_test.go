@@ -280,9 +280,8 @@ func TestValidateRawTransaction(t *testing.T) {
 		[]byte("test"),
 	)
 
-	// ValidateRawTransaction currently always returns true
 	result := validator.ValidateRawTransaction(*tx)
-	assert.True(t, result, "ValidateRawTransaction should return true (currently stub implementation)")
+	assert.False(t, result, "unsigned transaction should be rejected")
 }
 
 // TestGetID проверяет получение ID валидатора

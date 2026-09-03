@@ -40,8 +40,20 @@ type ChainMetrics struct {
 	blockGasUsed        prometheus.Histogram
 }
 
-// NewChainMetrics creates and registers new chain metrics
+// NewChainMetrics creates and registers new chain metrics (singleton registration).
 func NewChainMetrics() *ChainMetrics {
+	chainMetricsOnce.Do(func() {
+		sharedChainMetrics = initChainMetrics()
+	})
+	return sharedChainMetrics
+}
+
+var (
+	chainMetricsOnce   sync.Once
+	sharedChainMetrics *ChainMetrics
+)
+
+func initChainMetrics() *ChainMetrics {
 	metrics := &ChainMetrics{
 		blocksTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "chain_blocks_total",
@@ -659,10 +671,20 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 	return nil
 }
 
+// BlockContentValidator optionally validates block content when ValidateBlocks runs.
+var BlockContentValidator func(*block.Block) error
+
 // return lenght of array
 func ValidateBlocks(blocks []*block.Block) (int, error) {
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
+	}
+	if BlockContentValidator != nil {
+		for _, b := range blocks {
+			if err := BlockContentValidator(b); err != nil {
+				return -1, err
+			}
+		}
 	}
 	return len(blocks), nil
 }
