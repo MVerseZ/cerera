@@ -75,16 +75,20 @@ func FromECDSAPub(pub *ecdsa.PublicKey) []byte {
 	return elliptic.Marshal(chainElliptic, pub.X, pub.Y)
 }
 
-func PubkeyToAddress(p ecdsa.PublicKey) address.Address {
-	pubBytes := FromECDSAPub(&p)
-	// Skip the format byte (0x04) and take the last 32 bytes of the hash
-	return address.BytesToAddress(INRISeq(pubBytes[1:])[32:])
+func PubkeyToAddress(pubKey *ecdsa.PublicKey) address.Address {
+	// pubBytes := FromECDSAPub(p)
+	// // Skip the format byte (0x04) and take the last 32 bytes of the hash
+	// return address.BytesToAddress(INRISeq(pubBytes[1:])[32:])
+	pubBytes := elliptic.Marshal(pubKey.Curve, pubKey.X, pubKey.Y)
+	hash := blake2b.Sum256(pubBytes)
+	return address.BytesToAddress(hash[12:32])
 }
 
 func PrivKeyToAddress(p ecdsa.PrivateKey) address.Address {
-	pubBytes := FromECDSAPub(&p.PublicKey)
+	// pubBytes := FromECDSAPub(&p.PublicKey)
 	// Skip the format byte (0x04) and take the last 32 bytes of the hash
-	return address.BytesToAddress(INRISeq(pubBytes[1:])[32:])
+	// return address.BytesToAddress(INRISeq(pubBytes[1:])[32:])
+	return PubkeyToAddress(&p.PublicKey)
 }
 
 // Base58Encode encodes a byte slice to a base58 string

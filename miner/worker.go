@@ -28,6 +28,7 @@ type Worker struct {
 	currentTask *Task
 	resultCh    chan Result
 	jobID       uint64
+	heightLock  HeightLockChecker
 }
 
 // Task представляет задачу для вычисления
@@ -59,6 +60,12 @@ func NewWorker() *Worker {
 
 // Start запускает воркер. Майнинг стартует через Compute.
 func (w *Worker) Start() {}
+
+func (w *Worker) SetHeightLock(lock HeightLockChecker) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.heightLock = lock
+}
 
 // Compute запускает вычисление с новым параметром.
 // Если вычисление уже выполняется, оно отменяется и запускается заново.
@@ -254,6 +261,20 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 // doLongComputation выполняет долгое вычисление
 func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 	startTime := time.Now()
+
+	if task == nil || task.prev == nil || task.prev.Head == nil {
+		minerLogger().Errorw("[MINER] invalid mining task")
+		return
+	}
+
+	w.mu.Lock()
+	heightLock := w.heightLock
+	w.mu.Unlock()
+	nextHeight := task.prev.Head.Height + 1
+	if heightLock != nil && heightLock.IsHeightLocked(nextHeight) {
+		minerLogger().Debugw("[MINER] skip mining locked height", "height", nextHeight)
+		return
+	}
 
 	minerLogger().Infow("[MINER] 🚀 Started mining ", "task id", task.id, "task txs", len(task.txs))
 

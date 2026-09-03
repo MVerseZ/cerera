@@ -348,7 +348,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		return "", "", "", nil, err
 	}
 	pubkey := &privateKey.PublicKey
-	address := types.PubkeyToAddress(*pubkey)
+	address := types.PubkeyToAddress(pubkey)
 
 	// Проверяем, не существует ли уже аккаунт с таким адресом
 	if existing := v.accounts.GetAccount(address); existing != nil {

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Smoke check for deployments/docker-compose-3nodes.yml."""
+"""Smoke check for deployments/docker-compose-9nodes.yml."""
 
 from check_nodes_common import configure_utf8_stdout, run_basic_cluster_check
 
-COMPOSE_FILE = "docker-compose-3nodes.yml"
-PORTS = [1337, 1338, 1339]
-NODES = ["node1", "node2", "node3"]
+COMPOSE_FILE = "docker-compose-9nodes.yml"
+PORTS = list(range(1337, 1346))  # 1337-1345
+NODES = [f"node{i}" for i in range(1, 10)]
 
 
 def main() -> None:

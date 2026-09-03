@@ -19,7 +19,7 @@ import (
 )
 
 var vaultSrcLogger = logger.Named("vault.source")
-var IS_DEGUG = true
+var IS_DEBUG = true
 
 // CRV1 prefix marks AES-CFB encrypted StateAccount payloads (see encrypt).
 var vaultAccountEncMagic = []byte{'C', 'R', 'V', 1}
@@ -198,7 +198,7 @@ func InitSecureVault(rootSa *account.StateAccount, vaultPath string) error {
 
 	// Save account data
 	accountData := rootSa.Bytes()
-	if IS_DEGUG {
+	if IS_DEBUG {
 		vaultSrcLogger.Infow("Writing account data to pogreb", "address", rootSa.Address.Hex())
 	}
 
@@ -228,7 +228,7 @@ func SyncVault(path string) error {
 			break
 		}
 		if err != nil {
-			if IS_DEGUG {
+			if IS_DEBUG {
 				vaultSrcLogger.Warnw("SyncVault: failed to get next item", "err", err)
 			}
 			continue
@@ -242,7 +242,7 @@ func SyncVault(path string) error {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					if IS_DEGUG {
+					if IS_DEBUG {
 						vaultSrcLogger.Warnw("Skipping corrupted account data",
 							"reason", r,
 							"key", fmt.Sprintf("%x", key),
@@ -253,14 +253,14 @@ func SyncVault(path string) error {
 			}()
 			plain, decErr := decodeAccountPayload(accountData)
 			if decErr != nil {
-				if IS_DEGUG {
+				if IS_DEBUG {
 					vaultSrcLogger.Warnw("SyncVault: decode account payload", "err", decErr, "key", fmt.Sprintf("%x", key))
 				}
 				return
 			}
 			account := types.BytesToStateAccount(plain)
 			if account != nil {
-				if IS_DEGUG {
+				if IS_DEBUG {
 					vaultSrcLogger.Infow("Read account from pogreb vault", "address", account.Address.Hex())
 				}
 				GetVault().accounts.Append(account.Address, account)
@@ -269,7 +269,7 @@ func SyncVault(path string) error {
 				if len(accountData) < previewLen {
 					previewLen = len(accountData)
 				}
-				if IS_DEGUG {
+				if IS_DEBUG {
 					vaultSrcLogger.Errorw("Failed to deserialize account",
 						"key", fmt.Sprintf("%x", key),
 						"length", len(accountData),
@@ -298,7 +298,7 @@ func SaveToVault(account []byte, vaultPath string) error {
 
 	// Use address bytes as key
 	key := accountData.Address.Bytes()
-	if IS_DEGUG {
+	if IS_DEBUG {
 		vaultSrcLogger.Infow("Writing account data to pogreb", "address", accountData.Address.Hex())
 	}
 
@@ -326,7 +326,7 @@ func UpdateVault(account []byte, vaultPath string) error {
 	// Use address bytes as key
 	key := updatedAccount.Address.Bytes()
 
-	if IS_DEGUG {
+	if IS_DEBUG {
 		vaultSrcLogger.Infow("UpdateVault: updating account in pogreb", "address", updatedAccount.Address.Hex())
 	}
 
@@ -335,7 +335,7 @@ func UpdateVault(account []byte, vaultPath string) error {
 		return fmt.Errorf("failed to update account in pogreb: %w", err)
 	}
 
-	if IS_DEGUG {
+	if IS_DEBUG {
 		vaultSrcLogger.Infow("UpdateVault: successfully updated account", "address", updatedAccount.Address.Hex())
 	}
 

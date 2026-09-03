@@ -115,6 +115,9 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	minerInstance.SetChain(chain)
 	minerInstance.SetPool(mempool)
 	minerInstance.SetValidator(validator)
+	minerInstance.SetBlockPublisher(ice)
+	minerInstance.SetHeightLock(chain)
+	ice.SetOnBlockFinalized(minerInstance.OnBlockFinalized)
 	if mine {
 		if err := minerInstance.Start(); err != nil {
 			appLog.Errorw("Failed to start miner", "err", err)

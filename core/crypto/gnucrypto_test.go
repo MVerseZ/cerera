@@ -21,7 +21,7 @@ func TestKxAddress(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	var addr = PubkeyToAddress(k1.PublicKey)
+	var addr = PubkeyToAddress(&k1.PublicKey)
 	var s, _ = PublicKeyToString(&k1.PublicKey)
 	var pk, _ = PublicKeyFromString(s)
 	if pk.X == k1.X {
@@ -36,7 +36,7 @@ func TestKeyToAddress(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	var addrPub = PubkeyToAddress(k1.PublicKey)
+	var addrPub = PubkeyToAddress(&k1.PublicKey)
 	var addrPriv = PrivKeyToAddress(*k1)
 	if addrPub != addrPriv {
 		t.Fatalf("Different addresses: %s %s", addrPub.String(), addrPriv.String())
@@ -592,8 +592,8 @@ func TestPubkeyToAddressDeterministic(t *testing.T) {
 		t.Fatalf("Failed to generate key: %v", err)
 	}
 
-	addr1 := PubkeyToAddress(privateKey.PublicKey)
-	addr2 := PubkeyToAddress(privateKey.PublicKey)
+	addr1 := PubkeyToAddress(&privateKey.PublicKey)
+	addr2 := PubkeyToAddress(&privateKey.PublicKey)
 	if addr1 != addr2 {
 		t.Errorf("PubkeyToAddress should be deterministic: %s != %s", addr1.Hex(), addr2.Hex())
 	}
@@ -606,7 +606,7 @@ func TestPrivKeyToAddressMatchesPubkey(t *testing.T) {
 		t.Fatalf("Failed to generate key: %v", err)
 	}
 
-	addrPub := PubkeyToAddress(privateKey.PublicKey)
+	addrPub := PubkeyToAddress(&privateKey.PublicKey)
 	addrPriv := PrivKeyToAddress(*privateKey)
 	if addrPub != addrPriv {
 		t.Errorf("PrivKeyToAddress should match PubkeyToAddress: %s != %s", addrPub.Hex(), addrPriv.Hex())

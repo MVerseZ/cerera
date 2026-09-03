@@ -71,9 +71,9 @@ func assertNoError(t *testing.T, err error) {
 func TestTxGraph_AddTx_Independent(t *testing.T) {
 	g := NewTxGraph()
 	privKey1, _ := crypto.GenerateKey()
-	addr1 := crypto.PubkeyToAddress(privKey1.PublicKey)
+	addr1 := crypto.PubkeyToAddress(&privKey1.PublicKey)
 	privKey2, _ := crypto.GenerateKey()
-	addr2 := crypto.PubkeyToAddress(privKey2.PublicKey)
+	addr2 := crypto.PubkeyToAddress(&privKey2.PublicKey)
 
 	tx1, _ := types.CreateTransaction(1, addr1, 1.0, 1000, "")
 	tx2, _ := types.CreateTransaction(1, addr2, 1.0, 1000, "")

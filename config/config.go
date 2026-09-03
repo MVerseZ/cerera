@@ -206,10 +206,10 @@ func (cfg *Config) SetNodeKey(pemFilePath string) error {
 				return err
 			}
 			ppk = crypto.EncodePrivateKeyToToString(nodeK)
-			currentNodeAddress = crypto.PubkeyToAddress(nodeK.PublicKey)
+			currentNodeAddress = crypto.PubkeyToAddress(&nodeK.PublicKey)
 		} else {
 			nodeK, _ = crypto.GenerateAccount()
-			currentNodeAddress = crypto.PubkeyToAddress(nodeK.PublicKey)
+			currentNodeAddress = crypto.PubkeyToAddress(&nodeK.PublicKey)
 			ppk = crypto.EncodePrivateKeyToToString(nodeK)
 			err := os.WriteFile(pemFilePath, []byte(ppk), 0644)
 			if err != nil {

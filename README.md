@@ -150,15 +150,210 @@ Cerera includes a built-in faucet for testing and development:
 - **Security**: Built-in validation and cooldown mechanisms
 
 ```bash
-curl -X POST http://localhost:8080/app \
+curl -X POST http://localhost:8080/ \
   -H "Content-Type: application/json" \
   -d '{
-    "method": "faucet",
     "jsonrpc": "2.0",
-    "id": 1,
-    "params": ["0x...", 10]
+    "method": "cerera.account.faucet",
+    "params": ["0x...", "10"],
+    "id": 1
   }'
 ```
+
+## JSON-RPC API
+
+Cerera exposes a [JSON-RPC 2.0](https://www.jsonrpc.org/specification) API over HTTP. Methods are routed through an internal service registry using the namespace `cerera.<service>.<method>`.
+
+### Endpoint
+
+```
+POST http://localhost:<http-port>/
+Content-Type: application/json
+```
+
+The HTTP server listens on the port from `-http` (default `8080`). In Docker Compose stacks, node1 is usually mapped to port `1337`. Integration tests often call `http://localhost:1337/app`; the server registers a catch-all handler on `/`, so both `/` and `/app` work.
+
+WebSocket ping/pong is available at `GET /ws`.
+
+Prometheus metrics: `GET /metrics`.
+
+### Request format
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.height",
+  "params": [],
+  "id": 1
+}
+```
+
+### Response format
+
+Success:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": 42,
+  "id": 1
+}
+```
+
+Errors are returned as HTTP 500 with a plain-text body, or inside `result` for business-logic failures (e.g. `"service account not found"`).
+
+### Services overview
+
+| Namespace | Internal service | Purpose |
+|-----------|------------------|---------|
+| `cerera.account.*` | Vault | Wallets, balances, faucet |
+| `cerera.chain.*` | Chain | Blocks, height, chain info |
+| `cerera.transaction.*` | Validator | Send and query transactions |
+| `cerera.pool.*` | Mempool | Pending transactions, gas limits |
+
+**Chain vs account data:** `cerera.chain.*` reflects the canonical blockchain and should match on synced nodes. `cerera.account.*` reads the local vault (each node has its own identity address plus merged peer accounts). For multi-node checks, compare `chain.height` and head block hash; use `account.getBalance` for a specific address rather than comparing full `getAll` snapshots.
+
+Full request/response examples: [API.md](API.md).
+
+---
+
+### Account service — `cerera.account.*`
+
+Local vault operations. Amounts are in **CER** (decimal strings recommended for faucet).
+
+| Method | Params | Returns | Description |
+|--------|--------|---------|-------------|
+| `getAll` | `[]` | `map[address]balance` | All accounts in the local vault |
+| `getCount` | `[]` | `int` | Number of accounts |
+| `getTotalSupply` | `[]` | `*big.Int` | Sum of vault balances |
+| `getBalance` | `[address]` | `*big.Int` | Balance for one address (`0` if missing) |
+| `create` | `[passphrase]` | `{address, priv, pub, mnemonic}` | Create a new HD wallet account |
+| `restore` | `[mnemonic, passphrase]` | `{address, priv, pub}` | Restore from mnemonic |
+| `verify` | `[address, passphrase]` | `bool` | Check address + passphrase |
+| `faucet` | `[address, amount]` | `"Faucet successful"` | Credit tokens (string `"10.5"` or number) |
+| `inputs` | `[address]` | `map[hash]amount` | UTXO-style inputs for an account |
+
+**Example — create account and check balance:**
+
+```bash
+curl -s http://localhost:8080/ -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0","method":"cerera.account.create","params":["secret"],"id":1
+}'
+
+curl -s http://localhost:8080/ -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0","method":"cerera.account.getBalance","params":["0x..."],"id":2
+}'
+```
+
+---
+
+### Chain service — `cerera.chain.*`
+
+Read-only blockchain data (same on all synced nodes).
+
+| Method | Params | Returns | Description |
+|--------|--------|---------|-------------|
+| `height` | `[]` | `int` | Current block height |
+| `getCurrentHeight` | `[]` | `int` | Same as `height` |
+| `getChainId` | `[]` | `int` | Chain ID |
+| `getInfo` | `[]` | `BlockChainStatus` | `{total, latest, size, avgTime, txs, gas, gasPrice, difficulty, chainWork}` |
+| `getLatestBlock` | `[]` | `Block` | Current head block |
+| `getBlockByIndex` | `[height]` | `Block` | Block by index (0-based height) |
+| `getBlockByHash` | `[hash]` | `Block` | Block by hash hex string |
+
+**Example — get height and head block:**
+
+```bash
+curl -s http://localhost:8080/ -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0","method":"cerera.chain.height","params":[],"id":1
+}'
+
+curl -s http://localhost:8080/ -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0","method":"cerera.chain.getBlockByIndex","params":[0],"id":2
+}'
+```
+
+---
+
+### Transaction service — `cerera.transaction.*`
+
+Handled by the validator. Transactions are signed locally and queued in the mempool.
+
+| Method | Params | Returns | Description |
+|--------|--------|---------|-------------|
+| `send` | `[privKey, toHex, amount, gas, msg]` | `txHash` | Sign with PEM private key, enqueue for mining |
+| `get` | `[txHash]` | `{hash, from, to, value, gas, data}` | Look up a confirmed transaction |
+| `stake` | — | `null` | Reserved (not implemented) |
+
+**`send` parameters:**
+
+1. `privKey` — PEM-encoded private key (`priv` from `account.create` / `account.restore`)
+2. `toHex` — recipient address hex string
+3. `amount` — transfer amount (float, in CER)
+4. `gas` — gas limit (float)
+5. `msg` — optional message string (max 1024 chars)
+
+Nonce is assigned automatically. Minimum gas price comes from `cerera.pool.minGas`.
+
+**Example — send a transfer:**
+
+```bash
+curl -s http://localhost:8080/ -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"cerera.transaction.send",
+  "params":["-----BEGIN PRIVATE KEY-----\n...","0xRecipient...",1.0,21000,"hello"],
+  "id":1
+}'
+```
+
+---
+
+### Pool service — `cerera.pool.*`
+
+Mempool inspection and mining helpers.
+
+| Method | Params | Returns | Description |
+|--------|--------|---------|-------------|
+| `getInfo` | `[]` | `MemPoolInfo` | `{size, bytes, usage, maxMempool, mempoolminfee, unbroadCastCount, hashes, txs}` |
+| `minGas` | `[]` | `float64` | Minimum gas price |
+| `getPendingTransactions` | `[]` | `[GTransaction, ...]` | All pending txs |
+| `getTransaction` | `[txHash]` | `GTransaction` | Pending tx by hash |
+| `getTopN` | `[n]` | `[GTransaction, ...]` | Top-N txs by fee |
+| `getMiningPackage` | `[n]` | `[GTransaction, ...]` | CPFP-aware package for block assembly |
+| `removeFromPool` | `[txHash]` | `bool` | Remove a pending tx |
+
+---
+
+### Typical workflow
+
+```bash
+# 1. Create account
+cerera.account.create ["passphrase"]
+
+# 2. Fund via faucet
+cerera.account.faucet ["0x...", "100"]
+
+# 3. Send transaction
+cerera.transaction.send [privKey, "0x...", 10.0, 21000, "payment"]
+
+# 4. Wait for mining, then verify on chain
+cerera.chain.height []
+cerera.transaction.get ["0xTxHash..."]
+
+# 5. Check mempool while waiting
+cerera.pool.getInfo []
+```
+
+### Error messages
+
+| Message | Meaning |
+|---------|---------|
+| `service <name> not found` | Unknown namespace or service not registered |
+| `method <name> not found in <service>` | Method name typo or not exposed |
+| `invalid parameters for create` | Wrong number/types of params |
+| `negative gas or value` | Invalid gas or amount |
+| `message too long` | Message exceeds 1024 characters |
+| `Faucet successful` | Faucet succeeded (not an error) |
 
 ## Pallada VM
 
@@ -222,21 +417,6 @@ Cerera exposes Prometheus metrics. Pre-built Grafana dashboards are available in
 - **Rate Limiting**: Built-in protection against spam and abuse
 - **HD Wallets**: BIP32/BIP39 mnemonic generation and restore
 
-## API Reference
-
-### JSON-RPC Methods (POST /app)
-
-| Method | Parameters | Description |
-|--------|------------|-------------|
-| `getBalance` | `address` | Get account balance |
-| `faucet` | `address, amount` | Request tokens from faucet |
-| `getBlock` | `height` | Get block by height |
-
-### HTTP Endpoints
-
-- `POST /app` — JSON-RPC endpoint
-- `GET /status` — Node status and chain info
-
 ## Deployment
 
 Docker Compose configurations for multi-node setups are available in `deployments/`
@@ -261,7 +441,9 @@ This project is licensed under the GNU General Public License v2.0 — see the [
 
 ## Links
 
-TODO
+- [API reference (detailed examples)](API.md)
+- [Multi-node smoke tests](deployments/CONSENSUS_SMOKE.md)
+- [Pallada VM](pallada/README.md)
 
 ---
 

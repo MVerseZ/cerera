@@ -726,5 +726,15 @@ func (bc *Chain) Methods() map[string]service.RPCHandler {
 			}
 			return latest.Header().Height, nil
 		},
+		"updateChain": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, fmt.Errorf("block required")
+			}
+			b, ok := params[0].(*block.Block)
+			if !ok || b == nil {
+				return nil, fmt.Errorf("block must be *block.Block")
+			}
+			return nil, bc.UpdateChain(b)
+		},
 	}
 }

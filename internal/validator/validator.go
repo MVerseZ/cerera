@@ -9,7 +9,6 @@ import (
 	"math/big"
 
 	"github.com/cerera/config"
-	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/crypto"
@@ -378,12 +377,6 @@ func (v *CoreValidator) Update(tx *types.GTransaction) {
 
 func (v *CoreValidator) UpdateTxTree(tx *types.GTransaction, bIndex int) {
 	storage.GetTxTable().UpdateIndex(tx, bIndex)
-}
-
-func (v *CoreValidator) _ValidateBlock(b block.Block) bool {
-	// move logic to consensus
-	// return consensus.ConfirmBlock(b)
-	return true
 }
 
 func (v *CoreValidator) ValidateRawTransaction(tx types.GTransaction) bool {

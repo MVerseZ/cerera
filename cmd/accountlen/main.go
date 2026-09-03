@@ -102,7 +102,7 @@ func printZKExample() {
 		fmt.Println("  GenerateAccount:", err)
 		return
 	}
-	addr := crypto.PubkeyToAddress(priv.PublicKey)
+	addr := crypto.PubkeyToAddress(&priv.PublicKey)
 	keyBytes := addr.Bytes()
 	accountType := byte(TypeStaking) // 1 = staking
 
@@ -185,7 +185,7 @@ func makeMinimalAccount(accType byte, _ string) *account.StateAccount {
 	if err != nil {
 		panic(err)
 	}
-	addr := crypto.PubkeyToAddress(priv.PublicKey)
+	addr := crypto.PubkeyToAddress(&priv.PublicKey)
 	return makeMinimalAccountWithAddress(accType, addr)
 }
 
@@ -212,7 +212,7 @@ func makeRealisticAccount() *account.StateAccount {
 	if err != nil {
 		panic(err)
 	}
-	addr := crypto.PubkeyToAddress(priv.PublicKey)
+	addr := crypto.PubkeyToAddress(&priv.PublicKey)
 	acc := &account.StateAccount{
 		StateAccountData: account.StateAccountData{
 			Address: addr,
@@ -255,7 +255,7 @@ func makeVaultStyleAccount() *account.StateAccount {
 	if err != nil {
 		return nil
 	}
-	addr := crypto.PubkeyToAddress(priv.PublicKey)
+	addr := crypto.PubkeyToAddress(&priv.PublicKey)
 
 	acc := &account.StateAccount{
 		StateAccountData: account.StateAccountData{

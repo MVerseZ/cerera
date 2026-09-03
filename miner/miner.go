@@ -64,7 +64,15 @@ type Miner interface {
 	SetChain(chain *chain.Chain)
 	SetPool(p pool.TxPool)
 	SetValidator(v validator.Validator)
+	SetBlockPublisher(publisher BlockPublisher)
+	SetHeightLock(lock HeightLockChecker)
+	OnBlockFinalized(b *block.Block)
 	Update(tx *types.GTransaction)
+}
+
+// BlockPublisher proposes a mined block to the network consensus layer.
+type BlockPublisher interface {
+	ProposeBlock(b *block.Block) error
 }
 
 // HeightLockChecker interface for checking height locks from main package
@@ -83,6 +91,8 @@ type miner struct {
 	chain    *chain.Chain
 	pool     pool.TxPool
 	valid    validator.Validator
+	publisher BlockPublisher
+	heightLock HeightLockChecker
 	mining   bool
 	stopChan chan struct{}
 
@@ -91,6 +101,8 @@ type miner struct {
 
 	MinerTimeout time.Duration
 	worker       *Worker
+
+	pendingBlock *block.Block
 }
 
 func Init(ctx context.Context, cfg *config.Config) (*miner, error) {
@@ -156,11 +168,15 @@ func (m *miner) Start() error {
 
 	w := NewWorker()
 	m.worker = w
+	if m.heightLock != nil {
+		w.SetHeightLock(m.heightLock)
+	}
 	m.worker.Start()
 	m.worker.Compute(m.newTask(nil))
 	m.mu.Unlock()
 
 	go m.resultLoop()
+	go m.watchHeightLock()
 	return nil
 }
 
@@ -188,6 +204,48 @@ func (m *miner) resultLoop() {
 	}
 }
 
+func (m *miner) watchHeightLock() {
+	if m.heightLock == nil {
+		return
+	}
+
+	cancelCh := m.heightLock.GetCancelChannel()
+	for {
+		select {
+		case <-m.stopChan:
+			return
+		case <-cancelCh:
+			m.onChainHeadUpdated(nil)
+			cancelCh = m.heightLock.GetCancelChannel()
+		}
+	}
+}
+
+func (m *miner) onChainHeadUpdated(finalized *block.Block) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.mining || m.worker == nil || m.chain == nil {
+		return
+	}
+
+	blockToApply := finalized
+	if blockToApply == nil {
+		blockToApply = m.pendingBlock
+	}
+	if blockToApply != nil {
+		m.applyBlock(blockToApply)
+		m.clearProcessedTransactions(blockToApply.Transactions)
+	}
+	m.pendingBlock = nil
+
+	var txs []*types.GTransaction
+	if current := m.worker.GetCurrentTask(); current != nil {
+		txs = remainingTxs(current, blockToApply)
+	}
+	m.worker.Compute(m.newTask(txs))
+}
+
 func (m *miner) handleResult(data Result) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -201,6 +259,35 @@ func (m *miner) handleResult(data Result) {
 	}
 	if m.worker.isStale(data.jobID) {
 		minerLogger().Debugw("[MINER] ignoring stale mining result")
+		return
+	}
+
+	if m.heightLock != nil && data.Value != nil && data.Value.Head != nil {
+		if m.heightLock.IsHeightLocked(data.Value.Head.Height) {
+			minerLogger().Debugw("[MINER] height already locked, skipping proposal",
+				"height", data.Value.Head.Height,
+			)
+			m.worker.Compute(m.newTask(nil))
+			return
+		}
+	}
+
+	if m.publisher != nil {
+		if err := m.publisher.ProposeBlock(data.Value); err != nil {
+			minerLogger().Errorw("[MINER] failed to propose block", "error", err)
+			current := m.worker.GetCurrentTask()
+			var txs []*types.GTransaction
+			if current != nil {
+				txs = current.txs
+			}
+			m.worker.Compute(m.newTask(txs))
+			return
+		}
+		minerLogger().Infow("[MINER] block proposed for consensus",
+			"height", data.Value.Head.Height,
+			"hash", data.Value.Hash,
+		)
+		m.pendingBlock = data.Value
 		return
 	}
 
@@ -269,6 +356,18 @@ func (m *miner) SetPool(p pool.TxPool) {
 
 func (m *miner) SetValidator(v validator.Validator) {
 	m.valid = v
+}
+
+func (m *miner) SetBlockPublisher(publisher BlockPublisher) {
+	m.publisher = publisher
+}
+
+func (m *miner) SetHeightLock(lock HeightLockChecker) {
+	m.heightLock = lock
+}
+
+func (m *miner) OnBlockFinalized(b *block.Block) {
+	m.onChainHeadUpdated(b)
 }
 
 func (m *miner) applyBlock(b *block.Block) {

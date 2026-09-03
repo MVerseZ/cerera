@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,10 +23,14 @@ const (
 	SyncCheckInterval = 30 * time.Second
 	// SyncTimeout is the timeout for a sync operation
 	SyncTimeout = 5 * time.Minute
-	// MinBlocksAhead is the minimum number of blocks a peer must be ahead to trigger sync.
-	// We keep this low so that nodes that are slightly behind still trigger a catch-up.
-	MinBlocksAhead = 1
+	// peerStatusRefreshTimeout bounds status RPC during periodic sync checks.
+	peerStatusRefreshTimeout = 10 * time.Second
 )
+
+// shouldSyncChain reports whether the local node should catch up to peerHeight.
+func shouldSyncChain(peerHeight, localHeight int) bool {
+	return peerHeight > localHeight
+}
 
 func syncLogger() *zap.SugaredLogger {
 	return logger.Named("sync")
@@ -124,6 +129,33 @@ func (m *Manager) syncLoop() {
 	}
 }
 
+// refreshPeerStatuses re-queries ready peers so GetBestPeer uses current heights.
+func (m *Manager) refreshPeerStatuses() {
+	if m.handler == nil || m.peerManager == nil {
+		return
+	}
+
+	for _, p := range m.peerManager.GetPeers() {
+		if p == nil || !p.IsReady {
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(m.ctx, peerStatusRefreshTimeout)
+		status, err := m.handler.RequestStatus(ctx, p.ID)
+		cancel()
+		if err != nil {
+			syncLogger().Debugw("Failed to refresh peer status",
+				"peer", p.ID,
+				"error", err,
+			)
+			continue
+		}
+
+		m.peerManager.UpdatePeerInfo(p.ID, status.Height, status.Status, status.NodeAddress)
+		m.peerTracker.UpdatePeer(p.ID, status.Height, status.Status)
+	}
+}
+
 // checkAndSync checks if sync is needed and starts it
 func (m *Manager) checkAndSync() {
 	m.mu.Lock()
@@ -133,23 +165,22 @@ func (m *Manager) checkAndSync() {
 	}
 	m.mu.Unlock()
 
+	m.refreshPeerStatuses()
+
 	// Get current height
 	currentHeight := 0
 	if m.serviceProvider != nil {
 		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
-	// Find best peer
+	// Find best peer after refresh
 	bestPeer := m.peerManager.GetBestPeer()
 	if bestPeer == nil {
 		return
 	}
 
-	// Update peer tracker
-	m.peerTracker.UpdatePeer(bestPeer.ID, bestPeer.Height, protocol.Status{})
-
-	// Chain catch-up: only when the peer is ahead on height.
-	if bestPeer.Height > currentHeight+MinBlocksAhead {
+	// Chain catch-up: when any ready peer is ahead on height.
+	if shouldSyncChain(bestPeer.Height, currentHeight) {
 		syncLogger().Infow("Sync needed",
 			"currentHeight", currentHeight,
 			"peerHeight", bestPeer.Height,
@@ -167,20 +198,8 @@ func (m *Manager) checkAndSync() {
 		"height", currentHeight,
 		"storageSize", currentStorageSize,
 		"bestPeer", bestPeer.ID,
+		"bestPeerHeight", bestPeer.Height,
 	)
-
-	newBestPeer := m.peerManager.GetBestPeer()
-	if bestPeer != newBestPeer {
-		syncLogger().Infow("Best peer changed during sync check",
-			"previousPeer", bestPeer.ID,
-			"newBestPeer", newBestPeer.ID,
-		)
-		bestPeer = m.peerManager.GetBestPeer()
-	}
-	bestPeer = newBestPeer
-	if bestPeer == nil {
-		return
-	}
 
 	localStorageSvc := ""
 	if m.serviceProvider != nil {
@@ -224,6 +243,10 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 
 	// Start progress tracking
 	m.progress.StartSync(startHeight, targetHeight, peerID)
+
+	if pi := m.peerManager.GetPeer(peerID); pi != nil {
+		m.peerTracker.UpdatePeer(peerID, targetHeight, pi.Status)
+	}
 
 	syncLogger().Infow("Starting sync",
 		"peer", peerID,
@@ -297,6 +320,14 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 						"error", err,
 					)
 					m.progress.RecordError(fmt.Sprintf("failed to add block %d: %s", b.Head.Height, err))
+					if strings.Contains(err.Error(), "Prev hash diff") {
+						syncLogger().Warnw("Sync fork detected — stopping batch",
+							"peer", peerID,
+							"height", b.Head.Height,
+							"localHeight", currentHeight,
+						)
+						break
+					}
 					continue
 				}
 			}
@@ -486,7 +517,7 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
-	if status.Height > currentHeight+MinBlocksAhead {
+	if shouldSyncChain(status.Height, currentHeight) {
 		go m.syncChainWithPeer(peerID, currentHeight, status.Height)
 	}
 
@@ -550,7 +581,7 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 	}
 
 	// Block is ahead - we might need to sync
-	if b.Head.Height > currentHeight+MinBlocksAhead {
+	if shouldSyncChain(b.Head.Height, currentHeight) {
 		go m.syncChainWithPeer(fromPeer, currentHeight, b.Head.Height)
 	}
 
@@ -588,6 +619,8 @@ func (m *Manager) SetOnNewBlock(callback func(*block.Block)) {
 
 // ForceSync forces a sync with the best available peer
 func (m *Manager) ForceSync() error {
+	m.refreshPeerStatuses()
+
 	bestPeer := m.peerManager.GetBestPeer()
 	if bestPeer == nil {
 		return fmt.Errorf("no peers available")

@@ -60,6 +60,8 @@ type Ice struct {
 	// Dev-mode: treat connected peers as validators.
 	devValidators bool
 
+	onBlockFinalized func(*block.Block)
+
 	mu sync.RWMutex // guards fields read by Exec() and written during Start()/SetServiceProvider()
 }
 
@@ -203,6 +205,17 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 			if b != nil && b.Head != nil {
 				metrics.SetBlockHeight(b.Head.Height)
 			}
+			if ice.PubSub != nil && b != nil {
+				if err := ice.BroadcastBlock(b); err != nil {
+					iceLogger().Warnw("BroadcastBlock after finalize failed", "err", err)
+				}
+			}
+			ice.mu.RLock()
+			cb := ice.onBlockFinalized
+			ice.mu.RUnlock()
+			if cb != nil {
+				cb(b)
+			}
 		})
 		ice.Consensus = consMgr
 		ice.Consensus.Start()
@@ -242,6 +255,13 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.SyncManager.Start()
 
 	iceLogger().Infow("API provider set, sync manager and handler started")
+}
+
+// SetOnBlockFinalized registers a callback invoked when consensus finalizes a block.
+func (ice *Ice) SetOnBlockFinalized(callback func(*block.Block)) {
+	ice.mu.Lock()
+	ice.onBlockFinalized = callback
+	ice.mu.Unlock()
 }
 
 // onPeerConnected handles new peer connections
