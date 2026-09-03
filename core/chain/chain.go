@@ -185,9 +185,11 @@ func Mold(cfg *config.Config) (*Chain, error) {
 	}
 
 	chainPath := determineChainPath(cfg)
-	if chainPath == "EMPTY" {
-		chainPath = "./chain.dat"
-		cfg.UpdateChainPath(chainPath)
+	if chainPath == "" && !cfg.IN_MEM {
+		chainPath = cfg.ResolveChainFile()
+	}
+	if cfg.Chain.Path == "EMPTY" && chainPath != "" {
+		cfg.Chain.Path = chainPath
 	}
 
 	dataBlocks, stats, err := loadBlocksFromStorage(cfg, genesisBlock, chainPath, storage)
@@ -259,7 +261,7 @@ func determineChainPath(cfg *config.Config) string {
 	if cfg.IN_MEM {
 		return ""
 	}
-	return cfg.Chain.Path
+	return cfg.ResolveChainFile()
 }
 
 func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainPath string, storage BlockStorage) ([]*block.Block, BlockChainStatus, error) {

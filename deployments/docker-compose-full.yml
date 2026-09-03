@@ -7,7 +7,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node1
-    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - ICE_DEV_VALIDATORS=1
     ports:
@@ -25,7 +25,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node2
-    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - ICE_DEV_VALIDATORS=1
     ports:
@@ -43,7 +43,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node3
-    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - ICE_DEV_VALIDATORS=1
     ports:
@@ -61,7 +61,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node4
-    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - ICE_DEV_VALIDATORS=1
     ports:
@@ -79,7 +79,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node5
-    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - ICE_DEV_VALIDATORS=1
     ports:

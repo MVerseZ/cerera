@@ -256,12 +256,12 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		return &vlt, nil
 	}
 
-	// Initialize vault path if not set (pogreb uses directory, not file)
+	vaultPath := cfg.ResolveVaultDir()
 	if cfg.Vault.PATH == EMPTY_PATH {
-		cfg.UpdateVaultPath(DEFAULT_VAULT_PATH)
+		cfg.Vault.PATH = vaultPath
 	}
 
-	vlt.path = cfg.Vault.PATH
+	vlt.path = vaultPath
 
 	// Open pogreb database once and store it
 	dbDir := vlt.path

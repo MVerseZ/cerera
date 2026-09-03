@@ -7,7 +7,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node1
-    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - ICE_DEV_VALIDATORS=1
     ports:
