@@ -640,6 +640,7 @@ func (v *D5Vault) SyncFromDB() error {
 		}()
 	}
 
+	v.loadContractsFromDB()
 	return nil
 }
 

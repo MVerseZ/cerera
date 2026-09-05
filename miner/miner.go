@@ -81,6 +81,13 @@ type PeerCounter interface {
 	GetPeerCount() int
 }
 
+// PeerBootstrapStatus is optionally implemented by BlockPublisher (e.g. icenet.Ice).
+type PeerBootstrapStatus interface {
+	BootstrapPhaseDone() bool
+	BootstrapConnectFailed() bool
+	BootstrapDone() <-chan struct{}
+}
+
 // HeightLockChecker interface for checking height locks from main package
 type HeightLockChecker interface {
 	TryLockHeight(height int) bool
@@ -449,34 +456,79 @@ func (m *miner) clearProcessedTransactions(txs []types.GTransaction) {
 }
 
 func (m *miner) shouldWaitForPeers() bool {
-	if len(m.config.NetCfg.SeedNodes) == 0 {
+	if !m.hasConfiguredBootstrapPeers() {
 		return false
 	}
 	pc, ok := m.publisher.(PeerCounter)
-	return ok && pc.GetPeerCount() == 0
+	if !ok || pc.GetPeerCount() > 0 {
+		return false
+	}
+	if bs, ok := m.publisher.(PeerBootstrapStatus); ok && bs.BootstrapConnectFailed() {
+		return false
+	}
+	return true
+}
+
+func (m *miner) hasConfiguredBootstrapPeers() bool {
+	if m.config == nil {
+		return false
+	}
+	return len(m.config.NetCfg.BootstrapNodes) > 0 || len(m.config.NetCfg.SeedNodes) > 0
 }
 
 func (m *miner) waitForPeersAndMine() {
+	var bootstrapDone <-chan struct{}
+	if bs, ok := m.publisher.(PeerBootstrapStatus); ok {
+		bootstrapDone = bs.BootstrapDone()
+	}
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-m.stopChan:
 			return
-		case <-ticker.C:
-			m.mu.Lock()
-			waiting := m.shouldWaitForPeers()
-			if !waiting && m.mining && m.worker != nil {
-				m.worker.Compute(m.newTask(nil))
-				m.mu.Unlock()
+		case <-bootstrapDone:
+			bootstrapDone = nil
+			if m.tryStartMiningAfterPeerWait() {
 				return
 			}
-			m.mu.Unlock()
-			if waiting {
-				minerLogger().Infow("[MINER] waiting for peers before mining")
+		case <-ticker.C:
+			if m.tryStartMiningAfterPeerWait() {
+				return
 			}
 		}
 	}
+}
+
+func (m *miner) tryStartMiningAfterPeerWait() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.mining || m.worker == nil {
+		return true
+	}
+
+	if pc, ok := m.publisher.(PeerCounter); ok && pc.GetPeerCount() > 0 {
+		minerLogger().Infow("[MINER] peers connected, starting mining")
+		m.worker.Compute(m.newTask(nil))
+		return true
+	}
+
+	if bs, ok := m.publisher.(PeerBootstrapStatus); ok && bs.BootstrapConnectFailed() {
+		minerLogger().Warnw("[MINER] bootstrap peers unavailable, starting solo mining")
+		m.worker.Compute(m.newTask(nil))
+		return true
+	}
+
+	if !m.shouldWaitForPeers() {
+		m.worker.Compute(m.newTask(nil))
+		return true
+	}
+
+	minerLogger().Infow("[MINER] waiting for peers before mining")
+	return false
 }
 
 func (m *miner) ServiceName() string {

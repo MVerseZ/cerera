@@ -7,18 +7,20 @@ import (
 	"io"
 	"time"
 
+	"github.com/cerera/core/storage"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // Binary vault snapshot protocol (one request / one response per stream).
 //
-// Request (8 bytes, big-endian):
-//   uint32 offset — index into address-sorted account list
-//   uint32 limit  — max accounts to return (server clamps)
+// Request (9 bytes, big-endian):
+//   uint8  kind   — 0=accounts, 1=contract code, 2=contract storage
+//   uint32 offset — index into sorted export list for the selected kind
+//   uint32 limit  — max entries to return (server clamps)
 //
 // Response:
-//   uint32 total       — total accounts on server
+//   uint32 total       — total entries on server for this kind
 //   uint32 nextOffset  — offset to pass for the next chunk
 //   uint8  more        — 1 if another chunk remains
 //   uint32 count       — number of blobs following
@@ -29,13 +31,23 @@ const (
 	storageSnapshotMaxLimit     = 512
 	// MaxStorageAccountBlob caps a single serialized StateAccount on the wire.
 	MaxStorageAccountBlob   = 16 * 1024 * 1024
-	storageSnapshotReqSize  = 8
+	storageSnapshotReqSize  = 9
 	storageSnapshotHdrSize  = 13
 	storageSnapshotStreamTO = 5 * time.Minute
 )
 
-// StorageSnapshotChunk is one page of account blobs from a peer.
+// VaultSnapshotKind selects which vault rows are exported in a snapshot chunk.
+type VaultSnapshotKind uint8
+
+const (
+	VaultSnapshotAccounts         VaultSnapshotKind = 0
+	VaultSnapshotContractCode       VaultSnapshotKind = 1
+	VaultSnapshotContractStorage    VaultSnapshotKind = 2
+)
+
+// StorageSnapshotChunk is one page of vault blobs from a peer.
 type StorageSnapshotChunk struct {
+	Kind       VaultSnapshotKind
 	Accounts   [][]byte
 	Total      int
 	NextOffset int
@@ -55,10 +67,17 @@ func clampStorageSnapshotParams(offset, limit int) (int, int) {
 	return offset, limit
 }
 
-func (h *Handler) buildStorageSnapshotChunk(offset, limit int) (accounts [][]byte, total, next int, more bool) {
+func (h *Handler) buildStorageSnapshotChunk(kind VaultSnapshotKind, offset, limit int) (accounts [][]byte, total, next int, more bool) {
 	offset, limit = clampStorageSnapshotParams(offset, limit)
 	if h.serviceProvider != nil {
-		accounts, total = h.serviceProvider.ExportStorageAccountRange(offset, limit)
+		switch kind {
+		case VaultSnapshotContractCode:
+			accounts, total = h.serviceProvider.ExportStorageContractCodeRange(offset, limit)
+		case VaultSnapshotContractStorage:
+			accounts, total = h.serviceProvider.ExportStorageContractStorageRange(offset, limit)
+		default:
+			accounts, total = h.serviceProvider.ExportStorageAccountRange(offset, limit)
+		}
 	}
 	next = offset + limit
 	if next > total {
@@ -81,7 +100,7 @@ func writeStorageSnapshotResponse(w io.Writer, accounts [][]byte, total, next in
 	}
 	for _, blob := range accounts {
 		if len(blob) > MaxStorageAccountBlob {
-			return fmt.Errorf("account blob exceeds max size: %d", len(blob))
+			return fmt.Errorf("snapshot blob exceeds max size: %d", len(blob))
 		}
 		var lb [4]byte
 		binary.BigEndian.PutUint32(lb[:], uint32(len(blob)))
@@ -97,7 +116,7 @@ func writeStorageSnapshotResponse(w io.Writer, accounts [][]byte, total, next in
 	return nil
 }
 
-func readStorageSnapshotResponse(r io.Reader) (*StorageSnapshotChunk, error) {
+func readStorageSnapshotResponse(r io.Reader, kind VaultSnapshotKind) (*StorageSnapshotChunk, error) {
 	var hdr [storageSnapshotHdrSize]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return nil, fmt.Errorf("read snapshot header: %w", err)
@@ -127,14 +146,33 @@ func readStorageSnapshotResponse(r io.Reader) (*StorageSnapshotChunk, error) {
 		if _, err := io.ReadFull(r, b); err != nil {
 			return nil, fmt.Errorf("read blob %d body: %w", i, err)
 		}
+		if err := validateSnapshotBlob(kind, b); err != nil {
+			return nil, fmt.Errorf("invalid blob %d: %w", i, err)
+		}
 		out = append(out, b)
 	}
 	return &StorageSnapshotChunk{
+		Kind:       kind,
 		Accounts:   out,
 		Total:      total,
 		NextOffset: next,
 		More:       more,
 	}, nil
+}
+
+func validateSnapshotBlob(kind VaultSnapshotKind, blob []byte) error {
+	switch kind {
+	case VaultSnapshotContractCode:
+		_, _, err := storage.DecodeContractCodeBlob(blob)
+		return err
+	case VaultSnapshotContractStorage:
+		if len(blob) != storage.ContractStorageWireSize() {
+			return fmt.Errorf("invalid contract storage blob size: %d", len(blob))
+		}
+		return nil
+	default:
+		return nil
+	}
 }
 
 // handleStorageSnapshotStream serves one binary snapshot chunk per connection.
@@ -154,10 +192,11 @@ func (h *Handler) handleStorageSnapshotStream(s network.Stream) {
 		protocolLogger().Warnw("Failed to read storage snapshot request", "peer", remotePeer, "error", err)
 		return
 	}
-	offset := int(binary.BigEndian.Uint32(req[0:4]))
-	limit := int(binary.BigEndian.Uint32(req[4:8]))
+	kind := VaultSnapshotKind(req[0])
+	offset := int(binary.BigEndian.Uint32(req[1:5]))
+	limit := int(binary.BigEndian.Uint32(req[5:9]))
 
-	accounts, total, next, more := h.buildStorageSnapshotChunk(offset, limit)
+	accounts, total, next, more := h.buildStorageSnapshotChunk(kind, offset, limit)
 	if err := writeStorageSnapshotResponse(s, accounts, total, next, more); err != nil {
 		protocolLogger().Warnw("Failed to write storage snapshot response", "peer", remotePeer, "error", err)
 		return
@@ -165,6 +204,7 @@ func (h *Handler) handleStorageSnapshotStream(s network.Stream) {
 
 	protocolLogger().Debugw("Sent storage snapshot chunk (binary)",
 		"peer", remotePeer,
+		"kind", kind,
 		"offset", offset,
 		"count", len(accounts),
 		"total", total,
@@ -172,8 +212,8 @@ func (h *Handler) handleStorageSnapshotStream(s network.Stream) {
 	)
 }
 
-// RequestStorageSnapshot fetches one chunk of serialized accounts over the binary storage-snapshot protocol.
-func (h *Handler) RequestStorageSnapshot(ctx context.Context, peerID peer.ID, offset, limit int) (*StorageSnapshotChunk, error) {
+// RequestStorageSnapshot fetches one chunk of vault rows over the binary storage-snapshot protocol.
+func (h *Handler) RequestStorageSnapshot(ctx context.Context, peerID peer.ID, kind VaultSnapshotKind, offset, limit int) (*StorageSnapshotChunk, error) {
 	s, err := h.host.NewStream(ctx, peerID, StorageSnapshotProtocolID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open storage snapshot stream: %w", err)
@@ -185,11 +225,12 @@ func (h *Handler) RequestStorageSnapshot(ctx context.Context, peerID peer.ID, of
 	}
 
 	var req [storageSnapshotReqSize]byte
-	binary.BigEndian.PutUint32(req[0:4], uint32(offset))
-	binary.BigEndian.PutUint32(req[4:8], uint32(limit))
+	req[0] = byte(kind)
+	binary.BigEndian.PutUint32(req[1:5], uint32(offset))
+	binary.BigEndian.PutUint32(req[5:9], uint32(limit))
 	if _, err := s.Write(req[:]); err != nil {
 		return nil, fmt.Errorf("failed to send storage snapshot request: %w", err)
 	}
 
-	return readStorageSnapshotResponse(s)
+	return readStorageSnapshotResponse(s, kind)
 }

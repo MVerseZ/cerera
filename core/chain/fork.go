@@ -444,6 +444,7 @@ func (bc *Chain) recalcInfoLocked() {
 	bc.info.Size = size
 	bc.info.Txs = txs
 	bc.info.Gas = gas
+	bc.recalcBlockTimeStatsLocked()
 	if bc.metrics != nil && head.Head != nil {
 		bc.metrics.height.Set(float64(head.Head.Height))
 	}

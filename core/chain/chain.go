@@ -237,13 +237,8 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		OutBoundEvents: make(chan []byte),
 		Size:           chainSize,
 		Difficulty:     chainDifficulty,
-		stats: ChainStats{
-			lastBlockTime: time.Now().Unix(),
-			blockCount:    0,
-			totalTime:     0,
-			avgTime:       0,
-		},
-		metrics:   metrics,
+		stats:          blockTimeStatsFromChain(dataBlocks),
+		metrics:        metrics,
 		storage:   storage,
 		chainPath: chainPath,
 		cancelCh:  make(chan struct{}),
@@ -251,6 +246,8 @@ func Mold(cfg *config.Config) (*Chain, error) {
 
 	chain.info.Size = int64(initialTotalSize)
 	go chain.Start()
+
+	chain.info.AvgTime = chain.stats.avgTime
 
 	// Set initial gauges
 	metrics.difficultyGauge.Set(float64(chainDifficulty))
@@ -609,16 +606,15 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
-	currentTime := time.Now().Unix()
-	timeSinceLast := currentTime - bc.stats.lastBlockTime
-
-	bc.stats.blockCount++
-	bc.stats.totalTime += timeSinceLast
-	bc.stats.lastBlockTime = currentTime
-
-	if bc.stats.blockCount > 0 {
+	prevTs := blockTimestampSec(bc.currentBlock)
+	newTs := blockTimestampSec(newBlock)
+	if newTs > prevTs && bc.currentBlock.Head != nil && bc.currentBlock.Head.Height > 0 {
+		delta := newTs - prevTs
+		bc.stats.blockCount++
+		bc.stats.totalTime += delta
 		bc.stats.avgTime = float64(bc.stats.totalTime) / float64(bc.stats.blockCount)
 	}
+	bc.stats.lastBlockTime = newTs
 
 	for _, v := range bc.data {
 		if v != nil {

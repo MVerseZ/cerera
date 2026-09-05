@@ -50,10 +50,14 @@ func (v *D5Vault) SnapshotAccounts() AccountSnapshot {
 	return snap
 }
 
-// RestoreAccounts replaces in-memory accounts from a prior snapshot.
+// RestoreAccounts replaces in-memory accounts from a prior snapshot (deep-cloned).
 func (v *D5Vault) RestoreAccounts(snap AccountSnapshot) {
 	if snap == nil || v == nil || v.accounts == nil {
 		return
 	}
-	v.accounts.ReplaceAll(snap)
+	cloned := make(AccountSnapshot, len(snap))
+	for addr, acc := range snap {
+		cloned[addr] = cloneAccount(acc)
+	}
+	v.accounts.ReplaceAll(cloned)
 }

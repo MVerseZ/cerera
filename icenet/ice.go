@@ -492,6 +492,32 @@ func (ice *Ice) GetPeerCount() int {
 	return 0
 }
 
+// BootstrapPhaseDone reports whether the initial bootstrap dial phase has finished.
+func (ice *Ice) BootstrapPhaseDone() bool {
+	if ice.Discovery != nil {
+		return ice.Discovery.BootstrapPhaseDone()
+	}
+	return true
+}
+
+// BootstrapConnectFailed reports configured bootstrap peers could not be reached.
+func (ice *Ice) BootstrapConnectFailed() bool {
+	if ice.Discovery != nil {
+		return ice.Discovery.BootstrapConnectFailed()
+	}
+	return false
+}
+
+// BootstrapDone returns a channel closed once bootstrap dial phase completes.
+func (ice *Ice) BootstrapDone() <-chan struct{} {
+	if ice.Discovery != nil {
+		return ice.Discovery.BootstrapDone()
+	}
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
 // GetPeers returns information about all connected peers
 func (ice *Ice) GetPeers() []*peers.PeerInfo {
 	if ice.PeerManager != nil {

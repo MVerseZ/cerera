@@ -65,51 +65,33 @@ func (bv *BlockValidator) ValidateContent(b *block.Block) error {
 		return err
 	}
 	coinbaseCount := 0
+	var gasSum uint64
 	for i := range txs {
 		if txs[i].Type() == types.CoinbaseTxType {
+			if i != len(txs)-1 {
+				return fmt.Errorf("coinbase must be the last transaction")
+			}
 			coinbaseCount++
+			continue
+		}
+		switch txs[i].Type() {
+		case types.LegacyTxType:
+			gasSum += uint64(txs[i].Gas())
+		case types.FaucetTxType:
+			// allowed in blocks
+		default:
+			return fmt.Errorf("unsupported transaction type %d in block", txs[i].Type())
 		}
 	}
 	if coinbaseCount != 1 {
 		return fmt.Errorf("expected exactly one coinbase transaction, got %d", coinbaseCount)
 	}
 
-	var gasSum uint64
-	vault := bv.Vault
-	var snap storage.AccountSnapshot
-	if vault != nil {
-		snap = vault.SnapshotAccounts()
-	}
-
-	for i := 0; i < len(txs)-1; i++ {
-		tx := txs[i]
-		switch tx.Type() {
-		case types.LegacyTxType:
-			if snap == nil {
-				if err := ValidateBlockLegacyTx(bv.Signer, tx, vault); err != nil {
-					return fmt.Errorf("tx %s: %w", tx.Hash().Hex(), err)
-				}
-			} else if err := ApplyLegacyTxSimulation(vault, bv.Signer, tx); err != nil {
-				return fmt.Errorf("tx %s: %w", tx.Hash().Hex(), err)
-			}
-			gasSum += uint64(tx.Gas())
-		case types.FaucetTxType:
-			// allowed in blocks
-		case types.CoinbaseTxType:
-			return fmt.Errorf("coinbase must be the last transaction")
-		default:
-			return fmt.Errorf("unsupported transaction type %d in block", tx.Type())
-		}
-	}
-
 	if gasSum != head.GasUsed {
 		return fmt.Errorf("gasUsed mismatch: header %d sum %d", head.GasUsed, gasSum)
 	}
 
-	if vault != nil && len(snap) > 0 {
-		vault.RestoreAccounts(snap)
-	}
-
+	// State root and tx economics share one replay path (baseline → chain → block txs).
 	return bv.verifyStateRoot(b)
 }
 

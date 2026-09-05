@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
@@ -120,6 +121,7 @@ type CoreValidator struct {
 	txTable *storage.TxTable
 
 	blockVal *validation.BlockValidator
+	simMu    sync.Mutex
 }
 
 func (v *CoreValidator) SetPool(pool pool.TxPool) {
@@ -438,6 +440,14 @@ func (v *CoreValidator) ComputeBlockStateRoot(b *block.Block) (common.Hash, erro
 }
 
 func (v *CoreValidator) computeStateRootAfterBlock(b *block.Block) (common.Hash, error) {
+	v.simMu.Lock()
+	defer v.simMu.Unlock()
+	return v.simulateBlockStateRoot(b)
+}
+
+// simulateBlockStateRoot replays canonical chain state from baseline and applies block txs.
+// Used by both the miner (header Root) and block validation (same code path).
+func (v *CoreValidator) simulateBlockStateRoot(b *block.Block) (common.Hash, error) {
 	vault := v.vault
 	if vault == nil || b == nil || b.Head == nil {
 		return common.EmptyRootHash, fmt.Errorf("vault or block missing")
@@ -472,7 +482,7 @@ func (v *CoreValidator) computeStateRootAfterBlock(b *block.Block) (common.Hash,
 			continue
 		}
 		if err := v.applyTransaction(tx, false); err != nil {
-			return common.Hash{}, err
+			return common.Hash{}, fmt.Errorf("block %d tx %s: %w", b.Head.Height, tx.Hash().Hex(), err)
 		}
 	}
 	return vault.ComputeStateRoot(), nil

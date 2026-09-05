@@ -232,9 +232,32 @@ func (sp *ServiceProvider) ValidateBlockPoW(b *block.Block) bool {
 	return b != nil && b.Head != nil
 }
 
+func (sp *ServiceProvider) GetVaultSyncStats() storage.VaultSyncStats {
+	if v := sp.vaultRef(); v != nil {
+		return v.VaultSyncStats()
+	}
+	return storage.VaultSyncStats{
+		Accounts: sp.GetStorageSize(),
+	}
+}
+
 func (sp *ServiceProvider) ExportStorageAccountRange(offset, limit int) ([][]byte, int) {
 	if v := sp.vaultRef(); v != nil {
 		return v.ExportAccountRangeSortedByAddress(offset, limit)
+	}
+	return nil, 0
+}
+
+func (sp *ServiceProvider) ExportStorageContractCodeRange(offset, limit int) ([][]byte, int) {
+	if v := sp.vaultRef(); v != nil {
+		return v.ExportContractCodeRange(offset, limit)
+	}
+	return nil, 0
+}
+
+func (sp *ServiceProvider) ExportStorageContractStorageRange(offset, limit int) ([][]byte, int) {
+	if v := sp.vaultRef(); v != nil {
+		return v.ExportContractStorageRange(offset, limit)
 	}
 	return nil, 0
 }
@@ -264,6 +287,38 @@ func (sp *ServiceProvider) ApplyStorageAccounts(accounts [][]byte) error {
 			continue
 		}
 		v.Sync(blob)
+	}
+	return nil
+}
+
+func (sp *ServiceProvider) ApplyStorageContractCodes(blobs [][]byte) error {
+	v := sp.vaultRef()
+	if v == nil {
+		return fmt.Errorf("vault not initialized")
+	}
+	for _, blob := range blobs {
+		if len(blob) == 0 {
+			continue
+		}
+		if err := v.SyncContractCodeBlob(blob); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (sp *ServiceProvider) ApplyStorageContractStorage(blobs [][]byte) error {
+	v := sp.vaultRef()
+	if v == nil {
+		return fmt.Errorf("vault not initialized")
+	}
+	for _, blob := range blobs {
+		if len(blob) == 0 {
+			continue
+		}
+		if err := v.SyncContractStorageBlob(blob); err != nil {
+			return err
+		}
 	}
 	return nil
 }
