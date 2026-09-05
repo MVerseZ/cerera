@@ -9,7 +9,9 @@ type Status struct {
 	ChainID        int         `json:"chainId"`
 	GenesisHash    common.Hash `json:"genesisHash"`
 	StorageService string      `json:"storageService,omitempty"`
-	StorageData    int         `json:"storageData,omitempty"` // Size of storage (e.g., number of accounts)
+	StorageData    int         `json:"storageData,omitempty"` // Number of accounts
+	ContractCodes  int         `json:"contractCodes,omitempty"`
+	ContractSlots  int         `json:"contractSlots,omitempty"`
 }
 
 func NewStatus(chainID int, genesisHash common.Hash) *Status {
@@ -37,6 +39,9 @@ func GetStatus(serviceProvider *service.ServiceProvider) (Status, error) {
 
 		// storage data (number of accounts)
 		status.StorageData = serviceProvider.GetStorageSize()
+		stats := serviceProvider.GetVaultSyncStats()
+		status.ContractCodes = stats.ContractCodes
+		status.ContractSlots = stats.ContractSlots
 	}
 
 	return status, nil

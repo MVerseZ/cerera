@@ -37,6 +37,10 @@ type Discovery struct {
 	rawBootstrapAddrs []multiaddr.Multiaddr // Addresses without peer ID for raw dialing
 	mu                sync.RWMutex
 	connected         map[peer.ID]bool
+
+	hasConfiguredBootstrap bool
+	bootstrapPhaseDone     bool
+	bootstrapDoneCh        chan struct{}
 }
 
 // discoveryNotifee handles mDNS discovery notifications
@@ -70,11 +74,12 @@ func NewDiscovery(ctx context.Context, h host.Host, cfg *config.Config) (*Discov
 	ctx, cancel := context.WithCancel(ctx)
 
 	d := &Discovery{
-		host:      h,
-		cfg:       cfg,
-		ctx:       ctx,
-		cancel:    cancel,
-		connected: make(map[peer.ID]bool),
+		host:            h,
+		cfg:             cfg,
+		ctx:             ctx,
+		cancel:          cancel,
+		connected:       make(map[peer.ID]bool),
+		bootstrapDoneCh: make(chan struct{}),
 	}
 
 	// Parse bootstrap peers from config
@@ -127,6 +132,7 @@ func (d *Discovery) parseBootstrapPeers() error {
 		iceLogger().Infow("Added bootstrap peer", "peer", peerInfo.ID, "addrs", peerInfo.Addrs)
 	}
 
+	d.hasConfiguredBootstrap = len(d.bootstrapPeers) > 0 || len(d.rawBootstrapAddrs) > 0
 	return nil
 }
 
@@ -216,6 +222,13 @@ func (d *Discovery) startMDNS() error {
 
 // connectToBootstrapPeers connects to all configured bootstrap peers
 func (d *Discovery) connectToBootstrapPeers() {
+	defer d.markBootstrapPhaseDone()
+
+	if !d.hasConfiguredBootstrap {
+		iceLogger().Debugw("[NETWORK DISCOVERY] No bootstrap peers configured, skipping bootstrap dial")
+		return
+	}
+
 	var wg sync.WaitGroup
 
 	for _, peerInfo := range d.bootstrapPeers {
@@ -243,10 +256,80 @@ func (d *Discovery) connectToBootstrapPeers() {
 		}(peerInfo)
 	}
 
+	for _, maddr := range d.rawBootstrapAddrs {
+		wg.Add(1)
+		go func(ma multiaddr.Multiaddr) {
+			defer wg.Done()
+
+			ctx, cancel := context.WithTimeout(d.ctx, ConnectionTimeout)
+			defer cancel()
+
+			pi := peer.AddrInfo{Addrs: []multiaddr.Multiaddr{ma}}
+			if err := d.host.Connect(ctx, pi); err != nil {
+				iceLogger().Warnw("Failed to connect to bootstrap address",
+					"addr", ma.String(),
+					"error", err,
+				)
+				return
+			}
+
+			iceLogger().Infow("[NETWORK DISCOVERY] Connected to bootstrap address", "addr", ma.String())
+		}(maddr)
+	}
+
 	wg.Wait()
-	iceLogger().Infow("[NETWORK DISCOVERY] Bootstrap connection phase complete",
-		"connected", len(d.host.Network().Peers()),
-	)
+	connected := d.GetConnectedPeerCount()
+	if connected == 0 {
+		iceLogger().Warnw("[NETWORK DISCOVERY] Bootstrap connection phase complete — no peers connected, solo mode available",
+			"configuredBootstrapPeers", len(d.bootstrapPeers),
+			"configuredRawAddrs", len(d.rawBootstrapAddrs),
+		)
+	} else {
+		iceLogger().Infow("[NETWORK DISCOVERY] Bootstrap connection phase complete",
+			"connected", connected,
+		)
+	}
+}
+
+func (d *Discovery) markBootstrapPhaseDone() {
+	d.mu.Lock()
+	if d.bootstrapPhaseDone {
+		d.mu.Unlock()
+		return
+	}
+	d.bootstrapPhaseDone = true
+	doneCh := d.bootstrapDoneCh
+	d.mu.Unlock()
+	close(doneCh)
+}
+
+// HasConfiguredBootstrapPeers reports whether config lists any bootstrap/seed nodes.
+func (d *Discovery) HasConfiguredBootstrapPeers() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.hasConfiguredBootstrap
+}
+
+// BootstrapPhaseDone reports whether the initial bootstrap dial phase has finished.
+func (d *Discovery) BootstrapPhaseDone() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.bootstrapPhaseDone
+}
+
+// BootstrapConnectFailed reports bootstrap was configured but no peer connected after dial phase.
+func (d *Discovery) BootstrapConnectFailed() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if !d.hasConfiguredBootstrap || !d.bootstrapPhaseDone {
+		return false
+	}
+	return len(d.host.Network().Peers()) == 0
+}
+
+// BootstrapDone returns a channel closed once the bootstrap dial phase completes.
+func (d *Discovery) BootstrapDone() <-chan struct{} {
+	return d.bootstrapDoneCh
 }
 
 // discoverPeers continuously discovers new peers via DHT

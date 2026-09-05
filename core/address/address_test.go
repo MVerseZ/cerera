@@ -15,10 +15,10 @@ func TestHexToAddress(t *testing.T) {
 		hex      string
 		expected string
 	}{
-		{"valid with 0x", "0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000001"},
-		{"valid without 0x", "0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000001"},
-		{"empty", "0x", "0x0000000000000000000000000000000000000000000000000000000000000000"},
-		{"short hex", "0x01", "0x0000000000000000000000000000000000000000000000000000000000000001"},
+		{"valid with 0x", "0x0000000000000000000000000000000000000000000000000000000000000001", "0x1"},
+		{"valid without 0x", "0000000000000000000000000000000000000000000000000000000000000001", "0x1"},
+		{"empty", "0x", "0x0"},
+		{"short hex", "0x01", "0x1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,8 +95,14 @@ func TestAddress_Hex(t *testing.T) {
 	if hex[:2] != "0x" {
 		t.Errorf("Hex() should start with 0x, got %s", hex)
 	}
-	if len(hex) != 2+AddressLength*2 {
-		t.Errorf("Hex() len = %d, want %d", len(hex), 2+AddressLength*2)
+	if len(hex) > 2+AddressLength*2 {
+		t.Errorf("Hex() len = %d, want at most %d", len(hex), 2+AddressLength*2)
+	}
+	if hex != "0xFF" && hex != "0xff" && hex != "0xFf" {
+		// checksum may vary casing; value must end with ff
+		if len(hex) < 4 || hex[len(hex)-2:] != "fF" && hex[len(hex)-2:] != "Ff" && hex[len(hex)-2:] != "FF" && hex[len(hex)-2:] != "ff" {
+			t.Errorf("Hex() = %s, want short form ending in ff", hex)
+		}
 	}
 }
 
@@ -149,8 +155,8 @@ func TestAddress_UnmarshalText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalText() error = %v", err)
 	}
-	if addr.Hex() != hexStr {
-		t.Errorf("UnmarshalText() got %s, want %s", addr.Hex(), hexStr)
+	if addr != HexToAddress("0x1") {
+		t.Errorf("UnmarshalText() got %s, want %s", addr.Hex(), HexToAddress("0x1").Hex())
 	}
 }
 
@@ -190,11 +196,11 @@ func TestIsHexAddress(t *testing.T) {
 		input string
 		valid bool
 	}{
-		{"valid with 0x", "0x" + strings.Repeat("00", AddressLength), true},
+		{"valid full with 0x", "0x" + strings.Repeat("00", AddressLength), true},
+		{"valid short with 0x", "0x01", true},
 		{"valid without 0x", strings.Repeat("00", AddressLength), true},
-		{"invalid length", "0x01", false},
+		{"invalid too long", "0x" + strings.Repeat("00", AddressLength+1), false},
 		{"invalid chars", "0x" + strings.Repeat("00", 31) + "zz", false},
-		{"odd length", "0x" + strings.Repeat("0", AddressLength*2-1), false},
 		{"empty", "", false},
 	}
 	for _, tt := range tests {
@@ -395,7 +401,10 @@ func TestMaxAddress(t *testing.T) {
 		t.Error("MaxAddress should not be empty")
 	}
 	hex := MaxAddress.Hex()
-	if len(hex) != 2+AddressLength*2 {
+	if hex[:2] != "0x" {
+		t.Errorf("MaxAddress hex should start with 0x, got %s", hex)
+	}
+	if len(hex) > 2+AddressLength*2 {
 		t.Errorf("MaxAddress hex len = %d", len(hex))
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/storage"
 	"github.com/cerera/icenet/peers"
 	"github.com/cerera/icenet/protocol"
 	"github.com/cerera/icenet/service"
@@ -67,6 +68,16 @@ type Manager struct {
 	// Callbacks
 	onSyncComplete func()
 	onNewBlock     func(*block.Block)
+
+	forkDetector ForkDetector
+}
+
+// ForkDetector handles competing blocks and orphan storage during sync.
+type ForkDetector interface {
+	OnCompetingBlock(local, remote *block.Block, from peer.ID)
+	OnPrevHashMismatch(localHead, incoming *block.Block, from peer.ID)
+	ProcessOrphan(b *block.Block, from peer.ID) bool
+	OnBlockLinked(b *block.Block)
 }
 
 // NewManager creates a new sync manager
@@ -189,14 +200,16 @@ func (m *Manager) checkAndSync() {
 		go m.syncChainWithPeer(bestPeer.ID, currentHeight, bestPeer.Height)
 	}
 
-	currentStorageSize := 0
+	localStats := storage.VaultSyncStats{}
 	if m.serviceProvider != nil {
-		currentStorageSize = m.serviceProvider.GetStorageSize()
+		localStats = m.serviceProvider.GetVaultSyncStats()
 	}
 
 	syncLogger().Debugw("Sync check state",
 		"height", currentHeight,
-		"storageSize", currentStorageSize,
+		"localAccounts", localStats.Accounts,
+		"localContractCodes", localStats.ContractCodes,
+		"localContractSlots", localStats.ContractSlots,
 		"bestPeer", bestPeer.ID,
 		"bestPeerHeight", bestPeer.Height,
 	)
@@ -211,14 +224,18 @@ func (m *Manager) checkAndSync() {
 	}
 
 	// Vault snapshot sync must run even when heights already match; otherwise
-	// nodes stay with divergent account sets forever.
-	if bestPeer.Status.StorageData > currentStorageSize {
-		syncLogger().Infow("Peer has more accounts — triggering storage sync",
-			"currentStorageSize", currentStorageSize,
-			"peerStorageSize", bestPeer.Status.StorageData,
+	// nodes stay with divergent account/contract sets forever.
+	if vaultSyncNeeded(localStats, bestPeer.Status) {
+		syncLogger().Infow("Peer has more vault data — triggering full vault sync",
+			"localAccounts", localStats.Accounts,
+			"peerAccounts", bestPeer.Status.StorageData,
+			"localContractCodes", localStats.ContractCodes,
+			"peerContractCodes", bestPeer.Status.ContractCodes,
+			"localContractSlots", localStats.ContractSlots,
+			"peerContractSlots", bestPeer.Status.ContractSlots,
 			"peer", bestPeer.ID,
 		)
-		go m.syncStorageWithPeer(bestPeer.ID, currentStorageSize, bestPeer.Status.StorageData)
+		go m.syncFullVaultWithPeer(bestPeer.ID, localStats, bestPeer.Status)
 	}
 
 }
@@ -326,6 +343,11 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 							"height", b.Head.Height,
 							"localHeight", currentHeight,
 						)
+						if m.forkDetector != nil {
+							localHead := m.serviceProvider.GetBlockByHeight(currentHeight)
+							m.forkDetector.OnPrevHashMismatch(localHead, b, peerID)
+							m.forkDetector.ProcessOrphan(b, peerID)
+						}
 						break
 					}
 					continue
@@ -338,6 +360,9 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 			// Call callback
 			if m.onNewBlock != nil {
 				m.onNewBlock(b)
+			}
+			if m.forkDetector != nil {
+				m.forkDetector.OnBlockLinked(b)
 			}
 		}
 
@@ -370,20 +395,36 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 
 const storageSnapshotChunkLimit = 256
 
-// syncStorageWithPeer pulls serialized vault accounts from the peer (chunked) and merges locally.
-// It does not use the block-sync isSyncing flag so it can run in parallel with chain catch-up.
-func (m *Manager) syncStorageWithPeer(peerID peer.ID, startStorageSize, targetSize int) {
+func vaultSyncNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
+	return peer.StorageData > local.Accounts ||
+		peer.ContractCodes > local.ContractCodes ||
+		peer.ContractSlots > local.ContractSlots
+}
+
+// syncFullVaultWithPeer pulls accounts, contract code, and contract storage from the peer.
+func (m *Manager) syncFullVaultWithPeer(peerID peer.ID, local storage.VaultSyncStats, peer protocol.Status) {
+	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotAccounts, local.Accounts, peer.StorageData)
+	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractCode, local.ContractCodes, peer.ContractCodes)
+	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractStorage, local.ContractSlots, peer.ContractSlots)
+}
+
+// syncVaultKindWithPeer pulls one vault snapshot kind from the peer (chunked) and merges locally.
+func (m *Manager) syncVaultKindWithPeer(peerID peer.ID, kind protocol.VaultSnapshotKind, localCount, peerCount int) {
 	if m.handler == nil || m.serviceProvider == nil {
+		return
+	}
+	if peerCount <= localCount {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(m.ctx, SyncTimeout)
 	defer cancel()
 
-	syncLogger().Infow("Starting storage sync",
+	syncLogger().Infow("Starting vault snapshot sync",
 		"peer", peerID,
-		"localAccountCount", startStorageSize,
-		"peerReportedCount", targetSize,
+		"kind", kind,
+		"localCount", localCount,
+		"peerCount", peerCount,
 	)
 
 	offset := 0
@@ -391,49 +432,87 @@ func (m *Manager) syncStorageWithPeer(peerID peer.ID, startStorageSize, targetSi
 	for {
 		select {
 		case <-ctx.Done():
-			syncLogger().Infow("Storage sync cancelled or timed out", "peer", peerID, "offset", offset)
+			syncLogger().Infow("Vault snapshot sync cancelled or timed out", "peer", peerID, "kind", kind, "offset", offset)
 			return
 		default:
 		}
 
-		resp, err := m.handler.RequestStorageSnapshot(ctx, peerID, offset, storageSnapshotChunkLimit)
+		resp, err := m.handler.RequestStorageSnapshot(ctx, peerID, kind, offset, storageSnapshotChunkLimit)
 		if err != nil {
-			syncLogger().Errorw("Storage snapshot request failed", "peer", peerID, "offset", offset, "error", err)
+			syncLogger().Errorw("Vault snapshot request failed", "peer", peerID, "kind", kind, "offset", offset, "error", err)
 			return
 		}
 
-		m.serviceProvider.ApplyStorageAccounts(resp.Accounts)
+		if err := m.applyVaultSnapshotChunk(kind, resp.Accounts); err != nil {
+			syncLogger().Errorw("Failed to apply vault snapshot chunk", "peer", peerID, "kind", kind, "offset", offset, "error", err)
+			return
+		}
 		applied += len(resp.Accounts)
 
 		if !resp.More {
 			break
 		}
 		if resp.NextOffset <= offset {
-			syncLogger().Warnw("Storage snapshot nextOffset did not advance, stopping", "peer", peerID, "offset", offset)
+			syncLogger().Warnw("Vault snapshot nextOffset did not advance, stopping", "peer", peerID, "kind", kind, "offset", offset)
 			break
 		}
 		offset = resp.NextOffset
 	}
 
-	nowCount := 0
-	if m.serviceProvider != nil {
-		nowCount = m.serviceProvider.GetStorageSize()
-	}
-
-	if nowCount < targetSize {
-		syncLogger().Warnw("Storage sync ended with fewer accounts than peer reported at start (retry on next sync tick)",
+	nowCount := m.localVaultKindCount(kind)
+	if nowCount < peerCount {
+		syncLogger().Warnw("Vault snapshot sync ended with fewer entries than peer reported (retry on next sync tick)",
 			"peer", peerID,
-			"accountCountNow", nowCount,
-			"peerReportedAtStart", targetSize,
+			"kind", kind,
+			"countNow", nowCount,
+			"peerReportedAtStart", peerCount,
 			"blobsApplied", applied,
 		)
 	}
 
-	syncLogger().Infow("Storage sync completed",
+	syncLogger().Infow("Vault snapshot sync completed",
 		"peer", peerID,
+		"kind", kind,
 		"blobsApplied", applied,
-		"accountCountNow", nowCount,
+		"countNow", nowCount,
 	)
+}
+
+func (m *Manager) applyVaultSnapshotChunk(kind protocol.VaultSnapshotKind, blobs [][]byte) error {
+	if m.serviceProvider == nil {
+		return fmt.Errorf("service provider not configured")
+	}
+	switch kind {
+	case protocol.VaultSnapshotContractCode:
+		return m.serviceProvider.ApplyStorageContractCodes(blobs)
+	case protocol.VaultSnapshotContractStorage:
+		return m.serviceProvider.ApplyStorageContractStorage(blobs)
+	default:
+		return m.serviceProvider.ApplyStorageAccounts(blobs)
+	}
+}
+
+func (m *Manager) localVaultKindCount(kind protocol.VaultSnapshotKind) int {
+	if m.serviceProvider == nil {
+		return 0
+	}
+	stats := m.serviceProvider.GetVaultSyncStats()
+	switch kind {
+	case protocol.VaultSnapshotContractCode:
+		return stats.ContractCodes
+	case protocol.VaultSnapshotContractStorage:
+		return stats.ContractSlots
+	default:
+		return stats.Accounts
+	}
+}
+
+// syncStorageWithPeer pulls serialized vault accounts from the peer (chunked) and merges locally.
+// Deprecated: use syncFullVaultWithPeer.
+func (m *Manager) syncStorageWithPeer(peerID peer.ID, startStorageSize, targetSize int) {
+	local := storage.VaultSyncStats{Accounts: startStorageSize}
+	peer := protocol.Status{StorageData: targetSize}
+	m.syncFullVaultWithPeer(peerID, local, peer)
 }
 
 // HandleNewPeer handles a newly connected peer
@@ -460,7 +539,13 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 	chainMatch := (localStatus.ChainID == status.Status.ChainID) &&
 		(localStatus.GenesisHash == status.Status.GenesisHash)
 	storageSvcMatch := localStatus.StorageService == status.Status.StorageService
-	storageCountMatch := status.Status.StorageData == localStatus.StorageData
+	localStats := storage.VaultSyncStats{}
+	if m.serviceProvider != nil {
+		localStats = m.serviceProvider.GetVaultSyncStats()
+	}
+	storageCountMatch := status.Status.StorageData == localStats.Accounts &&
+		status.Status.ContractCodes == localStats.ContractCodes &&
+		status.Status.ContractSlots == localStats.ContractSlots
 
 	switch {
 	case !chainMatch:
@@ -478,10 +563,14 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 			"remoteStorageService", status.Status.StorageService,
 		)
 	case !storageCountMatch:
-		syncLogger().Infow("[SYNC] Peer usable (chain+vault OK); account counts differ — periodic sync will catch up",
+		syncLogger().Infow("[SYNC] Peer usable (chain+vault OK); vault counts differ — periodic sync will catch up",
 			"peer", peerID,
-			"localAccounts", localStatus.StorageData,
+			"localAccounts", localStats.Accounts,
 			"remoteAccounts", status.Status.StorageData,
+			"localContractCodes", localStats.ContractCodes,
+			"remoteContractCodes", status.Status.ContractCodes,
+			"localContractSlots", localStats.ContractSlots,
+			"remoteContractSlots", status.Status.ContractSlots,
 			"storageService", localStatus.StorageService,
 		)
 	default:
@@ -521,14 +610,10 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 		go m.syncChainWithPeer(peerID, currentHeight, status.Height)
 	}
 
-	localStorage := 0
-	if m.serviceProvider != nil {
-		localStorage = m.serviceProvider.GetStorageSize()
-	}
 	if chainMatch &&
 		localStatus.StorageService == status.Status.StorageService &&
-		status.Status.StorageData > localStorage {
-		go m.syncStorageWithPeer(peerID, localStorage, status.Status.StorageData)
+		vaultSyncNeeded(localStats, status.Status) {
+		go m.syncFullVaultWithPeer(peerID, localStats, status.Status)
 	}
 }
 
@@ -545,12 +630,32 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 
 	// Skip if we already have a block at this height or higher
 	if b.Head.Height <= currentHeight {
+		if b.Head.Height == currentHeight {
+			local := m.serviceProvider.GetBlockByHeight(currentHeight)
+			if local != nil && local.Hash != b.Hash && m.forkDetector != nil {
+				m.forkDetector.OnCompetingBlock(local, b, fromPeer)
+				m.forkDetector.ProcessOrphan(b, fromPeer)
+			}
+		}
 		syncLogger().Debugw("Skipping block - already have block at this height",
 			"receivedHeight", b.Head.Height,
 			"currentHeight", currentHeight,
 			"from", fromPeer,
 		)
 		return nil
+	}
+
+	// Side chain: next height but different parent
+	if b.Head.Height == currentHeight+1 {
+		latestHash := m.serviceProvider.GetLatestHash()
+		if latestHash != (common.Hash{}) && b.Head.PrevHash != latestHash {
+			if m.forkDetector != nil {
+				localHead := m.serviceProvider.GetBlockByHeight(currentHeight)
+				m.forkDetector.OnPrevHashMismatch(localHead, b, fromPeer)
+				m.forkDetector.ProcessOrphan(b, fromPeer)
+			}
+			return nil
+		}
 	}
 
 	// Check if this is the next expected block
@@ -576,7 +681,15 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 		if m.onNewBlock != nil {
 			m.onNewBlock(b)
 		}
+		if m.forkDetector != nil {
+			m.forkDetector.OnBlockLinked(b)
+		}
 
+		return nil
+	}
+
+	// Unknown parent — store as orphan
+	if m.forkDetector != nil && m.forkDetector.ProcessOrphan(b, fromPeer) {
 		return nil
 	}
 
@@ -610,6 +723,13 @@ func (m *Manager) GetSyncPeer() peer.ID {
 // SetOnSyncComplete sets the callback for sync completion
 func (m *Manager) SetOnSyncComplete(callback func()) {
 	m.onSyncComplete = callback
+}
+
+// SetForkDetector wires fork/orphan handling during sync.
+func (m *Manager) SetForkDetector(det ForkDetector) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.forkDetector = det
 }
 
 // SetOnNewBlock sets the callback for new blocks

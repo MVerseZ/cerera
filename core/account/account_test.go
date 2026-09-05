@@ -183,6 +183,9 @@ func TestFromBytes(t *testing.T) {
 	if sa.Passphrase != sa2.Passphrase {
 		t.Errorf("TestFromBytes failed: Passphrase mismatch")
 	}
+	if sa.KeyHash != sa2.KeyHash {
+		t.Errorf("TestFromBytes failed: KeyHash mismatch")
+	}
 
 	if sa2.Inputs == nil || sa2.Inputs.M == nil || sa2.Inputs.RWMutex == nil {
 		t.Errorf("TestFromBytes failed: Inputs not properly initialized after binary deserialization")
@@ -249,6 +252,49 @@ func TestStateAccount_ToBytes(t *testing.T) {
 	}
 	if len(sa2.Inputs.M) != 0 {
 		t.Errorf("ToBytes/FromBytes: expected empty Inputs after deserialize, got %d entries", len(sa2.Inputs.M))
+	}
+}
+
+func TestWalletKeysRoundTrip(t *testing.T) {
+	sa := &StateAccount{
+		StateAccountData: StateAccountData{
+			Address: address.Address{0xaa, 0xbb, 0xcc},
+			Nonce:   7,
+			Root:    common.Hash{0x1, 0x2},
+			KeyHash: common.Hash{0xde, 0xad, 0xbe, 0xef},
+			Data:    []byte{0x11, 0x22, 0x33, 0x44, 0x55},
+		},
+		Bloom:      []byte{0xf, 0xf},
+		Status:     0,
+		Passphrase: common.Hash{0x99},
+		Inputs:     &Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+	}
+	sa.SetBalance(42.0)
+
+	sa2 := FromBytes(sa.Bytes())
+	if sa2 == nil {
+		t.Fatal("FromBytes returned nil")
+	}
+	if sa.KeyHash != sa2.KeyHash {
+		t.Fatalf("KeyHash mismatch: got %x want %x", sa2.KeyHash, sa.KeyHash)
+	}
+	if !bytes.Equal(sa.Data, sa2.Data) {
+		t.Fatalf("Data mismatch: got %x want %x", sa2.Data, sa.Data)
+	}
+}
+
+func TestWalletKeysEmptyForPlainAccounts(t *testing.T) {
+	sa := NewStateAccount([32]byte{0x1}, 0, common.EmptyRootHash)
+	data := sa.Bytes()
+	sa2 := FromBytes(data)
+	if sa2 == nil {
+		t.Fatal("FromBytes returned nil")
+	}
+	if sa2.KeyHash != (common.Hash{}) || len(sa2.Data) > 0 {
+		t.Fatal("plain account should carry empty wallet keys")
+	}
+	if !ValidSerialized(data) {
+		t.Fatal("ValidSerialized should accept current format")
 	}
 }
 

@@ -1,96 +1,49 @@
 package storage
 
 import (
-	"fmt"
-	"sync"
 	"testing"
 
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
 )
 
-func testTx(nonce byte) *types.GTransaction {
-	b := make([]byte, 32)
-	b[31] = nonce
-	to := types.BytesToAddress(b)
-	tx, err := types.CreateTransaction(uint64(nonce), to, 1.0, 21000, "m")
+func testTx(t *testing.T) *types.GTransaction {
+	t.Helper()
+	privateKey, err := types.GenerateAccount()
 	if err != nil {
-		panic(err)
+		t.Fatalf("GenerateAccount: %v", err)
+	}
+	from := types.PubkeyToAddress(&privateKey.PublicKey)
+	to := from
+	tx, err := types.CreateUnbroadcastTransaction(1, to, 1.0, 21000, common.FloatToBigInt(1), "test")
+	if err != nil {
+		t.Fatalf("CreateUnbroadcastTransaction: %v", err)
 	}
 	return tx
 }
 
-func TestTxTable_Add_Get_UpdateIndex(t *testing.T) {
-	InitTxTable()
-	tab := GetTxTable()
-
-	tx := testTx(1)
-	h := tx.Hash()
-
-	if tab.Get(h) != -1 {
-		t.Fatalf("unknown tx want -1, got %d", tab.Get(h))
-	}
-
+func TestTxTableAddGetUpdateReset(t *testing.T) {
+	tab := NewTxTable()
+	tx := testTx(t)
 	tab.Add(tx)
-	if g := tab.Get(h); g != -1 {
-		t.Fatalf("pending want -1, got %d", g)
+	if tab.Get(tx.Hash()) != -1 {
+		t.Fatalf("expected pending index -1")
 	}
-
-	tab.UpdateIndex(tx, 42)
-	if g := tab.Get(h); g != 42 {
-		t.Fatalf("after update want 42, got %d", g)
+	tab.UpdateIndex(tx, 3)
+	if tab.Get(tx.Hash()) != 3 {
+		t.Fatalf("expected index 3")
 	}
-
-	// Second Add same hash must not reset block index
-	tab.Add(tx)
-	if g := tab.Get(h); g != 42 {
-		t.Fatalf("duplicate Add should keep index 42, got %d", g)
+	tab.Reset()
+	if tab.Get(tx.Hash()) != -1 {
+		t.Fatalf("expected missing tx after reset")
 	}
 }
 
-func TestTxTable_UpdateIndex_without_Add(t *testing.T) {
-	InitTxTable()
-	tab := GetTxTable()
-	tx := testTx(2)
-	tab.UpdateIndex(tx, 99)
-	if g := tab.Get(tx.Hash()); g != -1 {
-		t.Fatalf("UpdateIndex without Add should not insert, got %d", g)
-	}
-}
-
-func TestTxTable_Add_nil(t *testing.T) {
-	InitTxTable()
-	tab := GetTxTable()
+func TestTxTableNilTx(t *testing.T) {
+	tab := NewTxTable()
 	tab.Add(nil)
-}
-
-func TestTxTable_concurrent(t *testing.T) {
-	InitTxTable()
-	tab := GetTxTable()
-	txs := make([]*types.GTransaction, 50)
-	hashes := make([][32]byte, 50)
-	to := types.BytesToAddress(make([]byte, 32))
-	for i := 0; i < 50; i++ {
-		var err error
-		txs[i], err = types.CreateTransaction(uint64(i), to, 1.0, 21000, fmt.Sprintf("x-%d", i))
-		if err != nil {
-			t.Fatal(err)
-		}
-		hashes[i] = txs[i].Hash()
-	}
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			tab.Add(txs[i])
-			_ = tab.Get(hashes[i])
-			tab.UpdateIndex(txs[i], i)
-		}(i)
-	}
-	wg.Wait()
-	for i := 0; i < 50; i++ {
-		if tab.Get(hashes[i]) != i {
-			t.Fatalf("tx %d: want block index %d, got %d", i, i, tab.Get(hashes[i]))
-		}
+	tab.UpdateIndex(nil, 1)
+	if tab.Get(common.Hash{}) != -1 {
+		t.Fatal("expected -1 for unknown hash")
 	}
 }

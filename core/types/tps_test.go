@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/cerera/core/address"
@@ -298,7 +299,7 @@ func TestAddress(t *testing.T) {
 			},
 			{
 				name:     "invalid length",
-				input:    "0x1234567890abcdef1234567890abcdef1234567",
+				input:    "0x" + strings.Repeat("ab", 33),
 				expected: false,
 			},
 			{

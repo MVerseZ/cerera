@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/cerera/config"
+	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/crypto"
@@ -18,6 +20,7 @@ import (
 	"github.com/cerera/gigea"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
+	"github.com/cerera/internal/validation"
 	"github.com/cerera/pallada"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -90,11 +93,16 @@ type Validator interface {
 	SignRawTransactionWithKey(tx *types.GTransaction, kStr string) error
 	Status() byte
 	ValidateRawTransaction(tx types.GTransaction) bool
+	ValidateBlockContent(b *block.Block) error
+	ValidateBlockPoW(b *block.Block) bool
+	ComputeBlockStateRoot(b *block.Block) (common.Hash, error)
+	GetBlockValidator() *validation.BlockValidator
 	GetID() string
 	Update(tx *types.GTransaction)
 	UpdateTxTree(tx *types.GTransaction, bIndex int)
 	Methods() map[string]service.RPCHandler
 
+	ReplayChain(blocks []*block.Block) error
 	SetPool(pool pool.TxPool)
 	SetChain(chain *chain.Chain)
 }
@@ -106,8 +114,14 @@ type CoreValidator struct {
 	balance        *big.Int
 	currentAddress types.Address
 	currentVersion string
+	chainID        int
 
-	pool pool.TxPool
+	pool    pool.TxPool
+	vault   *storage.D5Vault
+	txTable *storage.TxTable
+
+	blockVal *validation.BlockValidator
+	simMu    sync.Mutex
 }
 
 func (v *CoreValidator) SetPool(pool pool.TxPool) {
@@ -118,21 +132,39 @@ func (v *CoreValidator) SetChain(bc *chain.Chain) {
 	v.Chain = bc
 }
 
-func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
+func NewValidator(ctx context.Context, cfg config.Config, vault *storage.D5Vault, txTable *storage.TxTable) (Validator, error) {
 	var p, err = crypto.DecodePrivKey(cfg.NetCfg.PRIV)
 	if err != nil {
 		return nil, err
 	}
-	storage.InitTxTable()
+	if txTable == nil {
+		txTable = storage.NewTxTable()
+	}
 	v := &CoreValidator{
 		signatureKey:   p,
 		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))),
-		balance:        big.NewInt(0), // Initialize balance
+		balance:        big.NewInt(0),
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
+		chainID:        cfg.Chain.ChainID,
+		vault:          vault,
+		txTable:        txTable,
 	}
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
+	v.initBlockValidator()
 	return v, nil
+}
+
+func (v *CoreValidator) initBlockValidator() {
+	v.blockVal = &validation.BlockValidator{
+		ChainID:          v.chainID,
+		Signer:           v.signer,
+		Vault:            v.vault,
+		TxTable:          v.txTable,
+		StateRootAfter:   v.computeStateRootAfterBlock,
+		SkipPoWAtGenesis: true,
+	}
+	chain.BlockContentValidator = v.ValidateBlockContent
 }
 
 func (v *CoreValidator) CheckAddress(addr types.Address) bool {
@@ -150,37 +182,44 @@ func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address,
 }
 
 func (v *CoreValidator) FindTransaction(hash common.Hash) *types.GTransaction {
-	storage.GetTxTable().Get(hash)
+	if v.txTable != nil {
+		v.txTable.Get(hash)
+	}
 	return nil
 }
 
 func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
-	// if send to address not generated - > send only to input
-	// executed transaction adds to txs trie struct
-	var localVault = storage.GetVault()
+	err := v.applyTransaction(tx, true)
+	if err == nil && v.vault != nil {
+		if flushErr := v.vault.Flush(); flushErr != nil {
+			return flushErr
+		}
+	}
+	return err
+}
+
+func (v *CoreValidator) applyTransaction(tx types.GTransaction, recordInChain bool) error {
+	if recordInChain && v.txTable != nil && v.txTable.Get(tx.Hash()) != -1 {
+		return nil
+	}
+	localVault := v.vault
+	if localVault == nil {
+		return errors.New("vault not initialized")
+	}
 	var val = tx.Value()
 
-	// Handle different transaction types first to avoid checking sender for faucet/coinbase
 	switch tx.Type() {
 	case types.FaucetTxType:
-		// Faucet transactions: no sender balance check needed
 		if tx.To() == nil {
 			valExecuteError.Inc()
 			return errors.New("faucet transaction missing recipient address")
-
 		}
 		if err := localVault.DropFaucet(*tx.To(), val, tx.Hash()); err != nil {
 			valExecuteError.Inc()
 			return err
 		}
-		// add tx to tx tree
-		storage.GetTxTable().Add(&tx)
-		valExecuteSuccess.Inc()
-		return nil
 
 	case types.CoinbaseTxType:
-		// Coinbase transactions: reward goes directly to miner
-		// Create shadow account for miner if it doesn't exist
 		if tx.To() == nil {
 			valExecuteError.Inc()
 			return errors.New("coinbase transaction missing recipient address")
@@ -190,18 +229,15 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 			return err
 		}
 
-		// add tx to tx tree
-		storage.GetTxTable().Add(&tx)
-		valExecuteSuccess.Inc()
-		return nil
-
 	case types.LegacyTxType:
-		// Regular transactions: check sender balance and deduct gas
 		if tx.To() == nil {
 			valExecuteError.Inc()
 			return errors.New("legacy transaction missing recipient address")
 		}
-		// check if sender has enough balance
+		sender, err := validation.RecoverSender(v.signer, &tx)
+		if err == nil {
+			tx.SetFrom(sender)
+		}
 		senderAcc := localVault.Get(tx.From())
 		if senderAcc == nil {
 			valExecuteError.Inc()
@@ -215,22 +251,20 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 			return NotEnoughtInputs
 		}
 
-		// Validate gas limit: for legacy transfers the minimum is MinTransferGas.
-		// tx.Data() contains a text message, not bytecode — PreCompile on it is incorrect.
 		gasLimit := uint64(tx.Gas())
 		if gasLimit > 0 && gasLimit < pallada.MinTransferGas {
 			valExecuteError.Inc()
 			return fmt.Errorf("gas limit below minimum: got %d, need %d", gasLimit, pallada.MinTransferGas)
 		}
 
-		// Deduct gas from sender (gas is burned)
 		senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
-
-		// Transfer value to recipient (UpdateBalance will deduct value from sender and add to recipient)
-		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
+		if err := localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash()); err != nil {
+			valExecuteError.Inc()
+			return err
+		}
+		senderAcc.Nonce++
 
 	case types.AppTxType:
-		// Contract transactions: создание или вызов контракта
 		return nil
 
 	default:
@@ -242,11 +276,13 @@ func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
 		return fmt.Errorf("unknown transaction type: %d", tx.Type())
 	}
 
-	// add tx to tx tree
-	storage.GetTxTable().Add(&tx)
-
+	if recordInChain && v.txTable != nil {
+		v.txTable.Add(&tx)
+	}
 	valExecuteSuccess.Inc()
-	v.pool.RemoveFromPool(tx.Hash())
+	if recordInChain && v.pool != nil {
+		v.pool.RemoveFromPool(tx.Hash())
+	}
 	return nil
 }
 
@@ -292,7 +328,7 @@ func (v *CoreValidator) SetUp(chainId *big.Int) {
 		for _, block := range v.Chain.GetData() {
 			for _, tx := range block.Transactions {
 				// Skip if transaction was already executed
-				if storage.GetTxTable().Get(tx.Hash()) != -1 {
+				if v.txTable != nil && v.txTable.Get(tx.Hash()) != -1 {
 					continue
 				}
 				err := v.ExecuteTransaction(tx)
@@ -352,18 +388,8 @@ func (v *CoreValidator) SignRawTransactionWithKey(tx *types.GTransaction, signKe
 		valSignError.Inc()
 		return errors.New("error while sign tx")
 	}
-	signTx.RawSignatureValues()
-
-	// Signing does not perform balance/gas affordability checks.
-	// Validation is handled separately in ValidateTransaction.
-
-	// 19.12.2025 by gnupunk
-	// ValidateTransaction deprecated
-
-	// 27.02.2026 by gnupunk
-	// Sign tx with private key, not public
-	// Validator check-compare signature with public key in storage.
-
+	*tx = *signTx
+	valSignSuccess.Inc()
 	return nil
 }
 
@@ -376,11 +402,125 @@ func (v *CoreValidator) Update(tx *types.GTransaction) {
 }
 
 func (v *CoreValidator) UpdateTxTree(tx *types.GTransaction, bIndex int) {
-	storage.GetTxTable().UpdateIndex(tx, bIndex)
+	if v.txTable != nil {
+		v.txTable.UpdateIndex(tx, bIndex)
+	}
 }
 
 func (v *CoreValidator) ValidateRawTransaction(tx types.GTransaction) bool {
+	if err := validation.ValidateMempoolTx(v.signer, tx, v.vault, v.txTable); err != nil {
+		valTxRejected.Inc()
+		vlogger.Debugw("mempool tx rejected", "hash", tx.Hash(), "err", err)
+		return false
+	}
+	valTxValidated.Inc()
 	return true
+}
+
+func (v *CoreValidator) ValidateBlockContent(b *block.Block) error {
+	if v.blockVal == nil {
+		return nil
+	}
+	return v.blockVal.ValidateContent(b)
+}
+
+func (v *CoreValidator) ValidateBlockPoW(b *block.Block) bool {
+	if v.blockVal == nil {
+		return b != nil && b.Head != nil
+	}
+	return v.blockVal.ValidatePoW(b)
+}
+
+func (v *CoreValidator) GetBlockValidator() *validation.BlockValidator {
+	return v.blockVal
+}
+
+func (v *CoreValidator) ComputeBlockStateRoot(b *block.Block) (common.Hash, error) {
+	return v.computeStateRootAfterBlock(b)
+}
+
+func (v *CoreValidator) computeStateRootAfterBlock(b *block.Block) (common.Hash, error) {
+	v.simMu.Lock()
+	defer v.simMu.Unlock()
+	return v.simulateBlockStateRoot(b)
+}
+
+// simulateBlockStateRoot replays canonical chain state from baseline and applies block txs.
+// Used by both the miner (header Root) and block validation (same code path).
+func (v *CoreValidator) simulateBlockStateRoot(b *block.Block) (common.Hash, error) {
+	vault := v.vault
+	if vault == nil || b == nil || b.Head == nil {
+		return common.EmptyRootHash, fmt.Errorf("vault or block missing")
+	}
+	snap := vault.SnapshotAccounts()
+	defer vault.RestoreAccounts(snap)
+
+	vault.RestoreBaseline()
+	if err := vault.ReplayFaucetMints(); err != nil {
+		return common.Hash{}, fmt.Errorf("replay faucet: %w", err)
+	}
+	if v.Chain != nil {
+		for _, blk := range v.Chain.GetData() {
+			if blk == nil || blk.Head == nil || blk.Head.Height == 0 {
+				continue
+			}
+			if blk.Head.Height >= b.Head.Height {
+				break
+			}
+			for i := range blk.Transactions {
+				tx := blk.Transactions[i]
+				if tx.Type() == types.FaucetTxType {
+					continue
+				}
+				if err := v.applyTransaction(tx, false); err != nil {
+					return common.Hash{}, fmt.Errorf("replay block %d: %w", blk.Head.Height, err)
+				}
+			}
+		}
+	}
+
+	for i := range b.Transactions {
+		tx := b.Transactions[i]
+		if tx.Type() == types.FaucetTxType {
+			continue
+		}
+		if err := v.applyTransaction(tx, false); err != nil {
+			return common.Hash{}, fmt.Errorf("block %d tx %s: %w", b.Head.Height, tx.Hash().Hex(), err)
+		}
+	}
+	return vault.ComputeStateRoot(), nil
+}
+
+// ReplayChain resets vault/tx state to baseline and re-applies canonical blocks.
+func (v *CoreValidator) ReplayChain(blocks []*block.Block) error {
+	vault := v.vault
+	if vault == nil {
+		return errors.New("vault not initialized")
+	}
+	vault.RestoreBaseline()
+	if err := vault.ReplayFaucetMints(); err != nil {
+		return fmt.Errorf("replay faucet: %w", err)
+	}
+	if v.txTable != nil {
+		v.txTable.Reset()
+	}
+	for _, b := range blocks {
+		if b == nil || b.Head == nil || b.Head.Height == 0 {
+			continue
+		}
+		idx := int(b.Head.Index)
+		for i := range b.Transactions {
+			tx := b.Transactions[i]
+			if tx.Type() == types.FaucetTxType {
+				continue
+			}
+			if err := v.applyTransaction(tx, true); err != nil {
+				return fmt.Errorf("replay block %d tx %s: %w", b.Head.Height, tx.Hash().Hex(), err)
+			}
+			v.UpdateTxTree(&b.Transactions[i], idx)
+		}
+	}
+	return vault.Flush()
 }
 
 func (v *CoreValidator) Methods() map[string]service.RPCHandler {
@@ -439,7 +579,23 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 				return nil, errors.New("parameter type mismatch for send")
 			}
 			var addrTo = types.HexToAddress(addrStr)
-			tx, err := types.CreateUnbroadcastTransaction(gigea.GetAndIncrementNonce(), addrTo, count, uint64(gas), v.GasPrice(), msg)
+			aKey, err := crypto.DecodePrivKey(spk)
+			if err != nil {
+				return nil, errors.New("invalid signing key")
+			}
+			from := crypto.PrivKeyToAddress(*aKey)
+			nonce := uint64(1)
+			if acc := v.vault.Get(from); acc != nil {
+				nonce = acc.Nonce
+			}
+			if v.pool != nil {
+				for _, ptx := range v.pool.GetPendingTransactions() {
+					if ptx.Type() == types.LegacyTxType && ptx.From() == from {
+						nonce++
+					}
+				}
+			}
+			tx, err := types.CreateUnbroadcastTransaction(nonce, addrTo, count, uint64(gas), v.GasPrice(), msg)
 			if err != nil {
 				return nil, err
 			}
@@ -456,7 +612,10 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			if len(params) == 1 {
 				if p, ok := params[0].(string); ok {
 					hash := common.HexToHash(p)
-					var index = storage.GetTxTable().Get(hash)
+					var index = -1
+					if v.txTable != nil {
+						index = v.txTable.Get(hash)
+					}
 					if index != -1 {
 						txBlock := v.GetBlockByNumber(index)
 						for _, btx := range txBlock.Transactions {
