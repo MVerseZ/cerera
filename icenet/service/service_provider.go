@@ -8,6 +8,7 @@ import (
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/storage"
+	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validation"
@@ -20,6 +21,11 @@ type ServiceProvider struct {
 
 	blockVal *validation.BlockValidator
 	chainRef *chain.Chain
+	vault    *storage.D5Vault
+}
+
+func (sp *ServiceProvider) SetVault(v *storage.D5Vault) {
+	sp.vault = v
 }
 
 func (sp *ServiceProvider) SetChainRef(bc *chain.Chain) {
@@ -69,8 +75,14 @@ func (sp *ServiceProvider) callVault(method string, params ...any) (any, error) 
 	return handler(sp.rpcCtx(), params)
 }
 
-func (sp *ServiceProvider) vault() *storage.D5Vault {
-	return storage.GetVault()
+func (sp *ServiceProvider) vaultRef() *storage.D5Vault {
+	return sp.vault
+}
+
+func (sp *ServiceProvider) EnsureAccount(addr types.Address) {
+	if v := sp.vaultRef(); v != nil {
+		v.EnsureAccount(addr)
+	}
 }
 
 func (sp *ServiceProvider) AddBlock(b *block.Block) error {
@@ -165,7 +177,7 @@ func (sp *ServiceProvider) GetLatestHash() common.Hash {
 }
 
 func (sp *ServiceProvider) GetStorageSize() int {
-	if v := sp.vault(); v != nil {
+	if v := sp.vaultRef(); v != nil {
 		return v.GetCount()
 	}
 	res, err := sp.callVault("getCount")
@@ -221,7 +233,7 @@ func (sp *ServiceProvider) ValidateBlockPoW(b *block.Block) bool {
 }
 
 func (sp *ServiceProvider) ExportStorageAccountRange(offset, limit int) ([][]byte, int) {
-	if v := sp.vault(); v != nil {
+	if v := sp.vaultRef(); v != nil {
 		return v.ExportAccountRangeSortedByAddress(offset, limit)
 	}
 	return nil, 0
@@ -243,7 +255,7 @@ func (sp *ServiceProvider) GetGenesisHash() common.Hash {
 }
 
 func (sp *ServiceProvider) ApplyStorageAccounts(accounts [][]byte) error {
-	v := sp.vault()
+	v := sp.vaultRef()
 	if v == nil {
 		return fmt.Errorf("vault not initialized")
 	}

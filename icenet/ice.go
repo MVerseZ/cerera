@@ -66,6 +66,7 @@ type Ice struct {
 
 	serviceProviderPtr *service.ServiceProvider
 	forkDetector       *fork.Detector
+	vault              *storage.D5Vault
 
 	mu sync.RWMutex // guards fields read by Exec() and written during Start()/SetServiceProvider()
 }
@@ -269,6 +270,13 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	iceLogger().Infow("API provider set, sync manager and handler started")
 }
 
+// SetVault wires the account state store used for pubsub account merges.
+func (ice *Ice) SetVault(v *storage.D5Vault) {
+	ice.mu.Lock()
+	ice.vault = v
+	ice.mu.Unlock()
+}
+
 // ServiceProviderPtr returns the live service provider used by sync/consensus.
 func (ice *Ice) ServiceProviderPtr() *service.ServiceProvider {
 	ice.mu.RLock()
@@ -419,7 +427,9 @@ func (ice *Ice) onPubSubTx(tx *types.GTransaction, from peer.ID) {
 func (ice *Ice) onPubSubAccount(accountBytes []byte, from peer.ID) {
 	metrics.RecordPubSubMessageReceived(TopicAccounts)
 
-	v := storage.GetVault()
+	ice.mu.RLock()
+	v := ice.vault
+	ice.mu.RUnlock()
 	if v == nil {
 		return
 	}

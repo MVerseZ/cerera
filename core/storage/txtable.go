@@ -7,12 +7,16 @@ import (
 	"github.com/cerera/core/types"
 )
 
-var txTable TxTable
-
 // TxTable maps transaction hash to block index (-1 while pending).
 type TxTable struct {
 	mu     sync.RWMutex
 	byHash map[common.Hash]int
+}
+
+func NewTxTable() *TxTable {
+	return &TxTable{
+		byHash: make(map[common.Hash]int),
+	}
 }
 
 func (t *TxTable) Add(tx *types.GTransaction) {
@@ -63,14 +67,4 @@ func (t *TxTable) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.byHash = make(map[common.Hash]int)
-}
-
-func InitTxTable() {
-	txTable = TxTable{
-		byHash: make(map[common.Hash]int),
-	}
-}
-
-func GetTxTable() *TxTable {
-	return &txTable
 }

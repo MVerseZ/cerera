@@ -59,7 +59,7 @@ func RecoverSender(signer types.Signer, tx *types.GTransaction) (types.Address, 
 }
 
 // ValidateMempoolTx applies admission rules for transactions entering the mempool or P2P.
-func ValidateMempoolTx(signer types.Signer, tx types.GTransaction) error {
+func ValidateMempoolTx(signer types.Signer, tx types.GTransaction, vault *storage.D5Vault, txTable *storage.TxTable) error {
 	switch tx.Type() {
 	case types.LegacyTxType:
 		// allowed
@@ -69,7 +69,7 @@ func ValidateMempoolTx(signer types.Signer, tx types.GTransaction) error {
 		return fmt.Errorf("unknown transaction type: %d", tx.Type())
 	}
 
-	if storage.GetTxTable().Get(tx.Hash()) != -1 {
+	if txTable != nil && txTable.Get(tx.Hash()) != -1 {
 		return ErrTxAlreadyInChain
 	}
 
@@ -79,7 +79,6 @@ func ValidateMempoolTx(signer types.Signer, tx types.GTransaction) error {
 	}
 	tx.SetFrom(sender)
 
-	vault := storage.GetVault()
 	if vault == nil {
 		return errors.New("vault not initialized")
 	}
@@ -111,13 +110,15 @@ func ApplyLegacyTxSimulation(vault *storage.D5Vault, signer types.Signer, tx typ
 	val := tx.Value()
 	senderBal := senderAcc.GetBalanceBI()
 	senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
-	vault.UpdateBalance(sender, *tx.To(), val, tx.Hash())
+	if err := vault.UpdateBalance(sender, *tx.To(), val, tx.Hash()); err != nil {
+		return err
+	}
 	senderAcc.Nonce++
 	return nil
 }
 
 // ValidateBlockLegacyTx validates a legacy tx inside a block (signature + economics).
-func ValidateBlockLegacyTx(signer types.Signer, tx types.GTransaction) error {
+func ValidateBlockLegacyTx(signer types.Signer, tx types.GTransaction, vault *storage.D5Vault) error {
 	if tx.Type() != types.LegacyTxType {
 		return fmt.Errorf("expected legacy transaction in block")
 	}
@@ -126,7 +127,6 @@ func ValidateBlockLegacyTx(signer types.Signer, tx types.GTransaction) error {
 		return err
 	}
 	tx.SetFrom(sender)
-	vault := storage.GetVault()
 	if vault == nil {
 		return errors.New("vault not initialized")
 	}

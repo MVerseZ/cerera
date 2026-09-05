@@ -362,8 +362,8 @@ func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
 	}
 
 	// Ensure voter address exists in vault (with 0 balance) so /account shows all nodes
-	if v := storage.GetVault(); v != nil {
-		v.EnsureAccount(msg.VoterAddr)
+	if m.serviceProvider != nil {
+		m.serviceProvider.EnsureAccount(msg.VoterAddr)
 	}
 
 	consensusLogger().Infow("[CONSENSUS] Processing PrePrepare",
@@ -414,8 +414,8 @@ func (m *Manager) handlePrepare(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
-	if v := storage.GetVault(); v != nil {
-		v.EnsureAccount(msg.VoterAddr)
+	if m.serviceProvider != nil {
+		m.serviceProvider.EnsureAccount(msg.VoterAddr)
 	}
 
 	// Use the logical voter ID (origin) for consensus semantics.
@@ -458,8 +458,8 @@ func (m *Manager) handleCommit(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
-	if v := storage.GetVault(); v != nil {
-		v.EnsureAccount(msg.VoterAddr)
+	if m.serviceProvider != nil {
+		m.serviceProvider.EnsureAccount(msg.VoterAddr)
 	}
 
 	// Use the logical voter ID (origin) for consensus semantics.

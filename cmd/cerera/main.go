@@ -30,10 +30,10 @@ var appLog = logger.Named("cmd.cerera")
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
 	bc *chain.Chain
-	g  *validator.Validator
-	// h        *network.Node
-	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
-	v        *storage.Vault
+	g  validator.Validator
+	p        pool.TxPool
+	v        storage.Vault
+	txTable  *storage.TxTable
 	registry *service.Registry
 	ice      *icenet.Ice
 	status   [8]byte
@@ -74,18 +74,21 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		Methods: bc.Methods(),
 	})
 
-	if d5 := storage.GetVault(); d5 != nil {
-		d5.SaveBaseline()
+	d5Vault, ok := vault.(*storage.D5Vault)
+	if !ok {
+		return nil, fmt.Errorf("vault is not *storage.D5Vault")
 	}
+	d5Vault.SaveBaseline()
 
-	// инициализация валидатора
-	validator, err := validator.NewValidator(ctx, *cfg)
+	txTable := storage.NewTxTable()
+
+	validatorInst, err := validator.NewValidator(ctx, *cfg, d5Vault, txTable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init validator: %w", err)
 	}
 	registry.Register(&service.Service{
-		Name:    validator.ServiceName(),
-		Methods: validator.Methods(),
+		Name:    validatorInst.ServiceName(),
+		Methods: validatorInst.Methods(),
 	})
 
 	// инициализация пула
@@ -111,21 +114,23 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	}
 
 	//
-	validator.SetPool(mempool)
-	validator.SetChain(bc)
+	validatorInst.SetPool(mempool)
+	validatorInst.SetChain(bc)
 
 	mempool.SetTxValidator(func(tx *types.GTransaction) bool {
-		return validator.ValidateRawTransaction(*tx)
+		return validatorInst.ValidateRawTransaction(*tx)
 	})
-	ice.AttachBlockValidator(validator.GetBlockValidator())
+	ice.AttachBlockValidator(validatorInst.GetBlockValidator())
 	ice.SetTxValidator(func(tx *types.GTransaction) bool {
-		return validator.ValidateRawTransaction(*tx)
+		return validatorInst.ValidateRawTransaction(*tx)
 	})
+	ice.SetVault(d5Vault)
 
-	chain.SetReorgHandler(validator.ReplayChain)
+	chain.SetReorgHandler(validatorInst.ReplayChain)
 	sp := ice.ServiceProviderPtr()
 	if sp != nil {
 		sp.SetChainRef(bc)
+		sp.SetVault(d5Vault)
 	}
 
 	// Инициализация майнера
@@ -135,7 +140,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	}
 	minerInstance.SetChain(bc)
 	minerInstance.SetPool(mempool)
-	minerInstance.SetValidator(validator)
+	minerInstance.SetValidator(validatorInst)
 	minerInstance.SetBlockPublisher(ice)
 	minerInstance.SetHeightLock(bc)
 
@@ -178,12 +183,13 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 
 	return &Cerera{
 		bc:       bc,
-		g:        &validator,
+		g:        validatorInst,
 		p:        mempool,
-		v:        &vault,
+		v:        vault,
+		txTable:  txTable,
 		registry: registry,
 		ice:      ice,
-		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
+		status:   [8]byte{0xf, validatorInst.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 
@@ -286,7 +292,7 @@ func main() {
 		fmt.Println("Received signal: ", sig)
 		// Закрываем vault (закрывает bitcask базу данных)
 		if app != nil && app.v != nil {
-			if err := (*app.v).Close(); err != nil {
+			if err := app.v.Close(); err != nil {
 				appLog.Errorw("Ошибка при закрытии vault", "err", err)
 			} else {
 				appLog.Infow("Vault успешно закрыт")

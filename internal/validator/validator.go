@@ -115,7 +115,9 @@ type CoreValidator struct {
 	currentVersion string
 	chainID        int
 
-	pool pool.TxPool
+	pool    pool.TxPool
+	vault   *storage.D5Vault
+	txTable *storage.TxTable
 
 	blockVal *validation.BlockValidator
 }
@@ -128,19 +130,23 @@ func (v *CoreValidator) SetChain(bc *chain.Chain) {
 	v.Chain = bc
 }
 
-func NewValidator(ctx context.Context, cfg config.Config) (Validator, error) {
+func NewValidator(ctx context.Context, cfg config.Config, vault *storage.D5Vault, txTable *storage.TxTable) (Validator, error) {
 	var p, err = crypto.DecodePrivKey(cfg.NetCfg.PRIV)
 	if err != nil {
 		return nil, err
 	}
-	storage.InitTxTable()
+	if txTable == nil {
+		txTable = storage.NewTxTable()
+	}
 	v := &CoreValidator{
 		signatureKey:   p,
 		signer:         types.NewSimpleSigner(big.NewInt(int64(cfg.Chain.ChainID))),
-		balance:        big.NewInt(0), // Initialize balance
+		balance:        big.NewInt(0),
 		currentVersion: "ALPHA-0.0.1",
 		currentAddress: cfg.NetCfg.ADDR,
 		chainID:        cfg.Chain.ChainID,
+		vault:          vault,
+		txTable:        txTable,
 	}
 	v.SetUp(big.NewInt(int64(cfg.Chain.ChainID)))
 	v.initBlockValidator()
@@ -151,6 +157,8 @@ func (v *CoreValidator) initBlockValidator() {
 	v.blockVal = &validation.BlockValidator{
 		ChainID:          v.chainID,
 		Signer:           v.signer,
+		Vault:            v.vault,
+		TxTable:          v.txTable,
 		StateRootAfter:   v.computeStateRootAfterBlock,
 		SkipPoWAtGenesis: true,
 	}
@@ -172,19 +180,30 @@ func (v *CoreValidator) CreateTransaction(nonce uint64, addressTo types.Address,
 }
 
 func (v *CoreValidator) FindTransaction(hash common.Hash) *types.GTransaction {
-	storage.GetTxTable().Get(hash)
+	if v.txTable != nil {
+		v.txTable.Get(hash)
+	}
 	return nil
 }
 
 func (v *CoreValidator) ExecuteTransaction(tx types.GTransaction) error {
-	return v.applyTransaction(tx, true)
+	err := v.applyTransaction(tx, true)
+	if err == nil && v.vault != nil {
+		if flushErr := v.vault.Flush(); flushErr != nil {
+			return flushErr
+		}
+	}
+	return err
 }
 
 func (v *CoreValidator) applyTransaction(tx types.GTransaction, recordInChain bool) error {
-	if recordInChain && storage.GetTxTable().Get(tx.Hash()) != -1 {
+	if recordInChain && v.txTable != nil && v.txTable.Get(tx.Hash()) != -1 {
 		return nil
 	}
-	var localVault = storage.GetVault()
+	localVault := v.vault
+	if localVault == nil {
+		return errors.New("vault not initialized")
+	}
 	var val = tx.Value()
 
 	switch tx.Type() {
@@ -237,7 +256,10 @@ func (v *CoreValidator) applyTransaction(tx types.GTransaction, recordInChain bo
 		}
 
 		senderAcc.SetBalanceBI(new(big.Int).Sub(senderBal, gasCost))
-		localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash())
+		if err := localVault.UpdateBalance(tx.From(), *tx.To(), val, tx.Hash()); err != nil {
+			valExecuteError.Inc()
+			return err
+		}
 		senderAcc.Nonce++
 
 	case types.AppTxType:
@@ -252,8 +274,8 @@ func (v *CoreValidator) applyTransaction(tx types.GTransaction, recordInChain bo
 		return fmt.Errorf("unknown transaction type: %d", tx.Type())
 	}
 
-	if recordInChain {
-		storage.GetTxTable().Add(&tx)
+	if recordInChain && v.txTable != nil {
+		v.txTable.Add(&tx)
 	}
 	valExecuteSuccess.Inc()
 	if recordInChain && v.pool != nil {
@@ -304,7 +326,7 @@ func (v *CoreValidator) SetUp(chainId *big.Int) {
 		for _, block := range v.Chain.GetData() {
 			for _, tx := range block.Transactions {
 				// Skip if transaction was already executed
-				if storage.GetTxTable().Get(tx.Hash()) != -1 {
+				if v.txTable != nil && v.txTable.Get(tx.Hash()) != -1 {
 					continue
 				}
 				err := v.ExecuteTransaction(tx)
@@ -378,11 +400,13 @@ func (v *CoreValidator) Update(tx *types.GTransaction) {
 }
 
 func (v *CoreValidator) UpdateTxTree(tx *types.GTransaction, bIndex int) {
-	storage.GetTxTable().UpdateIndex(tx, bIndex)
+	if v.txTable != nil {
+		v.txTable.UpdateIndex(tx, bIndex)
+	}
 }
 
 func (v *CoreValidator) ValidateRawTransaction(tx types.GTransaction) bool {
-	if err := validation.ValidateMempoolTx(v.signer, tx); err != nil {
+	if err := validation.ValidateMempoolTx(v.signer, tx, v.vault, v.txTable); err != nil {
 		valTxRejected.Inc()
 		vlogger.Debugw("mempool tx rejected", "hash", tx.Hash(), "err", err)
 		return false
@@ -414,7 +438,7 @@ func (v *CoreValidator) ComputeBlockStateRoot(b *block.Block) (common.Hash, erro
 }
 
 func (v *CoreValidator) computeStateRootAfterBlock(b *block.Block) (common.Hash, error) {
-	vault := storage.GetVault()
+	vault := v.vault
 	if vault == nil || b == nil || b.Head == nil {
 		return common.EmptyRootHash, fmt.Errorf("vault or block missing")
 	}
@@ -456,12 +480,14 @@ func (v *CoreValidator) computeStateRootAfterBlock(b *block.Block) (common.Hash,
 
 // ReplayChain resets vault/tx state to baseline and re-applies canonical blocks.
 func (v *CoreValidator) ReplayChain(blocks []*block.Block) error {
-	vault := storage.GetVault()
+	vault := v.vault
 	if vault == nil {
 		return errors.New("vault not initialized")
 	}
 	vault.RestoreBaseline()
-	storage.GetTxTable().Reset()
+	if v.txTable != nil {
+		v.txTable.Reset()
+	}
 	for _, b := range blocks {
 		if b == nil || b.Head == nil || b.Head.Height == 0 {
 			continue
@@ -478,7 +504,7 @@ func (v *CoreValidator) ReplayChain(blocks []*block.Block) error {
 			v.UpdateTxTree(&b.Transactions[i], idx)
 		}
 	}
-	return nil
+	return vault.Flush()
 }
 
 func (v *CoreValidator) Methods() map[string]service.RPCHandler {
@@ -543,7 +569,7 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			}
 			from := crypto.PrivKeyToAddress(*aKey)
 			nonce := uint64(1)
-			if acc := storage.GetVault().Get(from); acc != nil {
+			if acc := v.vault.Get(from); acc != nil {
 				nonce = acc.Nonce
 			}
 			tx, err := types.CreateUnbroadcastTransaction(nonce, addrTo, count, uint64(gas), v.GasPrice(), msg)
@@ -563,7 +589,10 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			if len(params) == 1 {
 				if p, ok := params[0].(string); ok {
 					hash := common.HexToHash(p)
-					var index = storage.GetTxTable().Get(hash)
+					var index = -1
+					if v.txTable != nil {
+						index = v.txTable.Get(hash)
+					}
 					if index != -1 {
 						txBlock := v.GetBlockByNumber(index)
 						for _, btx := range txBlock.Transactions {

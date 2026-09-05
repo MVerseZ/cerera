@@ -23,6 +23,11 @@ type Input struct {
 
 const DEBUG = false
 
+// walletKeysMagic marks KeyHash/Data trailer (WLK1 LE). Required in every record.
+const walletKeysMagic uint32 = 0x314B4C57
+
+const maxWalletDataLen = 4096
+
 type StateAccountData struct {
 	Address address.Address
 	Nonce   uint64
@@ -210,15 +215,74 @@ func (sa *StateAccount) Bytes() []byte {
 		fmt.Printf("Buffer length after balance: %d\n", buf.Len())
 	}
 
-	// Inputs are not persisted: they are reconstructed from the chain (UTXO / tx history).
-	// Keep slot for backward compatibility: always write zero entries.
-	binary.Write(&buf, binary.LittleEndian, uint32(0))
+	// Inputs are not persisted; rebuilt from chain state. Always zero entries.
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(0))
+
+	writeWalletExtension(&buf, sa)
 
 	if DEBUG {
 		fmt.Printf("Buffer length after inputs (0 entries, chain-derived): %d\n", buf.Len())
 	}
 
 	return buf.Bytes()
+}
+
+func writeWalletExtension(buf *bytes.Buffer, sa *StateAccount) {
+	_ = binary.Write(buf, binary.LittleEndian, walletKeysMagic)
+	keyHash := sa.KeyHash
+	buf.Write(keyHash.Bytes())
+	data := sa.Data
+	if data == nil {
+		data = []byte{}
+	}
+	_ = binary.Write(buf, binary.LittleEndian, uint32(len(data)))
+	if len(data) > 0 {
+		buf.Write(data)
+	}
+}
+
+func readWalletExtension(sa *StateAccount, buf *bytes.Reader) error {
+	if buf.Len() < 4+32+4 {
+		return fmt.Errorf("missing wallet keys trailer")
+	}
+	var magic uint32
+	if err := binary.Read(buf, binary.LittleEndian, &magic); err != nil {
+		return err
+	}
+	if magic != walletKeysMagic {
+		return fmt.Errorf("invalid wallet keys magic: %x", magic)
+	}
+	keyHashBytes := make([]byte, 32)
+	if _, err := io.ReadFull(buf, keyHashBytes); err != nil {
+		return err
+	}
+	sa.KeyHash = common.Hash(keyHashBytes)
+
+	var dataLen uint32
+	if err := binary.Read(buf, binary.LittleEndian, &dataLen); err != nil {
+		return err
+	}
+	if dataLen > maxWalletDataLen {
+		return fmt.Errorf("wallet data too large: %d", dataLen)
+	}
+	if dataLen == 0 {
+		sa.Data = nil
+		return nil
+	}
+	data := make([]byte, dataLen)
+	if _, err := io.ReadFull(buf, data); err != nil {
+		return err
+	}
+	sa.Data = data
+	if buf.Len() != 0 {
+		return fmt.Errorf("trailing account bytes: %d", buf.Len())
+	}
+	return nil
+}
+
+// ValidSerialized reports whether data is a complete current-format account blob.
+func ValidSerialized(data []byte) bool {
+	return FromBytes(data) != nil
 }
 
 // FromBytes creates StateAccount from custom binary format (same as types.BytesToStateAccount).
@@ -230,14 +294,10 @@ func FromBytes(data []byte) *StateAccount {
 	if err != nil {
 		return nil
 	}
-	if firstByte <= 4 {
-		sa.Type = firstByte
-	} else {
-		sa.Type = 0
-		if _, err := buf.Seek(0, io.SeekStart); err != nil {
-			return nil
-		}
+	if firstByte > 4 {
+		return nil
 	}
+	sa.Type = firstByte
 
 	var addressLen uint32
 	if err := binary.Read(buf, binary.LittleEndian, &addressLen); err != nil {
@@ -302,23 +362,14 @@ func FromBytes(data []byte) *StateAccount {
 
 	var inputsCount uint32
 	if err := binary.Read(buf, binary.LittleEndian, &inputsCount); err != nil {
-		return sa
+		return nil
 	}
-	hashScratch := make([]byte, 32)
-	for range inputsCount {
-		if _, err := io.ReadFull(buf, hashScratch); err != nil {
-			return nil
-		}
-		var valLen uint32
-		if err := binary.Read(buf, binary.LittleEndian, &valLen); err != nil {
-			return nil
-		}
-		if valLen > 0 {
-			if _, err := io.CopyN(io.Discard, buf, int64(valLen)); err != nil {
-				return nil
-			}
-		}
-		// Do not populate sa.Inputs.M — inputs are rebuilt from the chain.
+	if inputsCount != 0 {
+		return nil
+	}
+
+	if err := readWalletExtension(sa, buf); err != nil {
+		return nil
 	}
 
 	return sa

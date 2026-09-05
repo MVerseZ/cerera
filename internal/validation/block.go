@@ -13,6 +13,8 @@ import (
 type BlockValidator struct {
 	ChainID          int
 	Signer           types.Signer
+	Vault            *storage.D5Vault
+	TxTable          *storage.TxTable
 	StateRootAfter   func(*block.Block) (common.Hash, error)
 	SkipPoWAtGenesis bool
 }
@@ -73,7 +75,7 @@ func (bv *BlockValidator) ValidateContent(b *block.Block) error {
 	}
 
 	var gasSum uint64
-	vault := storage.GetVault()
+	vault := bv.Vault
 	var snap storage.AccountSnapshot
 	if vault != nil {
 		snap = vault.SnapshotAccounts()
@@ -84,7 +86,7 @@ func (bv *BlockValidator) ValidateContent(b *block.Block) error {
 		switch tx.Type() {
 		case types.LegacyTxType:
 			if snap == nil {
-				if err := ValidateBlockLegacyTx(bv.Signer, tx); err != nil {
+				if err := ValidateBlockLegacyTx(bv.Signer, tx, vault); err != nil {
 					return fmt.Errorf("tx %s: %w", tx.Hash().Hex(), err)
 				}
 			} else if err := ApplyLegacyTxSimulation(vault, bv.Signer, tx); err != nil {
