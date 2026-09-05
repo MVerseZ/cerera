@@ -141,3 +141,63 @@ func TestSimulateBlockStateRoot_MinerPathMatchesValidation(t *testing.T) {
 	}
 	close(done)
 }
+
+func TestSimulateBlockStateRoot_FaucetFundedTransfers(t *testing.T) {
+	val, vault, bc := testValidatorForStateRoot(t)
+	miner := val.currentAddress
+	genesis := bc.GetLatestBlock()
+
+	senderKey, err := types.GenerateAccount()
+	if err != nil {
+		t.Fatalf("GenerateAccount: %v", err)
+	}
+	sender := types.PubkeyToAddress(&senderKey.PublicKey)
+	receiver := types.HexToAddress("0x2000000000000000000000000000000000000000000000000000000000000002")
+
+	if err := vault.DropFaucet(sender, types.FloatToBigInt(10), common.BytesToHash([]byte("faucet_sender"))); err != nil {
+		t.Fatalf("DropFaucet: %v", err)
+	}
+
+	var txs []types.GTransaction
+	nonce := uint64(1)
+	if acc := vault.Get(sender); acc != nil {
+		nonce = acc.Nonce
+	}
+	for i := 0; i < 3; i++ {
+		tx, err := types.CreateUnbroadcastTransaction(nonce+uint64(i), receiver, 1, 21000, val.GasPrice(), "test_send")
+		if err != nil {
+			t.Fatalf("create tx %d: %v", i, err)
+		}
+		signed, err := types.SignTx(tx, val.Signer(), senderKey)
+		if err != nil {
+			t.Fatalf("sign tx %d: %v", i, err)
+		}
+		txs = append(txs, *signed)
+	}
+
+	head := &block.Header{
+		Ctx:        genesis.Head.Ctx,
+		Difficulty: genesis.Head.Difficulty,
+		GasLimit:   genesis.Head.GasLimit,
+		GasUsed:    63000,
+		Height:     1,
+		Index:      1,
+		ChainId:    genesis.Head.ChainId,
+		Node:       miner,
+		PrevHash:   genesis.Hash,
+		Root:       common.EmptyRootHash,
+		Nonce:      genesis.Head.Nonce,
+	}
+	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner)
+	b := block.NewBlock(head)
+	b.Transactions = append(txs, cb)
+
+	root, err := val.ComputeBlockStateRoot(b)
+	if err != nil {
+		t.Fatalf("ComputeBlockStateRoot after faucet+3 transfers: %v", err)
+	}
+	b.Head.Root = root
+	if err := val.ValidateBlockContent(b); err != nil {
+		t.Fatalf("ValidateBlockContent: %v", err)
+	}
+}

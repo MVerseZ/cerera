@@ -100,6 +100,7 @@ type D5Vault struct {
 	Service_Name string
 
 	faucetLastRequest map[types.Address]time.Time
+	faucetMints       []faucetMint
 	faucetMu          sync.RWMutex
 
 	db   *pogreb.DB
@@ -981,15 +982,7 @@ func (v *D5Vault) Exec(method string, params []any) any {
 			return false //"Error while verify"
 		}
 
-		if len(addr) != len(rAddr.Hex()) {
-			return false
-		}
-		for i := range len(rAddr) {
-			if rAddr[i] != types.HexToAddress(addr)[i] {
-				return false
-			}
-		}
-		return true
+		return types.HexToAddress(addr) == rAddr
 	case "getBalance":
 		addr, ok1 := params[0].(string)
 		if !ok1 {

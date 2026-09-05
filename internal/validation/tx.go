@@ -82,7 +82,15 @@ func ValidateMempoolTx(signer types.Signer, tx types.GTransaction, vault *storag
 	if vault == nil {
 		return errors.New("vault not initialized")
 	}
-	return ValidateLegacyTx(vault, tx, sender, true)
+	// Exact nonce is required when applying txs in order. Mempool admission
+	// must allow acc.Nonce, acc.Nonce+1, ... so several sends can queue.
+	if err := ValidateLegacyTx(vault, tx, sender, false); err != nil {
+		return err
+	}
+	if acc := vault.Get(sender); acc != nil && tx.Nonce() < acc.Nonce {
+		return fmt.Errorf("%w: got %d, want >= %d", ErrTxBadNonce, tx.Nonce(), acc.Nonce)
+	}
+	return nil
 }
 
 // ValidateCoinbaseTx checks the trailing coinbase transaction for a block.

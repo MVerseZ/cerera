@@ -1002,6 +1002,7 @@ const res = await fetch(url, {
 | Balances | account.* | float64 CER | Use `decimal.js` / `big.js` for amounts in UI |
 | `amount` (send) | transaction.send | string | `"10.5"`, not JS float |
 | `latest` | chain.getInfo | hex hash | Full `0x…` string |
+| `address` | account.*, blocks, txs | short hex | No leading-zero padding; e.g. `0x324ce657…` not `0x000…0324…` |
 | `gas` | pool.minGas | float64 | Minimum gas price hint |
 
 ### Security notes for frontend
@@ -1072,7 +1073,7 @@ The Service Registry (`internal/cerera/service/registry.go`) provides the follow
 ## Notes
 
 - All amounts should be provided as decimal strings (e.g., `"1.5"`) when using typed DTOs for precision
-- Addresses can be provided as hex strings (e.g., `"0x..."`) or address objects
+- Addresses are returned in **short hex** form (leading zero nibbles stripped, checksummed). Both short and padded forms are accepted in RPC params.
 - Gas values are in CER (Cerera's native token)
 - Transaction nonces are automatically managed for `send` operations
 - The API supports both typed DTOs and legacy positional parameters for backward compatibility

@@ -456,6 +456,9 @@ func (v *CoreValidator) simulateBlockStateRoot(b *block.Block) (common.Hash, err
 	defer vault.RestoreAccounts(snap)
 
 	vault.RestoreBaseline()
+	if err := vault.ReplayFaucetMints(); err != nil {
+		return common.Hash{}, fmt.Errorf("replay faucet: %w", err)
+	}
 	if v.Chain != nil {
 		for _, blk := range v.Chain.GetData() {
 			if blk == nil || blk.Head == nil || blk.Head.Height == 0 {
@@ -495,6 +498,9 @@ func (v *CoreValidator) ReplayChain(blocks []*block.Block) error {
 		return errors.New("vault not initialized")
 	}
 	vault.RestoreBaseline()
+	if err := vault.ReplayFaucetMints(); err != nil {
+		return fmt.Errorf("replay faucet: %w", err)
+	}
 	if v.txTable != nil {
 		v.txTable.Reset()
 	}
@@ -581,6 +587,13 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			nonce := uint64(1)
 			if acc := v.vault.Get(from); acc != nil {
 				nonce = acc.Nonce
+			}
+			if v.pool != nil {
+				for _, ptx := range v.pool.GetPendingTransactions() {
+					if ptx.Type() == types.LegacyTxType && ptx.From() == from {
+						nonce++
+					}
+				}
 			}
 			tx, err := types.CreateUnbroadcastTransaction(nonce, addrTo, count, uint64(gas), v.GasPrice(), msg)
 			if err != nil {

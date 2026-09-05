@@ -259,6 +259,7 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 			newBlock.Head.Root = root
 		} else {
 			minerLogger().Warnw("[MINER] state root computation failed", "err", err)
+			return nil
 		}
 	}
 

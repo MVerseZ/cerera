@@ -3,6 +3,7 @@ package chain
 import (
 	"testing"
 
+	"github.com/cerera/config"
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
 )
@@ -145,50 +146,50 @@ func TestBuildChainToHead(t *testing.T) {
 	}
 }
 
-// func TestReorgSwitchesToHeavierBranch(t *testing.T) {
-// 	cfg := &config.Config{
-// 		Chain:  config.ChainConfig{ChainID: 25331, Path: "EMPTY"},
-// 		IN_MEM: true,
-// 	}
-// 	bc, err := Mold(cfg)
-// 	if err != nil {
-// 		t.Fatalf("Mold: %v", err)
-// 	}
+func TestReorgSwitchesToHeavierBranch(t *testing.T) {
+	cfg := &config.Config{
+		Chain:  config.ChainConfig{ChainID: 25331, Path: "EMPTY"},
+		IN_MEM: true,
+	}
+	bc, err := Mold(cfg)
+	if err != nil {
+		t.Fatalf("Mold: %v", err)
+	}
 
-// 	gen := bc.GetLatestBlock()
-// 	a1 := forkTestBlock(1, gen.Hash, 100, "a1")
-// 	a2 := forkTestBlock(2, a1.Hash, 100, "a2")
-// 	branchA := []*block.Block{gen, a1, a2}
+	gen := bc.GetLatestBlock()
+	a1 := forkTestBlock(1, gen.Hash, 100, "a1")
+	a2 := forkTestBlock(2, a1.Hash, 100, "a2")
+	branchA := []*block.Block{gen, a1, a2}
 
-// 	if err := bc.Reorg(branchA); err != nil {
-// 		t.Fatalf("first reorg: %v", err)
-// 	}
-// 	if bc.GetLatestBlock().Head.Height != 2 {
-// 		t.Fatalf("expected height 2 after branch A, got %d", bc.GetLatestBlock().Head.Height)
-// 	}
-// 	if bc.GetBlockHashAtHeight(0) != gen.Hash {
-// 		t.Fatal("genesis hash mismatch at height 0")
-// 	}
+	if err := bc.Reorg(branchA); err != nil {
+		t.Fatalf("first reorg: %v", err)
+	}
+	if bc.GetLatestBlock().Head.Height != 2 {
+		t.Fatalf("expected height 2 after branch A, got %d", bc.GetLatestBlock().Head.Height)
+	}
+	if bc.GetBlockHashAtHeight(0) != gen.Hash {
+		t.Fatal("genesis hash mismatch at height 0")
+	}
 
-// 	b1 := forkTestBlock(1, gen.Hash, 300, "b1")
-// 	b2 := forkTestBlock(2, b1.Hash, 300, "b2")
-// 	branchB := []*block.Block{gen, b1, b2}
+	b1 := forkTestBlock(1, gen.Hash, 300, "b1")
+	b2 := forkTestBlock(2, b1.Hash, 300, "b2")
+	branchB := []*block.Block{gen, b1, b2}
 
-// 	replayed := 0
-// 	SetReorgHandler(func(blocks []*block.Block) error {
-// 		replayed = len(blocks)
-// 		return nil
-// 	})
-// 	t.Cleanup(func() { SetReorgHandler(nil) })
+	replayed := 0
+	SetReorgHandler(func(blocks []*block.Block) error {
+		replayed = len(blocks)
+		return nil
+	})
+	t.Cleanup(func() { SetReorgHandler(nil) })
 
-// 	if err := bc.Reorg(branchB); err != nil {
-// 		t.Fatalf("reorg to heavier branch: %v", err)
-// 	}
-// 	head := bc.GetLatestBlock()
-// 	if head.Hash != b2.Hash {
-// 		t.Fatalf("head hash = %s, want %s", head.Hash.Hex(), b2.Hash.Hex())
-// 	}
-// 	if replayed != 3 {
-// 		t.Fatalf("ReorgHandler replayed %d blocks, want 3", replayed)
-// 	}
-// }
+	if err := bc.Reorg(branchB); err != nil {
+		t.Fatalf("reorg to heavier branch: %v", err)
+	}
+	head := bc.GetLatestBlock()
+	if head.Hash != b2.Hash {
+		t.Fatalf("head hash = %s, want %s", head.Hash.Hex(), b2.Hash.Hex())
+	}
+	if replayed != 3 {
+		t.Fatalf("ReorgHandler replayed %d blocks, want 3", replayed)
+	}
+}
