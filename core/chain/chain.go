@@ -533,7 +533,10 @@ func (bc *Chain) ServiceName() string {
 }
 
 func (bc *Chain) Start() {
-	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", bc.info.Total)
+	bc.mu.RLock()
+	total := bc.info.Total
+	bc.mu.RUnlock()
+	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", total)
 	for {
 		<-bc.maintainTicker.C
 		clogger.Debug("chain tick maintain")
