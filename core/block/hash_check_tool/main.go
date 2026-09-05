@@ -4,148 +4,140 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
 )
 
 func main() {
-	// Парсинг аргументов командной строки
-	chainId := flag.Int("chainid", 11, "Chain ID for genesis block")
-	difficulty := flag.Uint64("difficulty", 0, "Difficulty value (0 = use genesis default)")
-	nonce := flag.Uint64("nonce", 0, "Nonce value (0 = use genesis default)")
-	findValid := flag.Bool("find", false, "Find valid nonce for genesis block")
-	maxAttempts := flag.Uint64("max", 10000000000, "Maximum attempts when searching for valid nonce")
+	chainID := flag.Int("chainid", 11, "Chain ID for genesis block")
+	difficulty := flag.Uint64("difficulty", 0, "Difficulty override (0 = genesis default)")
+	nonce := flag.Uint64("nonce", 0, "Nonce override (0 = genesis default)")
+	findValid := flag.Bool("find", false, "Search for a valid PoW nonce at genesis difficulty")
+	maxAttempts := flag.Uint64("max", 10_000_000_000, "Max nonce attempts when searching")
 	flag.Parse()
 
-	fmt.Printf("=== Block Hash Calculator and Verifier v.%x===\r\n", time.Now().Unix())
+	fmt.Println("=== Genesis / PoW Hash Tool ===")
 
-	// Создаем genesis блок для тестирования
-	genesisHeader := block.GenesisHead(*chainId)
-
-	// Если указаны difficulty или nonce, используем их
+	header := block.GenesisHead(*chainID)
 	if *difficulty > 0 {
-		genesisHeader.Difficulty = *difficulty
-		fmt.Printf("Using custom difficulty: %d\n", *difficulty)
-	} else {
-		fmt.Printf("Using genesis difficulty: %d\n", genesisHeader.Difficulty)
+		header.Difficulty = *difficulty
 	}
-
 	if *nonce > 0 {
-		genesisHeader.Nonce = *nonce
-		fmt.Printf("Using custom nonce: %d\n", *nonce)
-	} else {
-		fmt.Printf("Using genesis nonce: %d\n", genesisHeader.Nonce)
+		header.Nonce = *nonce
 	}
 
-	// Создаем блок
-	testBlock := block.NewBlock(genesisHeader)
-	testBlock.Transactions = []types.GTransaction{}
+	chainBlock := block.NewBlockWithHeaderAndHash(header)
+	fmt.Printf("Chain genesis hash (CrvBlockHash): %s\n", chainBlock.Hash.Hex())
 
-	// ВАЖНО: Рассчитываем размер блока после установки nonce, так как он влияет на размер JSON
-	blockBytes := testBlock.ToBytes()
-	if blockBytes != nil {
-		testBlock.Head.Size = len(blockBytes)
-	}
-
-	fmt.Printf("Block Height: %d\n", testBlock.Head.Height)
-	fmt.Printf("Block Chain ID: %d\n", testBlock.Head.ChainId)
-	fmt.Println()
-
-	// Вычисляем хэш
-	hashBytes, err := block.CalculateBlockHash(testBlock)
+	powBlock := preparePowBlock(header)
+	powHash, err := block.CalculateBlockHash(powBlock)
 	if err != nil {
-		fmt.Printf("Error calculating hash: %v\n", err)
+		fmt.Printf("Error calculating PoW hash: %v\n", err)
 		os.Exit(1)
 	}
+	powBlock.Hash = common.BytesToHash(powHash)
 
-	fmt.Printf("Block Hash (hex): %x\n", hashBytes)
-	fmt.Printf("Block Hash (bytes length): %d\n", len(hashBytes))
+	fmt.Printf("PoW hash (CalculateHash):            0x%x\n", powHash)
+	fmt.Printf("Difficulty:                          %d\n", header.Difficulty)
+	fmt.Printf("Nonce:                               %d\n", header.Nonce)
+	fmt.Printf("Size (header):                       %d\n", powBlock.Head.Size)
 	fmt.Println()
 
-	// Проверяем хэш
-	isValid, err := block.VerifyBlockHash(testBlock)
+	isValid, err := block.VerifyBlockHash(powBlock)
 	if err != nil {
-		fmt.Printf("Error verifying hash: %v\n", err)
+		fmt.Printf("PoW verify error: %v\n", err)
 		os.Exit(1)
 	}
-
 	if isValid {
-		fmt.Println("✓ Block hash is VALID (meets difficulty requirement)")
+		fmt.Println("PoW status: VALID")
 	} else {
-		fmt.Println("✗ Block hash is INVALID (does not meet difficulty requirement)")
+		fmt.Println("PoW status: INVALID")
 	}
-	fmt.Println()
 
-	// Детальная проверка
-	fmt.Println("=== Detailed Verification ===")
-	result, err := block.VerifyBlockHashWithDetails(testBlock)
+	result, err := block.VerifyBlockHashWithDetails(powBlock)
 	if err != nil {
-		fmt.Printf("Error getting detailed verification: %v\n", err)
+		fmt.Printf("Detailed verify error: %v\n", err)
 		os.Exit(1)
 	}
-
+	fmt.Println()
 	fmt.Println(result.String())
 
-	// Дополнительная информация
-	fmt.Println("\n=== Additional Information ===")
-	fmt.Printf("Probability of valid hash: ~%.2e\n", calculateProbability(result.Difficulty))
-	fmt.Printf("Probability of valid hash, percentage: ~%.2f%%\n", calculateProbability(result.Difficulty)*100)
-	fmt.Printf("Expected attempts to find valid hash: ~%.0f\n", calculateExpectedAttempts(result.Difficulty))
+	fmt.Println("\n=== PoW search stats ===")
+	fmt.Printf("Approx. success probability: ~%.2e\n", powProbability(header.Difficulty))
+	fmt.Printf("Expected attempts:           ~%.0f\n", expectedAttempts(header.Difficulty))
 
-	// Если нужно найти валидный nonce
-	if *findValid {
-		fmt.Println("\n=== Searching for Valid Nonce ===")
-		fmt.Printf("Starting search from nonce: %d\n", genesisHeader.Nonce)
-		fmt.Printf("Maximum attempts: %d\n", *maxAttempts)
-		fmt.Println("Searching...")
-
-		validNonce, attempts, err := block.FindValidNonceForGenesis(genesisHeader, *maxAttempts)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("\n✓ Valid nonce found!\n")
-		fmt.Printf("  Valid nonce: %d\n", validNonce)
-		fmt.Printf("  Attempts: %d\n", attempts)
-		fmt.Printf("\nUpdate genesis.go with:\n")
-		fmt.Printf("  Nonce: %d\n", validNonce)
-
-		// Проверяем найденный nonce
-		genesisHeader.Nonce = validNonce
-		testBlock.Head.Nonce = validNonce
-		blockBytes = testBlock.ToBytes()
-		if blockBytes != nil {
-			testBlock.Head.Size = len(blockBytes)
-		}
-
-		isValid, err := block.VerifyBlockHash(testBlock)
-		if err == nil && isValid {
-			fmt.Println("\n✓ Verification: Block hash is now VALID")
-		} else {
-			fmt.Println("\n✗ Verification: Block hash is still INVALID (this should not happen!)")
-		}
+	if !*findValid {
+		fmt.Println("\nTip: run with -find to search a valid nonce at current difficulty")
+		return
 	}
+
+	searchHeader := block.GenesisHead(*chainID)
+	if *difficulty > 0 {
+		searchHeader.Difficulty = *difficulty
+	}
+	if *nonce > 0 {
+		searchHeader.Nonce = *nonce
+	}
+
+	fmt.Println("\n=== Searching valid PoW nonce ===")
+	fmt.Printf("Search difficulty: %d\n", searchHeader.Difficulty)
+	fmt.Printf("Max attempts:      %d\n", *maxAttempts)
+
+	validNonce, attempts, err := block.FindValidNonceForGenesis(searchHeader, *maxAttempts)
+	if err != nil {
+		fmt.Printf("Search failed: %v\n", err)
+		fmt.Println("Try a lower -difficulty or higher -max")
+		os.Exit(1)
+	}
+
+	searchHeader.Nonce = validNonce
+	foundBlock := preparePowBlock(searchHeader)
+	foundHash, _ := block.CalculateBlockHash(foundBlock)
+	foundBlock.Hash = common.BytesToHash(foundHash)
+
+	fmt.Printf("\nValid nonce found in %d attempts\n", attempts)
+	fmt.Printf("  Nonce:       %d\n", validNonce)
+	fmt.Printf("  Difficulty:  %d\n", searchHeader.Difficulty)
+	fmt.Printf("  PoW hash:    0x%x\n", foundHash)
+	fmt.Printf("  Size:        %d\n", foundBlock.Head.Size)
+
+	ok, _ := block.VerifyBlockHash(foundBlock)
+	if ok {
+		fmt.Println("  Verify:      OK")
+	} else {
+		fmt.Println("  Verify:      FAILED (unexpected)")
+	}
+
+	fmt.Println("\nUpdate genesis.go with:")
+	fmt.Printf("  Difficulty: uint64(%d), Nonce: %d, Size: %d\n",
+		searchHeader.Difficulty, validNonce, foundBlock.Head.Size)
 }
 
-// calculateProbability вычисляет приблизительную вероятность валидного хеша
-func calculateProbability(difficulty uint64) float64 {
+func preparePowBlock(header *block.Header) *block.Block {
+	b := block.NewBlock(header)
+	b.Transactions = []types.GTransaction{}
+	if bytes := b.ToBytes(); bytes != nil {
+		b.Head.Size = len(bytes)
+	}
+	return b
+}
+
+func powProbability(difficulty uint64) float64 {
 	if difficulty == 0 {
 		return 0
 	}
-	// Приблизительно: вероятность = difficulty / 2^256
-	// Но для больших чисел это очень маленькое значение
-	return float64(difficulty) / (1 << 32) // Упрощенная формула для демонстрации
+	p := 1.0 / float64(difficulty)
+	if p > 1 {
+		return 1
+	}
+	return p
 }
 
-// calculateExpectedAttempts вычисляет ожидаемое количество попыток для нахождения валидного хеша
-func calculateExpectedAttempts(difficulty uint64) float64 {
+func expectedAttempts(difficulty uint64) float64 {
 	if difficulty == 0 {
 		return 0
 	}
-	// Ожидаемое количество попыток ≈ 2^256 / difficulty
-	// Упрощенная формула для демонстрации
-	return float64(1<<32) / float64(difficulty)
+	return float64(difficulty)
 }

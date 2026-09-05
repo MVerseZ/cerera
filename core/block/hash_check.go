@@ -28,11 +28,7 @@ func VerifyBlockHash(b *Block) (bool, error) {
 		return false, fmt.Errorf("difficulty cannot be zero")
 	}
 
-	// ВАЖНО: Обновляем размер блока перед вычислением хэша, так как он влияет на хэш
-	blockBytes := b.ToBytes()
-	if blockBytes != nil {
-		b.Head.Size = len(blockBytes)
-	}
+	// Do not mutate header fields — PoW was found against the mined header as-is.
 
 	// Вычисляем target: target = 2^256 / difficulty
 	target := new(big.Int).Div(
@@ -40,14 +36,20 @@ func VerifyBlockHash(b *Block) (bool, error) {
 		big.NewInt(int64(b.Head.Difficulty)),
 	)
 
-	// Вычисляем хэш блока
-	blockHash, err := b.CalculateHash()
-	if err != nil {
-		return false, fmt.Errorf("failed to calculate block hash: %w", err)
+	// Prefer the declared block hash (consensus/miner set it after PoW).
+	var hashBytes []byte
+	if b.Hash != (common.Hash{}) {
+		hashBytes = b.Hash.Bytes()
+	} else {
+		var err error
+		hashBytes, err = b.CalculateHash()
+		if err != nil {
+			return false, fmt.Errorf("failed to calculate block hash: %w", err)
+		}
 	}
 
 	// Преобразуем хэш в big.Int для сравнения
-	blockHashInt := new(big.Int).SetBytes(blockHash)
+	blockHashInt := new(big.Int).SetBytes(hashBytes)
 
 	// Проверяем: хэш валидный, если blockHashInt < target
 	isValid := blockHashInt.Cmp(target) < 0
@@ -74,11 +76,7 @@ func VerifyBlockHashWithDetails(b *Block) (*HashVerificationResult, error) {
 		return result, nil
 	}
 
-	// ВАЖНО: Обновляем размер блока перед вычислением хэша, так как он влияет на хэш
-	blockBytes := b.ToBytes()
-	if blockBytes != nil {
-		b.Head.Size = len(blockBytes)
-	}
+	// Do not mutate header fields — PoW was found against the mined header as-is.
 
 	// Вычисляем target: target = 2^256 / difficulty
 	target := new(big.Int).Div(
@@ -87,12 +85,18 @@ func VerifyBlockHashWithDetails(b *Block) (*HashVerificationResult, error) {
 	)
 	result.Target = target
 
-	// Вычисляем хэш блока
-	blockHash, err := b.CalculateHash()
-	if err != nil {
-		result.IsValid = false
-		result.Error = fmt.Sprintf("failed to calculate block hash: %v", err)
-		return result, nil
+	// Вычисляем хэш блока (prefer declared hash when set, same as VerifyBlockHash).
+	var blockHash []byte
+	if b.Hash != (common.Hash{}) {
+		blockHash = b.Hash.Bytes()
+	} else {
+		var err error
+		blockHash, err = b.CalculateHash()
+		if err != nil {
+			result.IsValid = false
+			result.Error = fmt.Sprintf("failed to calculate block hash: %v", err)
+			return result, nil
+		}
 	}
 
 	result.BlockHash = common.BytesToHash(blockHash)

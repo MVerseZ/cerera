@@ -58,6 +58,13 @@ func (t *TxTable) Get(hash common.Hash) int {
 	return idx
 }
 
+// Reset clears all known transactions (used during chain replay/reorg).
+func (t *TxTable) Reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.byHash = make(map[common.Hash]int)
+}
+
 func InitTxTable() {
 	txTable = TxTable{
 		byHash: make(map[common.Hash]int),

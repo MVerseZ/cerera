@@ -67,12 +67,18 @@ type Miner interface {
 	SetBlockPublisher(publisher BlockPublisher)
 	SetHeightLock(lock HeightLockChecker)
 	OnBlockFinalized(b *block.Block)
+	OnChainReorg(b *block.Block)
 	Update(tx *types.GTransaction)
 }
 
 // BlockPublisher proposes a mined block to the network consensus layer.
 type BlockPublisher interface {
 	ProposeBlock(b *block.Block) error
+}
+
+// PeerCounter is optionally implemented by BlockPublisher (e.g. icenet.Ice).
+type PeerCounter interface {
+	GetPeerCount() int
 }
 
 // HeightLockChecker interface for checking height locks from main package
@@ -171,8 +177,13 @@ func (m *miner) Start() error {
 	if m.heightLock != nil {
 		w.SetHeightLock(m.heightLock)
 	}
+	m.attachStateRootFn(w)
 	m.worker.Start()
-	m.worker.Compute(m.newTask(nil))
+	if m.shouldWaitForPeers() {
+		go m.waitForPeersAndMine()
+	} else {
+		m.worker.Compute(m.newTask(nil))
+	}
 	m.mu.Unlock()
 
 	go m.resultLoop()
@@ -273,6 +284,11 @@ func (m *miner) handleResult(data Result) {
 	}
 
 	if m.publisher != nil {
+		if m.shouldWaitForPeers() {
+			minerLogger().Infow("[MINER] waiting for peers before proposing block")
+			go m.waitForPeersAndMine()
+			return
+		}
 		if err := m.publisher.ProposeBlock(data.Value); err != nil {
 			minerLogger().Errorw("[MINER] failed to propose block", "error", err)
 			current := m.worker.GetCurrentTask()
@@ -356,6 +372,16 @@ func (m *miner) SetPool(p pool.TxPool) {
 
 func (m *miner) SetValidator(v validator.Validator) {
 	m.valid = v
+	if m.worker != nil {
+		m.attachStateRootFn(m.worker)
+	}
+}
+
+func (m *miner) attachStateRootFn(w *Worker) {
+	if m.valid == nil || w == nil {
+		return
+	}
+	w.SetStateRootFn(m.valid.ComputeBlockStateRoot)
 }
 
 func (m *miner) SetBlockPublisher(publisher BlockPublisher) {
@@ -367,6 +393,10 @@ func (m *miner) SetHeightLock(lock HeightLockChecker) {
 }
 
 func (m *miner) OnBlockFinalized(b *block.Block) {
+	m.onChainHeadUpdated(b)
+}
+
+func (m *miner) OnChainReorg(b *block.Block) {
 	m.onChainHeadUpdated(b)
 }
 
@@ -415,6 +445,37 @@ func (m *miner) clearProcessedTransactions(txs []types.GTransaction) {
 		}
 		// ExecuteTransaction already removes successful txs; ignore "not in mempool".
 		_ = m.pool.RemoveFromPool(txs[i].Hash())
+	}
+}
+
+func (m *miner) shouldWaitForPeers() bool {
+	if len(m.config.NetCfg.SeedNodes) == 0 {
+		return false
+	}
+	pc, ok := m.publisher.(PeerCounter)
+	return ok && pc.GetPeerCount() == 0
+}
+
+func (m *miner) waitForPeersAndMine() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.stopChan:
+			return
+		case <-ticker.C:
+			m.mu.Lock()
+			waiting := m.shouldWaitForPeers()
+			if !waiting && m.mining && m.worker != nil {
+				m.worker.Compute(m.newTask(nil))
+				m.mu.Unlock()
+				return
+			}
+			m.mu.Unlock()
+			if waiting {
+				minerLogger().Infow("[MINER] waiting for peers before mining")
+			}
+		}
 	}
 }
 

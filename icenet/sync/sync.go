@@ -67,6 +67,16 @@ type Manager struct {
 	// Callbacks
 	onSyncComplete func()
 	onNewBlock     func(*block.Block)
+
+	forkDetector ForkDetector
+}
+
+// ForkDetector handles competing blocks and orphan storage during sync.
+type ForkDetector interface {
+	OnCompetingBlock(local, remote *block.Block, from peer.ID)
+	OnPrevHashMismatch(localHead, incoming *block.Block, from peer.ID)
+	ProcessOrphan(b *block.Block, from peer.ID) bool
+	OnBlockLinked(b *block.Block)
 }
 
 // NewManager creates a new sync manager
@@ -326,6 +336,11 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 							"height", b.Head.Height,
 							"localHeight", currentHeight,
 						)
+						if m.forkDetector != nil {
+							localHead := m.serviceProvider.GetBlockByHeight(currentHeight)
+							m.forkDetector.OnPrevHashMismatch(localHead, b, peerID)
+							m.forkDetector.ProcessOrphan(b, peerID)
+						}
 						break
 					}
 					continue
@@ -338,6 +353,9 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 			// Call callback
 			if m.onNewBlock != nil {
 				m.onNewBlock(b)
+			}
+			if m.forkDetector != nil {
+				m.forkDetector.OnBlockLinked(b)
 			}
 		}
 
@@ -545,12 +563,32 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 
 	// Skip if we already have a block at this height or higher
 	if b.Head.Height <= currentHeight {
+		if b.Head.Height == currentHeight {
+			local := m.serviceProvider.GetBlockByHeight(currentHeight)
+			if local != nil && local.Hash != b.Hash && m.forkDetector != nil {
+				m.forkDetector.OnCompetingBlock(local, b, fromPeer)
+				m.forkDetector.ProcessOrphan(b, fromPeer)
+			}
+		}
 		syncLogger().Debugw("Skipping block - already have block at this height",
 			"receivedHeight", b.Head.Height,
 			"currentHeight", currentHeight,
 			"from", fromPeer,
 		)
 		return nil
+	}
+
+	// Side chain: next height but different parent
+	if b.Head.Height == currentHeight+1 {
+		latestHash := m.serviceProvider.GetLatestHash()
+		if latestHash != (common.Hash{}) && b.Head.PrevHash != latestHash {
+			if m.forkDetector != nil {
+				localHead := m.serviceProvider.GetBlockByHeight(currentHeight)
+				m.forkDetector.OnPrevHashMismatch(localHead, b, fromPeer)
+				m.forkDetector.ProcessOrphan(b, fromPeer)
+			}
+			return nil
+		}
 	}
 
 	// Check if this is the next expected block
@@ -576,7 +614,15 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 		if m.onNewBlock != nil {
 			m.onNewBlock(b)
 		}
+		if m.forkDetector != nil {
+			m.forkDetector.OnBlockLinked(b)
+		}
 
+		return nil
+	}
+
+	// Unknown parent — store as orphan
+	if m.forkDetector != nil && m.forkDetector.ProcessOrphan(b, fromPeer) {
 		return nil
 	}
 
@@ -610,6 +656,13 @@ func (m *Manager) GetSyncPeer() peer.ID {
 // SetOnSyncComplete sets the callback for sync completion
 func (m *Manager) SetOnSyncComplete(callback func()) {
 	m.onSyncComplete = callback
+}
+
+// SetForkDetector wires fork/orphan handling during sync.
+func (m *Manager) SetForkDetector(det ForkDetector) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.forkDetector = det
 }
 
 // SetOnNewBlock sets the callback for new blocks

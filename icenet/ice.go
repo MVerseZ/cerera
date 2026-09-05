@@ -12,12 +12,14 @@ import (
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/consensus"
+	"github.com/cerera/icenet/fork"
 	"github.com/cerera/icenet/metrics"
 	"github.com/cerera/icenet/peers"
 	"github.com/cerera/icenet/protocol"
 	"github.com/cerera/icenet/service"
 	icesync "github.com/cerera/icenet/sync"
 	"github.com/cerera/internal/logger"
+	"github.com/cerera/internal/validation"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -61,6 +63,9 @@ type Ice struct {
 	devValidators bool
 
 	onBlockFinalized func(*block.Block)
+
+	serviceProviderPtr *service.ServiceProvider
+	forkDetector       *fork.Detector
 
 	mu sync.RWMutex // guards fields read by Exec() and written during Start()/SetServiceProvider()
 }
@@ -188,6 +193,7 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.mu.Lock()
 	ice.ServiceProvider = *provider
+	ice.serviceProviderPtr = provider
 
 	// Initialize consensus engine if not yet created.
 	if ice.Consensus == nil {
@@ -238,6 +244,12 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 		if b != nil && b.Head != nil {
 			metrics.SetBlockHeight(b.Head.Height)
 		}
+		ice.mu.RLock()
+		cb := ice.onBlockFinalized
+		ice.mu.RUnlock()
+		if cb != nil {
+			cb(b)
+		}
 	})
 
 	if ice.PubSub != nil {
@@ -255,6 +267,42 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.SyncManager.Start()
 
 	iceLogger().Infow("API provider set, sync manager and handler started")
+}
+
+// ServiceProviderPtr returns the live service provider used by sync/consensus.
+func (ice *Ice) ServiceProviderPtr() *service.ServiceProvider {
+	ice.mu.RLock()
+	defer ice.mu.RUnlock()
+	return ice.serviceProviderPtr
+}
+
+// AttachBlockValidator wires block PoW/content validation into the network service provider.
+func (ice *Ice) AttachBlockValidator(bv *validation.BlockValidator) {
+	ice.mu.Lock()
+	defer ice.mu.Unlock()
+	if ice.serviceProviderPtr != nil {
+		ice.serviceProviderPtr.SetBlockValidator(bv)
+	}
+}
+
+// SetForkDetector wires fork detection into sync and consensus.
+func (ice *Ice) SetForkDetector(det *fork.Detector) {
+	ice.mu.Lock()
+	ice.forkDetector = det
+	if ice.SyncManager != nil {
+		ice.SyncManager.SetForkDetector(det)
+	}
+	if ice.Consensus != nil {
+		ice.Consensus.SetForkCompeting(det)
+	}
+	ice.mu.Unlock()
+}
+
+// SetTxValidator wires mempool admission checks for inbound P2P transactions.
+func (ice *Ice) SetTxValidator(fn func(*types.GTransaction) bool) {
+	if ice.PubSub != nil {
+		ice.PubSub.SetTxValidator(fn)
+	}
 }
 
 // SetOnBlockFinalized registers a callback invoked when consensus finalizes a block.

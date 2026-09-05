@@ -40,8 +40,20 @@ type ChainMetrics struct {
 	blockGasUsed        prometheus.Histogram
 }
 
-// NewChainMetrics creates and registers new chain metrics
+// NewChainMetrics creates and registers new chain metrics (singleton registration).
 func NewChainMetrics() *ChainMetrics {
+	chainMetricsOnce.Do(func() {
+		sharedChainMetrics = initChainMetrics()
+	})
+	return sharedChainMetrics
+}
+
+var (
+	chainMetricsOnce   sync.Once
+	sharedChainMetrics *ChainMetrics
+)
+
+func initChainMetrics() *ChainMetrics {
 	metrics := &ChainMetrics{
 		blocksTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "chain_blocks_total",
@@ -185,9 +197,11 @@ func Mold(cfg *config.Config) (*Chain, error) {
 	}
 
 	chainPath := determineChainPath(cfg)
-	if chainPath == "EMPTY" {
-		chainPath = "./chain.dat"
-		cfg.UpdateChainPath(chainPath)
+	if chainPath == "" && !cfg.IN_MEM {
+		chainPath = cfg.ResolveChainFile()
+	}
+	if cfg.Chain.Path == "EMPTY" && chainPath != "" {
+		cfg.Chain.Path = chainPath
 	}
 
 	dataBlocks, stats, err := loadBlocksFromStorage(cfg, genesisBlock, chainPath, storage)
@@ -259,7 +273,7 @@ func determineChainPath(cfg *config.Config) string {
 	if cfg.IN_MEM {
 		return ""
 	}
-	return cfg.Chain.Path
+	return cfg.ResolveChainFile()
 }
 
 func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainPath string, storage BlockStorage) ([]*block.Block, BlockChainStatus, error) {
@@ -519,7 +533,10 @@ func (bc *Chain) ServiceName() string {
 }
 
 func (bc *Chain) Start() {
-	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", bc.info.Total)
+	bc.mu.RLock()
+	total := bc.info.Total
+	bc.mu.RUnlock()
+	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", total)
 	for {
 		<-bc.maintainTicker.C
 		clogger.Debug("chain tick maintain")
@@ -657,10 +674,20 @@ func (bc *Chain) UpdateChain(newBlock *block.Block) error {
 	return nil
 }
 
+// BlockContentValidator optionally validates block content when ValidateBlocks runs.
+var BlockContentValidator func(*block.Block) error
+
 // return lenght of array
 func ValidateBlocks(blocks []*block.Block) (int, error) {
 	if len(blocks) == 0 {
 		return -1, errors.New("no blocks to validate")
+	}
+	if BlockContentValidator != nil {
+		for _, b := range blocks {
+			if err := BlockContentValidator(b); err != nil {
+				return -1, err
+			}
+		}
 	}
 	return len(blocks), nil
 }
