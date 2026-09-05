@@ -174,6 +174,9 @@ func remainingTxs(task *Task, mined *block.Block) []*types.GTransaction {
 
 // func (w *Worker) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
 func (w *Worker) createNewBlock(data *Task) *block.Block {
+	if data == nil || data.prev == nil {
+		return nil
+	}
 
 	transactions := data.txs
 

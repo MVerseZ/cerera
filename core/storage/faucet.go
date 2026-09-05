@@ -57,7 +57,7 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	}
 	lastRequest, exists := v.faucetLastRequest[to]
 	if exists {
-		cooldownDuration := time.Duration(coinbase.FaucetCooldownHours) * time.Hour
+		cooldownDuration := time.Duration(coinbase.FaucetCooldownHours * float64(time.Hour))
 		timeSinceLastRequest := time.Since(lastRequest)
 		if timeSinceLastRequest < cooldownDuration {
 			remainingTime := cooldownDuration - timeSinceLastRequest
