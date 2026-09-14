@@ -220,14 +220,8 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 		StateAccountData: account.StateAccountData{
 			Address: rootHashAddress,
 			Nonce:   1,
-			Root:    v.rootHash,
 		},
 		Status: 3, // 3: OP_ACC_NODE
-		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs: &account.Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		},
 	}
 	rootSA.SetBalance(coinbase.InitialNodeBalance)
 
@@ -407,7 +401,7 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 
 	newToBal := new(big.Int).Add(saDest.GetBalanceBI(), cnt)
 	saDest.SetBalanceBI(newToBal)
-	saDest.AddInput(txHash, cnt)
+	// saDest.AddInput(txHash, cnt)
 
 	v.markDirty(from)
 	v.markDirty(to)
@@ -432,7 +426,7 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 
 	newBal := new(big.Int).Add(saDest.GetBalanceBI(), cnt)
 	saDest.SetBalanceBI(newBal)
-	saDest.AddInput(txHash, cnt)
+	// saDest.AddInput(txHash, cnt)
 	v.markDirty(to)
 
 	v.updateSupplyMetrics()
@@ -1027,10 +1021,9 @@ func (v *D5Vault) Exec(method string, params []any) any {
 		}
 		account := v.Get(types.HexToAddress(addr))
 		if account == nil {
-			return make(map[common.Hash]*big.Int) // Возвращаем пустую map
+			return make(map[common.Hash]*big.Int)
 		}
-		// Возвращаем копию инпутов без mutex для безопасной сериализации в JSON
-		return account.GetAllInputs()
+		return make(map[common.Hash]*big.Int)
 	}
 	return nil
 }
@@ -1158,9 +1151,9 @@ func (v *D5Vault) Methods() map[string]service.RPCHandler {
 			}
 			account := v.Get(types.HexToAddress(addrHex))
 			if account == nil {
-				return map[common.Hash]*big.Int{}, nil
+				return make(map[common.Hash]*big.Int), nil
 			}
-			return account.GetAllInputs(), nil
+			return make(map[common.Hash]*big.Int), nil
 		},
 		"getTotalSupply": func(ctx context.Context, params []any) (any, error) {
 			return v.GetTotalSupply(), nil

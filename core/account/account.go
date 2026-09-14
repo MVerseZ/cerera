@@ -42,15 +42,16 @@ type StateAccount struct {
 
 // TODO
 func NewStateAccount(address address.Address, balance float64, root common.Hash) *StateAccount {
-	return &StateAccount{
+	sa := &StateAccount{
 		StateAccountData: StateAccountData{
 			Address: address,
 			Nonce:   1,
-			Balance: big.NewInt(0),
 		},
 		Status: 0,
 		Type:   0,
 	}
+	sa.SetBalance(balance)
+	return sa
 }
 
 func (sa *StateAccount) GetBalance() float64 {
