@@ -16,13 +16,13 @@ import (
 
 var (
 	ErrTxUnsigned         = errors.New("transaction is not signed")
-	ErrTxInvalidSender      = errors.New("transaction sender mismatch")
-	ErrTxAlreadyInChain     = errors.New("transaction already in chain")
-	ErrTxTypeNotAllowed     = errors.New("transaction type not allowed in mempool")
-	ErrTxMissingRecipient   = errors.New("transaction missing recipient")
-	ErrTxInsufficientBal    = errors.New("insufficient balance")
-	ErrTxGasTooLow          = errors.New("gas below minimum")
-	ErrTxBadNonce           = errors.New("invalid transaction nonce")
+	ErrTxInvalidSender    = errors.New("transaction sender mismatch")
+	ErrTxAlreadyInChain   = errors.New("transaction already in chain")
+	ErrTxTypeNotAllowed   = errors.New("transaction type not allowed in mempool")
+	ErrTxMissingRecipient = errors.New("transaction missing recipient")
+	ErrTxInsufficientBal  = errors.New("insufficient balance")
+	ErrTxGasTooLow        = errors.New("gas below minimum")
+	ErrTxBadNonce         = errors.New("invalid transaction nonce")
 )
 
 // ValidateLegacyTx checks balance, gas, nonce, and recipient for a legacy transfer.

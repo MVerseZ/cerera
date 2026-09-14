@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/cerera/core/account"
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
 )
 
@@ -134,17 +133,6 @@ func (ai *AccountIndex) GetByIndex(idx int64) *account.StateAccount {
 	ai.mu.RLock()
 	defer ai.mu.RUnlock()
 	return ai.index[idx]
-}
-
-func (ai *AccountIndex) FindByKeyHash(keyHash common.Hash) (*account.StateAccount, error) {
-	ai.mu.RLock()
-	defer ai.mu.RUnlock()
-	for _, acc := range ai.accounts {
-		if acc.KeyHash == keyHash {
-			return acc, nil
-		}
-	}
-	return nil, fmt.Errorf("key hash not found")
 }
 
 func (ai *AccountIndex) sortedAddresses() []string {

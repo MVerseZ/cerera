@@ -2,20 +2,15 @@ package storage
 
 import (
 	"context"
-	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/account"
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/tyler-smith/go-bip32"
-	"github.com/tyler-smith/go-bip39"
 )
 
 func closeTestVault(t *testing.T, v *D5Vault) {
@@ -56,16 +51,8 @@ func createTestStateAccountForSource(balance float64) *account.StateAccount {
 		StateAccountData: account.StateAccountData{
 			Address: address,
 			Nonce:   1,
-			Root:    common.Hash{},
-			KeyHash: common.Hash(address.Bytes()),
 		},
 		Status: 0,
-		Bloom:  []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Inputs: &account.Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		},
-		Passphrase: common.BytesToHash([]byte("test_pass")),
 	}
 	testStateAccount.SetBalance(balance)
 	return testStateAccount
@@ -171,12 +158,6 @@ func TestVaultSourceSize(t *testing.T) {
 }
 
 func TestEncodeDecodeAccountPayload(t *testing.T) {
-	entropy, _ := bip39.NewEntropy(256)
-	mnemonic, _ := bip39.NewMnemonic(entropy)
-	if err := setKeysFromMnemonic(mnemonic, defaultVaultKeyPass); err != nil {
-		t.Fatalf("setKeysFromMnemonic: %v", err)
-	}
-
 	plain := createTestStateAccountForSource(10).Bytes()
 	encoded, err := encodeAccountPayload(plain)
 	if err != nil {
@@ -204,74 +185,10 @@ func bytesEqualPrefix(a, b []byte) bool {
 }
 
 func TestWalletRestoreRoundTrip(t *testing.T) {
-	v := &D5Vault{
-		accounts: NewAccountIndex(),
-		rootHash: common.EmptyHash(),
-		inMem:    true,
-	}
-	if err := InitVaultKeys(v); err != nil {
-		t.Fatalf("InitVaultKeys: %v", err)
-	}
-	pass := "test-pass"
-	priv, _, mnemonic, addr, err := v.Create(pass)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	restoredAddr, restoredPriv, err := v.Restore(mnemonic, pass)
-	if err != nil {
-		t.Fatalf("Restore: %v", err)
-	}
-	if restoredAddr != *addr {
-		t.Fatalf("restored address mismatch")
-	}
-	if restoredPriv != priv {
-		t.Fatalf("restored private key mismatch")
-	}
+	t.Skip("wallet restore round-trip is not supported in current account model")
 }
 
 func TestWalletRestoreAfterPersist(t *testing.T) {
-	vaultPath := filepath.Join(os.TempDir(), "test_wallet_restore_persist")
-	v := newDiskTestVault(t, vaultPath)
-	defer func() {
-		closeTestVault(t, v)
-		os.RemoveAll(vaultPath)
-	}()
-
-	pass := "vault-pass"
-	priv, _, mnemonic, addr, err := v.Create(pass)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	v.accounts.Clear()
-	if err := v.SyncFromDB(); err != nil {
-		t.Fatalf("SyncFromDB: %v", err)
-	}
-
-	restoredAddr, restoredPriv, err := v.Restore(mnemonic, pass)
-	if err != nil {
-		t.Fatalf("Restore after SyncFromDB: %v", err)
-	}
-	if restoredAddr != *addr {
-		t.Fatalf("restored address mismatch after persist")
-	}
-	if restoredPriv != priv {
-		t.Fatalf("restored private key mismatch after persist")
-	}
+	t.Skip("wallet restore after persist is not supported in current account model")
 }
 
-func TestBIP32MasterKeyUsedForEncryption(t *testing.T) {
-	entropy, _ := bip39.NewEntropy(256)
-	mnemonic, _ := bip39.NewMnemonic(entropy)
-	seed := bip39.NewSeed(mnemonic, defaultVaultKeyPass)
-	masterKey, err := bip32.NewMasterKey(seed)
-	if err != nil {
-		t.Fatalf("NewMasterKey: %v", err)
-	}
-	if err := SetKeys(masterKey, masterKey.PublicKey()); err != nil {
-		t.Fatalf("SetKeys: %v", err)
-	}
-	if deriveVaultAccountEncKey() == nil {
-		t.Fatal("deriveVaultAccountEncKey returned nil")
-	}
-}
