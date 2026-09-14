@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/common"
@@ -37,6 +38,36 @@ func CreateTestStateAccount() StateAccount {
 	}
 	newAccount.SetBalance(0.0)
 	return newAccount
+}
+func TestStateAccount_Size(t *testing.T) {
+	var pass = "test_pass_long_so_must_be_add_bytes_to_acc"
+
+	privateKey, _ := crypto.GenerateAccount()
+	pubkey := &privateKey.PublicKey
+	address := crypto.PubkeyToAddress(pubkey)
+
+	newAccount := StateAccount{
+		StateAccountData: StateAccountData{
+			Address: address,
+			Nonce:   10000000000,
+			Root:    common.Hash(address.Bytes()),
+			KeyHash: common.Hash(address.Bytes()),
+		},
+		Status: 0, // 0: OP_ACC_NEW
+		Bloom:  []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
+		Inputs: &Input{
+			RWMutex: &sync.RWMutex{},
+			M:       make(map[common.Hash]*big.Int),
+		},
+		Passphrase: common.BytesToHash([]byte(pass)),
+	}
+	newAccount.SetBalance(0.0)
+
+	var sa = CreateTestStateAccount()
+	t.Errorf("Size of StateAccount: %d", unsafe.Sizeof(sa))
+	t.Errorf("Address of account %s", sa.Address)
+	t.Errorf("Size of StateAccount 2: %d", unsafe.Sizeof(newAccount))
+	t.Errorf("Address of account 2: %s", newAccount.Address)
 }
 func TestStateAccount_BloomUp(t *testing.T) {
 	sa := &StateAccount{

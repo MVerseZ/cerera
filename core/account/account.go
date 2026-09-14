@@ -31,21 +31,13 @@ const maxWalletDataLen = 4096
 type StateAccountData struct {
 	Address address.Address
 	Nonce   uint64
-	Root    common.Hash // merkle root of the storage trie
-	KeyHash common.Hash // hash of the public key
-	Data    []byte      // data of the account
+	Balance *big.Int
 }
 
 type StateAccount struct {
 	StateAccountData
-	Bloom      []byte
-	Status     byte        // 0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID
-	Type       byte        // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
-	Passphrase common.Hash // hash of password
-	// non serialized fields
-	balance     *big.Int `json:"-"` // не сериализуем balance в JSON
-	Inputs      *Input   `json:"-"` // не сериализуем Inputs в JSON из-за mutex
-	InputsCount uint32   `json:"-"` // count of inputs
+	Status byte // 0: OP_ACC_NEW, 1: OP_ACC_STAKE, 2: OP_ACC_F, 3: OP_ACC_NODE, 4: VOID
+	Type   byte // 0: normal account, 1: staking account, 2: voting account, 3: faucet account, 4: coinbase account
 }
 
 // TODO
@@ -54,22 +46,19 @@ func NewStateAccount(address address.Address, balance float64, root common.Hash)
 		StateAccountData: StateAccountData{
 			Address: address,
 			Nonce:   1,
-			Root:    root,
+			Balance: big.NewInt(0),
 		},
-		balance: common.FloatToBigInt(balance),
-		Bloom:   []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Status:  0,
-		Type:    0,
-		Inputs: &Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		},
-		InputsCount: 0,
+		Status: 0,
+		Type:   0,
 	}
 }
 
+func (sa *StateAccount) GetData() StateAccountData {
+	return sa.StateAccountData
+}
+
 func (sa *StateAccount) GetBalance() float64 {
-	return common.BigIntToFloat(sa.balance)
+	return common.BigIntToFloat(sa.GetData().Balance)
 }
 
 func (sa *StateAccount) SetBalance(balance float64) {
@@ -91,24 +80,6 @@ func (sa *StateAccount) SetBalanceBI(v *big.Int) {
 		return
 	}
 	sa.balance = new(big.Int).Set(v)
-}
-
-func (sa *StateAccount) BloomUp() {
-	var tmpBloom = sa.Bloom[1]
-	if sa.Bloom[1] < 0xf {
-		sa.Bloom[1] = tmpBloom + 0x1
-	} else {
-		sa.Bloom[2] = 0xf
-	}
-}
-
-func (sa *StateAccount) BloomDown() {
-	var tmpBloom = sa.Bloom[1]
-	if sa.Bloom[1] > 0x1 {
-		sa.Bloom[1] = tmpBloom - 0x1
-	} else {
-		sa.Bloom[2] = 0xf
-	}
 }
 
 func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
@@ -167,22 +138,6 @@ func (sa *StateAccount) Bytes() []byte {
 		fmt.Printf("Buffer length after address: %s %d\n", sa.Address.Hex(), buf.Len())
 	}
 
-	// Write Passphrase
-	passphraseBytes := sa.Passphrase.Bytes()
-	buf.Write(passphraseBytes)
-	// fmt.Printf("Buffer after passphrase: %x\n", buf.Bytes())
-	if DEBUG {
-		fmt.Printf("Buffer length after passphrase: %d\n", buf.Len())
-	}
-
-	// Write Bloom
-	binary.Write(&buf, binary.LittleEndian, uint32(len(sa.Bloom)))
-	buf.Write(sa.Bloom)
-	// fmt.Printf("Buffer after bloom: %x\n", buf.Bytes())
-	if DEBUG {
-		fmt.Printf("Buffer length after bloom: %d\n", buf.Len())
-	}
-
 	if DEBUG {
 		fmt.Printf("Buffer length after code hash: %d\n", buf.Len())
 	}
@@ -192,13 +147,7 @@ func (sa *StateAccount) Bytes() []byte {
 	if DEBUG {
 		fmt.Printf("Buffer length after nonce: %d\n", buf.Len())
 	}
-	// Write Root (assuming common.Hash has Bytes() method)
-	rootBytes := sa.Root.Bytes()
-	buf.Write(rootBytes)
-	// fmt.Printf("Buffer after root: %x\n", buf.Bytes())
-	if DEBUG {
-		fmt.Printf("Buffer length after root: %d\n", buf.Len())
-	}
+
 	// Write Status
 	statusBytes := sa.Status
 	buf.WriteByte(statusBytes)
