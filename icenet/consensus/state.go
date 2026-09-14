@@ -1,13 +1,15 @@
 package consensus
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/cerera/core/common"
+	"github.com/cerera/internal/logger"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
+
+var consensusLog = logger.Named("consensus")
 
 // ConsensusState represents the current state of consensus
 type ConsensusState int
@@ -204,8 +206,13 @@ func (rs *RoundState) SetState(state ConsensusState) {
 	height := rs.BlockHeight
 	rs.mu.Unlock()
 	if prev != state {
-		fmt.Printf("[CONSENSUS] status %d -> %d (%s -> %s) height=%d\n",
-			prev, state, prev.String(), state.String(), height)
+		consensusLog.Infow("consensus state change",
+			"from", prev,
+			"to", state,
+			"from_name", prev.String(),
+			"to_name", state.String(),
+			"height", height,
+		)
 	}
 }
 

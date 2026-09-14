@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/cerera/core/address"
@@ -15,6 +16,12 @@ import (
 
 const DefaultP2pPort = int(6116)
 const DefaultRpcPort = int(1337)
+
+const (
+	ChainFileName  = "chain.dat"
+	VaultDirName   = "vault"
+	ConfigFileName = "config.json"
+)
 
 var ChainId = big.NewInt(133707331)
 
@@ -65,96 +72,178 @@ type Config struct {
 	VERSION string // version field
 	VER     int    // other version field
 	Gossip  string
-	IN_MEM  bool // storage inmem?
+	IN_MEM  bool   // storage inmem?
+	DataDir string `json:"DataDir,omitempty"` // root dir for chain.dat, vault/, config.json
+}
+
+func configFilePath(cfg *Config) string {
+	if cfg != nil && cfg.DataDir != "" {
+		return filepath.Join(cfg.DataDir, ConfigFileName)
+	}
+	return ConfigFileName
+}
+
+// ResolveDataDir returns the configured data directory or empty when unset.
+func (cfg *Config) ResolveDataDir() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.DataDir
+}
+
+// ResolveChainFile returns the absolute chain storage path.
+func (cfg *Config) ResolveChainFile() string {
+	if cfg == nil {
+		return "./" + ChainFileName
+	}
+	if cfg.Chain.Path != "" && cfg.Chain.Path != "EMPTY" {
+		return cfg.Chain.Path
+	}
+	if cfg.DataDir != "" {
+		return filepath.Join(cfg.DataDir, ChainFileName)
+	}
+	return "./" + ChainFileName
+}
+
+// ResolveVaultDir returns the absolute vault (pogreb) directory path.
+func (cfg *Config) ResolveVaultDir() string {
+	if cfg == nil {
+		return "./" + VaultDirName
+	}
+	if cfg.Vault.PATH != "" && cfg.Vault.PATH != "EMPTY" {
+		return cfg.Vault.PATH
+	}
+	if cfg.DataDir != "" {
+		return filepath.Join(cfg.DataDir, VaultDirName)
+	}
+	return "./" + VaultDirName
+}
+
+// ApplyDataDir configures chain/vault paths under a single directory and disables in-memory mode.
+func (cfg *Config) ApplyDataDir(dir string) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve data dir: %w", err)
+	}
+	if err := os.MkdirAll(abs, 0o700); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
+	cfg.DataDir = abs
+	cfg.Chain.Path = filepath.Join(abs, ChainFileName)
+	cfg.Vault.PATH = filepath.Join(abs, VaultDirName)
+	cfg.Vault.MEM = false
+	cfg.IN_MEM = false
+	return nil
+}
+
+func newDefaultConfig(seedNodes []string) *Config {
+	return &Config{
+		TlsFlag: false,
+		POOL: PoolConfig{
+			MaxSize: 256 * 256,
+		},
+		Vault: VaultConfig{
+			MEM:  false,
+			PATH: "EMPTY",
+		},
+		SEC: Sec{
+			HTTP: HttpSecConfig{
+				TLS: false,
+			},
+		},
+		NetCfg: NetworkConfig{
+			PID:            "/vavilov/1.0.0",
+			BootstrapIP:    "192.168.1.6",
+			BootstrapPort:  "31100",
+			SeedNodes:      seedNodes,
+			BootstrapNodes: seedNodes,
+			EnableMDNS:     true,
+		},
+		Chain: ChainConfig{
+			ChainID: 11,
+			Path:    "EMPTY",
+			Type:    "VAVILOV",
+		},
+		VERSION: "ALPHA",
+		VER:     1,
+		Gossip:  "127.0.0.1:8091",
+		IN_MEM:  false,
+	}
+}
+
+func defaultSeedNodesFromEnv() []string {
+	defaultSeedNodes := []string{
+		"/ip4/172.20.0.11/tcp/31100",
+		"/ip4/172.25.0.11/tcp/31100",
+		"/ip4/172.25.0.12/tcp/31101",
+		"/ip4/192.168.1.6/tcp/31100",
+	}
+	if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
+		seedNodesList := []string{}
+		for _, seed := range splitAndTrim(envSeedNodes, ",") {
+			if seed != "" {
+				seedNodesList = append(seedNodesList, seed)
+			}
+		}
+		if len(seedNodesList) > 0 {
+			fmt.Printf("[CONFIG] Using seed nodes from environment: %v\n", seedNodesList)
+			return seedNodesList
+		}
+	}
+	fmt.Printf("[CONFIG] Using default seed nodes: %v\n", defaultSeedNodes)
+	return defaultSeedNodes
+}
+
+// OpenConfig loads config.json from path or creates a new default config file.
+func OpenConfig(configPath string) (*Config, error) {
+	if configPath == "" {
+		configPath = ConfigFileName
+	}
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		cfg := newDefaultConfig(defaultSeedNodesFromEnv())
+		if err := cfg.writeToFile(configPath); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	}
+	cfg, err := ReadConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if dir := filepath.Dir(configPath); dir != "." && dir != "" {
+		if abs, err := filepath.Abs(dir); err == nil {
+			cfg.DataDir = abs
+		}
+	}
+	applySeedNodesFromEnv(cfg)
+	return cfg, nil
+}
+
+func applySeedNodesFromEnv(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
+		seedNodesList := []string{}
+		for _, seed := range splitAndTrim(envSeedNodes, ",") {
+			if seed != "" {
+				seedNodesList = append(seedNodesList, seed)
+			}
+		}
+		if len(seedNodesList) > 0 {
+			cfg.NetCfg.SeedNodes = seedNodesList
+			cfg.NetCfg.BootstrapNodes = seedNodesList
+			fmt.Printf("[CONFIG] Updated seed nodes from environment: %v\n", seedNodesList)
+			_ = cfg.WriteConfigToFile()
+		}
+	}
 }
 
 func GenerageConfig() (*Config, error) {
-	configFilePath := "config.json"
-	cfg := &Config{}
-	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
-		// Default seed nodes
-		defaultSeedNodes := []string{
-			"/ip4/172.20.0.11/tcp/31100",
-			"/ip4/172.25.0.11/tcp/31100",
-			"/ip4/172.25.0.12/tcp/31101",
-			"/ip4/192.168.1.6/tcp/31100",
-		}
-
-		// Check for SEED_NODES environment variable (comma-separated list)
-		// Format: "/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101"
-		if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
-			seedNodesList := []string{}
-			// Split by comma and trim spaces
-			for _, seed := range splitAndTrim(envSeedNodes, ",") {
-				if seed != "" {
-					seedNodesList = append(seedNodesList, seed)
-				}
-			}
-			if len(seedNodesList) > 0 {
-				defaultSeedNodes = seedNodesList
-				fmt.Printf("[CONFIG] Using seed nodes from environment: %v\n", defaultSeedNodes)
-			}
-		} else {
-			fmt.Printf("[CONFIG] Using default seed nodes: %v\n", defaultSeedNodes)
-		}
-
-		cfg = &Config{
-			TlsFlag: false,
-			POOL: PoolConfig{
-				MaxSize: 256 * 256, // bytes
-			},
-			Vault: VaultConfig{
-				MEM:  true,
-				PATH: "EMPTY",
-			},
-			SEC: Sec{
-				HTTP: HttpSecConfig{
-					TLS: false,
-				},
-			},
-			NetCfg: NetworkConfig{
-				PID:           "/vavilov/1.0.0",
-				BootstrapIP:   "192.168.1.6",
-				BootstrapPort: "31100",
-				// Seed nodes in multiaddr format for libp2p
-				SeedNodes:      defaultSeedNodes,
-				BootstrapNodes: defaultSeedNodes,
-				EnableMDNS:     true, // Disabled by default to avoid multicast interface warnings on Windows
-			},
-			Chain: ChainConfig{
-				ChainID: 11,
-				Path:    "EMPTY",
-				Type:    "VAVILOV",
-			},
-			VERSION: "ALPHA",
-			VER:     1,
-			Gossip:  "127.0.0.1:8091",
-			IN_MEM:  false,
-		}
-		cfg.WriteConfigToFile()
-	} else {
-		cfg, err = ReadConfig(configFilePath)
-		if err != nil {
-			return nil, err
-		}
-
-		// Override seed nodes from environment variable if set
-		if envSeedNodes := os.Getenv("SEED_NODES"); envSeedNodes != "" {
-			seedNodesList := []string{}
-			for _, seed := range splitAndTrim(envSeedNodes, ",") {
-				if seed != "" {
-					seedNodesList = append(seedNodesList, seed)
-				}
-			}
-			if len(seedNodesList) > 0 {
-				cfg.NetCfg.SeedNodes = seedNodesList
-				cfg.NetCfg.BootstrapNodes = seedNodesList
-				fmt.Printf("[CONFIG] Updated seed nodes from environment: %v\n", seedNodesList)
-				cfg.WriteConfigToFile() // Save updated config
-			}
-		}
-	}
-	return cfg, nil
+	return OpenConfig(ConfigFileName)
 }
 
 // splitAndTrim splits a string by separator and trims whitespace from each part
@@ -246,15 +335,18 @@ func (cfg *Config) UpdateChainPath(newPath string) {
 	cfg.WriteConfigToFile()
 }
 func (cfg *Config) WriteConfigToFile() error {
+	return cfg.writeToFile(configFilePath(cfg))
+}
+
+func (cfg *Config) writeToFile(path string) error {
 	fileData, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile("config.json", fileData, 0644)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return nil
+	return os.WriteFile(path, fileData, 0o644)
 }
 func (cfg *Config) SetInMem(p bool) {
 	cfg.IN_MEM = p

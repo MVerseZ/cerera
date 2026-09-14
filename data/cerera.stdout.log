@@ -1,0 +1,30 @@
+flag provided but not defined: -data-dir
+Usage of D:\Projects\GNU LAB\cerera\cerera.exe:
+  -http int
+    	Порт для http сервера (default 8080)
+  -key string
+    	path to pem key
+  -mem
+    	Хранение данных память/диск
+  -miner
+    	Флаг для добычи новых блоков (default true)
+  -mode string
+    	Режим работы: server, client, p2p (default "server")
+  -port string
+    	p2p port for connection (default "31000")
+  -s	Включить HTTPS (TLS)
+flag provided but not defined: -data-dir
+Usage of D:\Projects\GNU LAB\cerera\cerera.exe:
+  -http int
+    	Порт для http сервера (default 8080)
+  -key string
+    	path to pem key
+  -mem
+    	Хранение данных память/диск
+  -miner
+    	Флаг для добычи новых блоков (default true)
+  -mode string
+    	Режим работы: server, client, p2p (default "server")
+  -port string
+    	p2p port for connection (default "31000")
+  -s	Включить HTTPS (TLS)

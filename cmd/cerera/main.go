@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -13,8 +14,10 @@ import (
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
+	"github.com/cerera/core/types"
 	"github.com/cerera/gigea"
 	"github.com/cerera/icenet"
+	"github.com/cerera/icenet/fork"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/network"
 	"github.com/cerera/internal/service"
@@ -27,10 +30,10 @@ var appLog = logger.Named("cmd.cerera")
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
 	bc *chain.Chain
-	g  *validator.Validator
-	// h        *network.Node
-	p        pool.TxPool // CHANGE TO INTERFACE BUT WHY?
-	v        *storage.Vault
+	g  validator.Validator
+	p        pool.TxPool
+	v        storage.Vault
+	txTable  *storage.TxTable
 	registry *service.Registry
 	ice      *icenet.Ice
 	status   [8]byte
@@ -62,23 +65,30 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	})
 
 	//  цепочки
-	chain, err := chain.Mold(cfg)
+	bc, err := chain.Mold(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
 	registry.Register(&service.Service{
-		Name:    chain.ServiceName(),
-		Methods: chain.Methods(),
+		Name:    bc.ServiceName(),
+		Methods: bc.Methods(),
 	})
 
-	// инициализация валидатора
-	validator, err := validator.NewValidator(ctx, *cfg)
+	d5Vault, ok := vault.(*storage.D5Vault)
+	if !ok {
+		return nil, fmt.Errorf("vault is not *storage.D5Vault")
+	}
+	d5Vault.SaveBaseline()
+
+	txTable := storage.NewTxTable()
+
+	validatorInst, err := validator.NewValidator(ctx, *cfg, d5Vault, txTable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init validator: %w", err)
 	}
 	registry.Register(&service.Service{
-		Name:    validator.ServiceName(),
-		Methods: validator.Methods(),
+		Name:    validatorInst.ServiceName(),
+		Methods: validatorInst.Methods(),
 	})
 
 	// инициализация пула
@@ -104,19 +114,40 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	}
 
 	//
-	validator.SetPool(mempool)
-	validator.SetChain(chain)
+	validatorInst.SetPool(mempool)
+	validatorInst.SetChain(bc)
+
+	mempool.SetTxValidator(func(tx *types.GTransaction) bool {
+		return validatorInst.ValidateRawTransaction(*tx)
+	})
+	ice.AttachBlockValidator(validatorInst.GetBlockValidator())
+	ice.SetTxValidator(func(tx *types.GTransaction) bool {
+		return validatorInst.ValidateRawTransaction(*tx)
+	})
+	ice.SetVault(d5Vault)
+
+	chain.SetReorgHandler(validatorInst.ReplayChain)
+	sp := ice.ServiceProviderPtr()
+	if sp != nil {
+		sp.SetChainRef(bc)
+		sp.SetVault(d5Vault)
+	}
 
 	// Инициализация майнера
 	minerInstance, err := miner.Init(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
 	}
-	minerInstance.SetChain(chain)
+	minerInstance.SetChain(bc)
 	minerInstance.SetPool(mempool)
-	minerInstance.SetValidator(validator)
+	minerInstance.SetValidator(validatorInst)
 	minerInstance.SetBlockPublisher(ice)
-	minerInstance.SetHeightLock(chain)
+	minerInstance.SetHeightLock(bc)
+
+	forkDet := fork.NewDetector(bc, sp)
+	forkDet.SetOnReorg(minerInstance.OnChainReorg)
+	ice.SetForkDetector(forkDet)
+
 	ice.SetOnBlockFinalized(minerInstance.OnBlockFinalized)
 	if mine {
 		if err := minerInstance.Start(); err != nil {
@@ -151,62 +182,94 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	}
 
 	return &Cerera{
-		bc:       chain,
-		g:        &validator,
+		bc:       bc,
+		g:        validatorInst,
 		p:        mempool,
-		v:        &vault,
+		v:        vault,
+		txTable:  txTable,
 		registry: registry,
 		ice:      ice,
-		status:   [8]byte{0xf, validator.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
+		status:   [8]byte{0xf, validatorInst.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }
 
 // setupLogging настраивает логирование в файл.
-func setupLogging() error {
+func setupLogging(logPath string) error {
 	_, err := logger.Init(logger.Config{
-		Path:    "logfile",
+		Path:    logPath,
 		Level:   "debug",
 		Console: true,
 	})
 	return err
 }
 
-// twin live change famous blue aspect control edge choose dragon sleep tissue drip match predict leopard weekend orient clap aim fluid toy fall nuclear
 // parseFlags разбирает аргументы командной строки.
-func parseFlags() (config.Config, string, string, int, bool, bool) {
+func parseFlags() (config.Config, string, string, int, bool, string) {
 	port := flag.String("port", "31000", "p2p port for connection")
 	keyPath := flag.String("key", "", "path to pem key")
-	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
-	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
-	http := flag.Int("http", 8080, "Порт для http сервера")
+	mode := flag.String("mode", "server", "Режим работы: server, client, or p2p")
+	httpPort := flag.Int("http", 8080, "Порт для http сервера")
 	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
-	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
+	inMem := flag.Bool("mem", false, "Хранение данных в памяти (true) или на диске (false)")
+	dataDir := flag.String("data-dir", "", "Каталог данных: chain.dat, vault/, config.json")
 	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
 	flag.Parse()
 
-	cfg, err := config.GenerageConfig()
-	if err != nil {
-		panic(err)
+	if *dataDir == "" {
+		if envDir := os.Getenv("CERERA_DATA_DIR"); envDir != "" {
+			*dataDir = envDir
+		}
 	}
+
+	var cfg *config.Config
+	var err error
+	logPath := "logfile"
+
+	if *dataDir != "" {
+		if err := os.MkdirAll(*dataDir, 0o700); err != nil {
+			panic(fmt.Errorf("create data dir: %w", err))
+		}
+		cfgPath := filepath.Join(*dataDir, config.ConfigFileName)
+		cfg, err = config.OpenConfig(cfgPath)
+		if err != nil {
+			panic(err)
+		}
+		if err := cfg.ApplyDataDir(*dataDir); err != nil {
+			panic(err)
+		}
+		if *inMem {
+			cfg.SetInMem(true)
+		} else {
+			cfg.IN_MEM = false
+			cfg.WriteConfigToFile()
+		}
+		logPath = filepath.Join(*dataDir, "logfile")
+	} else {
+		cfg, err = config.GenerageConfig()
+		if err != nil {
+			panic(err)
+		}
+		cfg.SetInMem(*inMem)
+	}
+
 	cfg.SetNodeKey(*keyPath)
 	cfg.SetAutoGen(true)
-	cfg.SetInMem(*inMem)
 	cfg.SEC.HTTP.TLS = *tls
 
-	return *cfg, *mode, *port, *http, *mine, *inMem
+	return *cfg, *mode, *port, *httpPort, *mine, logPath
 }
 
 func main() {
 
+	// Парсинг флагов и создание конфигурации
+	cfg, mode, port, httpPort, mine, logPath := parseFlags()
+
 	// Настройка логирования
-	if err := setupLogging(); err != nil {
+	if err := setupLogging(logPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
 		os.Exit(1)
 	}
 	defer logger.Sync()
-
-	// Парсинг флагов и создание конфигурации
-	cfg, mode, port, httpPort, mine, _ := parseFlags()
 
 	// Создание контекста с обработкой сигналов
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -229,7 +292,7 @@ func main() {
 		fmt.Println("Received signal: ", sig)
 		// Закрываем vault (закрывает bitcask базу данных)
 		if app != nil && app.v != nil {
-			if err := (*app.v).Close(); err != nil {
+			if err := app.v.Close(); err != nil {
 				appLog.Errorw("Ошибка при закрытии vault", "err", err)
 			} else {
 				appLog.Infow("Vault успешно закрыт")

@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node1
-    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1337", "--port=31100", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
       - ICE_DEV_VALIDATORS=1
@@ -26,7 +26,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node2
-    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1338", "--port=31101", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
       - ICE_DEV_VALIDATORS=1
@@ -46,7 +46,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node3
-    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1339", "--port=31102", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.14/tcp/31103,/ip4/172.25.0.15/tcp/31104
       - ICE_DEV_VALIDATORS=1
@@ -66,7 +66,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node4
-    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1340", "--port=31103", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.15/tcp/31104
       - ICE_DEV_VALIDATORS=1
@@ -86,7 +86,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node5
-    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1341", "--port=31104", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
       - ICE_DEV_VALIDATORS=1
@@ -106,7 +106,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node6
-    command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1342", "--port=31105", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
       - ICE_DEV_VALIDATORS=1
@@ -126,7 +126,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node7
-    command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1343", "--port=31106", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
       - ICE_DEV_VALIDATORS=1
@@ -146,7 +146,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node8
-    command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1344", "--port=31107", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
       - ICE_DEV_VALIDATORS=1
@@ -166,7 +166,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: cerera-node9
-    command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--mem=true", "--miner"]
+    command: ["cerera", "--mode=p2p", "--http=1345", "--port=31108", "--data-dir=/app/data", "--key=/app/config/ddddd.nodekey.pem", "--miner"]
     environment:
       - SEED_NODES=/ip4/172.25.0.11/tcp/31100,/ip4/172.25.0.12/tcp/31101,/ip4/172.25.0.13/tcp/31102,/ip4/172.25.0.14/tcp/31103
       - ICE_DEV_VALIDATORS=1

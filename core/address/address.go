@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -77,7 +78,26 @@ func (a *Address) checksumHex() []byte {
 			buf[i] -= 32
 		}
 	}
-	return buf[:]
+	return trimLeadingZeroHex(buf[:])
+}
+
+// trimLeadingZeroHex shortens 0x-prefixed hex by removing leading zero nibbles.
+// Zero address becomes 0x0.
+func trimLeadingZeroHex(hex []byte) []byte {
+	if len(hex) < 2 || hex[0] != '0' || (hex[1] != 'x' && hex[1] != 'X') {
+		return hex
+	}
+	start := 2
+	for start < len(hex) && hex[start] == '0' {
+		start++
+	}
+	if start >= len(hex) {
+		return []byte("0x0")
+	}
+	out := make([]byte, 2+len(hex)-start)
+	out[0], out[1] = '0', 'x'
+	copy(out[2:], hex[start:])
+	return out
 }
 
 // type Address struct {
@@ -121,20 +141,49 @@ func (a Address) IsEmpty() bool {
 	return cnt == len(bts)
 }
 
-// MarshalText parses a hex string in a hash.
+// MarshalText returns the checksummed short hex form (no leading zero padding).
 func (a Address) MarshalText() ([]byte, error) {
-	// fmt.Printf("call marshal of address: %s\r\n", a.Hex())
-	return common.Bytes(a[:]).MarshalText()
+	return []byte(a.Hex()), nil
 }
 
-// UnmarshalText parses a hash in hex syntax.
+// UnmarshalText parses a hex address with optional leading-zero padding.
 func (a *Address) UnmarshalText(input []byte) error {
-	return common.UnmarshalFixedText("Address", input, a[:])
+	if len(input) == 0 {
+		*a = Address{}
+		return nil
+	}
+	s := string(input)
+	if !common.Has0xPrefix(s) {
+		return common.ErrMissingPrefix
+	}
+	body := s[2:]
+	if len(body) == 0 {
+		*a = Address{}
+		return nil
+	}
+	if len(body) > AddressLength*2 {
+		return fmt.Errorf("hex string has length %d, want at most %d for Address", len(body), AddressLength*2)
+	}
+	if len(body)%2 == 1 {
+		body = "0" + body
+	}
+	if !isHex(body) {
+		return common.ErrSyntax
+	}
+	a.SetBytes(Hex2Bytes(body))
+	return nil
 }
 
-// UnmarshalJSON parses a hash in hex syntax.
+// UnmarshalJSON parses a hex address string (short or padded).
 func (a *Address) UnmarshalJSON(input []byte) error {
-	return common.UnmarshalFixedJSON(addressT, input, a[:])
+	if len(input) < 2 || input[0] != '"' || input[len(input)-1] != '"' {
+		return &json.UnmarshalTypeError{Value: "non-string", Type: addressT}
+	}
+	inner := input[1 : len(input)-1]
+	if len(inner) == 0 {
+		return &json.UnmarshalTypeError{Value: "empty hex string", Type: addressT}
+	}
+	return a.UnmarshalText(inner)
 }
 
 // Format implements fmt.Formatter.
@@ -150,7 +199,7 @@ func (a Address) Format(s fmt.State, c rune) {
 		s.Write(q)
 	case 'x', 'X':
 		// %x disables the checksum.
-		hex := a.hex()
+		hex := trimLeadingZeroHex(a.hex())
 		if !s.Flag('#') {
 			hex = hex[2:]
 		}
@@ -169,7 +218,13 @@ func IsHexAddress(s string) bool {
 	if common.Has0xPrefix(s) {
 		s = s[2:]
 	}
-	return len(s) == 2*AddressLength && isHex(s)
+	if len(s) == 0 || len(s) > 2*AddressLength {
+		return false
+	}
+	if len(s)%2 == 1 {
+		s = "0" + s
+	}
+	return isHex(s)
 }
 
 func isHex(str string) bool {

@@ -29,6 +29,7 @@ type Worker struct {
 	resultCh    chan Result
 	jobID       uint64
 	heightLock  HeightLockChecker
+	stateRootFn func(*block.Block) (common.Hash, error)
 }
 
 // Task представляет задачу для вычисления
@@ -65,6 +66,12 @@ func (w *Worker) SetHeightLock(lock HeightLockChecker) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.heightLock = lock
+}
+
+func (w *Worker) SetStateRootFn(fn func(*block.Block) (common.Hash, error)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stateRootFn = fn
 }
 
 // Compute запускает вычисление с новым параметром.
@@ -167,6 +174,9 @@ func remainingTxs(task *Task, mined *block.Block) []*types.GTransaction {
 
 // func (w *Worker) createNewBlock(lastBlock *block.Block, transactions []types.GTransaction) *block.Block {
 func (w *Worker) createNewBlock(data *Task) *block.Block {
+	if data == nil || data.prev == nil {
+		return nil
+	}
 
 	transactions := data.txs
 
@@ -241,12 +251,24 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastHeader.Nonce, data.id)
 	newBlock.Transactions = append(newBlock.Transactions, coinbaaseTransaction)
 
-	// Рассчитываем размер блока
-	blockBytes := newBlock.ToBytes()
-	newBlock.Head.Size = len(blockBytes)
-
 	// Устанавливаем использованный газ (только для обычных транзакций, без coinbase и faucet)
 	newBlock.Head.GasUsed = uint64(totalGasUsed)
+
+	w.mu.Lock()
+	rootFn := w.stateRootFn
+	w.mu.Unlock()
+	if rootFn != nil {
+		if root, err := rootFn(newBlock); err == nil {
+			newBlock.Head.Root = root
+		} else {
+			minerLogger().Warnw("[MINER] state root computation failed", "err", err)
+			return nil
+		}
+	}
+
+	// Size must reflect final header (incl. state root) before PoW.
+	blockBytes := newBlock.ToBytes()
+	newBlock.Head.Size = len(blockBytes)
 
 	minerLogger().Debugw("[MINER] Block created",
 		"height", newHeader.Height,

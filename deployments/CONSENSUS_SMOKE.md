@@ -75,3 +75,36 @@ PYTHONIOENCODING=utf-8 python tests/check_1node.py
 - To disable dev validator behavior (connected peers == validators), set `ICE_DEV_VALIDATORS=0`.
 - Quorum is computed from the **validator snapshot at round start**, so peers connecting/disconnecting mid-round won't change the required quorum.
 - To (re)apply `ICE_DEV_VALIDATORS=1` across compose files idempotently: `python tests/update_compose_env.py`
+
+## Fork testing (devnet)
+
+Cerera detects competing tips and prev-hash mismatches, stores orphan blocks, and switches to the branch with **higher total difficulty** (tie-break: height, then head hash lexicographic).
+
+### Manual two-node fork
+
+1. Start two nodes **without** connecting them (separate compose stacks or isolated networks).
+2. Mine several blocks on each node so they diverge (different head hash at the same or different height).
+3. Connect the nodes (shared bootstrap / peer add).
+4. Watch logs for:
+   - `competing block at tip` or `prev hash mismatch — fork candidate`
+   - `orphan stored`
+   - `heavier branch detected — reorg` (when the alternate branch is complete and heavier)
+5. After convergence, run the usual check script — **heights and head hash should match** on all nodes.
+
+### Metrics
+
+Prometheus counters/gauges (when metrics endpoint is enabled):
+
+- `icenet_fork_detected_total{reason="competing_tip|prev_hash_mismatch"}`
+- `icenet_orphan_blocks`
+- `icenet_reorg_total`
+
+### Optional state-root check
+
+Cross-node `header.stateRoot` consistency can be checked with:
+
+```bash
+PYTHONIOENCODING=utf-8 python tests/check_nodes_common.py --check-state-root
+```
+
+Use this after a fork/reorg scenario to confirm vault replay converged.

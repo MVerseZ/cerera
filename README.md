@@ -111,7 +111,8 @@ go build ./cmd/cereractl
 | `-mode` | string | `"server"` | Operation mode: `server`, `client`, or `p2p` |
 | `-http` | int | `8080` | HTTP server port for API endpoints |
 | `-miner` | bool | `true` | Enable/disable block mining |
-| `-mem` | bool | `true` | Storage mode: `true` for in-memory, `false` for disk |
+| `-mem` | bool | `false` | In-memory storage (`true`) vs disk (`false`); ignored when `--data-dir` is set |
+| `-data-dir` | string | `""` | Data directory for `chain.dat`, `vault/`, and `config.json` (also `CERERA_DATA_DIR`) |
 | `-s` | bool | `false` | Enable HTTPS (TLS) |
 
 ## Configuration
@@ -419,7 +420,17 @@ Cerera exposes Prometheus metrics. Pre-built Grafana dashboards are available in
 
 ## Deployment
 
-Docker Compose configurations for multi-node setups are available in `deployments/`
+Docker Compose configurations for multi-node setups are available in `deployments/`.
+
+Disk persistence and backup/restore: [deployments/PERSISTENCE.md](deployments/PERSISTENCE.md).
+
+```bash
+# Backup (node stopped)
+cereractl backup --data-dir ./data --node-key ./ddddd.nodekey.pem --output backup.tar.gz
+
+# Restore
+cereractl restore --data-dir ./data --input backup.tar.gz --force
+```
 
 ## Contributing
 
