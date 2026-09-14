@@ -53,67 +53,29 @@ func NewStateAccount(address address.Address, balance float64, root common.Hash)
 	}
 }
 
-func (sa *StateAccount) GetData() StateAccountData {
-	return sa.StateAccountData
-}
-
 func (sa *StateAccount) GetBalance() float64 {
-	return common.BigIntToFloat(sa.GetData().Balance)
+	return common.BigIntToFloat(sa.Balance)
 }
 
 func (sa *StateAccount) SetBalance(balance float64) {
-	sa.balance = common.FloatToBigInt(balance)
+	sa.Balance = common.FloatToBigInt(balance)
 }
 
 // GetBalanceBI returns a copy of the current balance as big.Int.
 func (sa *StateAccount) GetBalanceBI() *big.Int {
-	if sa.balance == nil {
+	if sa.Balance == nil {
 		return big.NewInt(0)
 	}
-	return new(big.Int).Set(sa.balance)
+	return new(big.Int).Set(sa.Balance)
 }
 
 // SetBalanceBI sets the balance using big.Int value (copying the input).
 func (sa *StateAccount) SetBalanceBI(v *big.Int) {
 	if v == nil {
-		sa.balance = big.NewInt(0)
+		sa.Balance = big.NewInt(0)
 		return
 	}
-	sa.balance = new(big.Int).Set(v)
-}
-
-func (sa *StateAccount) AddInput(txHash common.Hash, cnt *big.Int) {
-	if sa.Inputs == nil {
-		sa.Inputs = &Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int),
-		}
-	}
-	sa.Inputs.Lock()
-	defer sa.Inputs.Unlock()
-	// Store a copy of cnt to avoid external modifications
-	sa.InputsCount += 1
-	if cnt != nil {
-		sa.Inputs.M[txHash] = new(big.Int).Set(cnt)
-	} else {
-		sa.Inputs.M[txHash] = big.NewInt(0)
-	}
-}
-
-// GetAllInputs возвращает копию всех инпутов (без mutex) для безопасного использования
-func (sa *StateAccount) GetAllInputs() map[common.Hash]*big.Int {
-	if sa.Inputs == nil {
-		return make(map[common.Hash]*big.Int)
-	}
-	sa.Inputs.RLock()
-	defer sa.Inputs.RUnlock()
-
-	// Создаем копию map и значений
-	result := make(map[common.Hash]*big.Int, len(sa.Inputs.M))
-	for hash, val := range sa.Inputs.M {
-		result[hash] = new(big.Int).Set(val)
-	}
-	return result
+	sa.Balance = new(big.Int).Set(v)
 }
 
 // ToBytes converts StateAccount to custom binary format
@@ -156,7 +118,7 @@ func (sa *StateAccount) Bytes() []byte {
 	}
 
 	// Write balance as big.Int bytes
-	balanceBytes := sa.balance.Bytes()
+	balanceBytes := sa.Balance.Bytes()
 	binary.Write(&buf, binary.LittleEndian, uint32(len(balanceBytes)))
 	buf.Write(balanceBytes)
 	// fmt.Printf("Buffer after balance: %x\n", buf.Bytes())
@@ -167,66 +129,11 @@ func (sa *StateAccount) Bytes() []byte {
 	// Inputs are not persisted; rebuilt from chain state. Always zero entries.
 	_ = binary.Write(&buf, binary.LittleEndian, uint32(0))
 
-	writeWalletExtension(&buf, sa)
-
 	if DEBUG {
 		fmt.Printf("Buffer length after inputs (0 entries, chain-derived): %d\n", buf.Len())
 	}
 
 	return buf.Bytes()
-}
-
-func writeWalletExtension(buf *bytes.Buffer, sa *StateAccount) {
-	_ = binary.Write(buf, binary.LittleEndian, walletKeysMagic)
-	keyHash := sa.KeyHash
-	buf.Write(keyHash.Bytes())
-	data := sa.Data
-	if data == nil {
-		data = []byte{}
-	}
-	_ = binary.Write(buf, binary.LittleEndian, uint32(len(data)))
-	if len(data) > 0 {
-		buf.Write(data)
-	}
-}
-
-func readWalletExtension(sa *StateAccount, buf *bytes.Reader) error {
-	if buf.Len() < 4+32+4 {
-		return fmt.Errorf("missing wallet keys trailer")
-	}
-	var magic uint32
-	if err := binary.Read(buf, binary.LittleEndian, &magic); err != nil {
-		return err
-	}
-	if magic != walletKeysMagic {
-		return fmt.Errorf("invalid wallet keys magic: %x", magic)
-	}
-	keyHashBytes := make([]byte, 32)
-	if _, err := io.ReadFull(buf, keyHashBytes); err != nil {
-		return err
-	}
-	sa.KeyHash = common.Hash(keyHashBytes)
-
-	var dataLen uint32
-	if err := binary.Read(buf, binary.LittleEndian, &dataLen); err != nil {
-		return err
-	}
-	if dataLen > maxWalletDataLen {
-		return fmt.Errorf("wallet data too large: %d", dataLen)
-	}
-	if dataLen == 0 {
-		sa.Data = nil
-		return nil
-	}
-	data := make([]byte, dataLen)
-	if _, err := io.ReadFull(buf, data); err != nil {
-		return err
-	}
-	sa.Data = data
-	if buf.Len() != 0 {
-		return fmt.Errorf("trailing account bytes: %d", buf.Len())
-	}
-	return nil
 }
 
 // ValidSerialized reports whether data is a complete current-format account blob.
@@ -260,31 +167,9 @@ func FromBytes(data []byte) *StateAccount {
 	}
 	sa.Address = address.BytesToAddress(addressBytes)
 
-	passphraseBytes := make([]byte, 32)
-	if _, err := io.ReadFull(buf, passphraseBytes); err != nil {
-		return nil
-	}
-	sa.Passphrase = common.Hash(passphraseBytes)
-
-	var bloomLen uint32
-	if err := binary.Read(buf, binary.LittleEndian, &bloomLen); err != nil {
-		return nil
-	}
-	sa.Bloom = make([]byte, bloomLen)
-	if bloomLen > 0 {
-		if _, err := io.ReadFull(buf, sa.Bloom); err != nil {
-			return nil
-		}
-	}
-
 	if err := binary.Read(buf, binary.LittleEndian, &sa.Nonce); err != nil {
 		return nil
 	}
-	rootBytes := make([]byte, 32)
-	if _, err := io.ReadFull(buf, rootBytes); err != nil {
-		return nil
-	}
-	sa.Root = common.Hash(rootBytes)
 
 	statusByte, err := buf.ReadByte()
 	if err != nil {
@@ -303,23 +188,6 @@ func FromBytes(data []byte) *StateAccount {
 		}
 	}
 	sa.SetBalanceBI(new(big.Int).SetBytes(balanceBytes))
-
-	sa.Inputs = &Input{
-		RWMutex: &sync.RWMutex{},
-		M:       make(map[common.Hash]*big.Int),
-	}
-
-	var inputsCount uint32
-	if err := binary.Read(buf, binary.LittleEndian, &inputsCount); err != nil {
-		return nil
-	}
-	if inputsCount != 0 {
-		return nil
-	}
-
-	if err := readWalletExtension(sa, buf); err != nil {
-		return nil
-	}
 
 	return sa
 }
