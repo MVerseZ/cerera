@@ -10,7 +10,8 @@ import (
 var TotalValue = common.FloatToBigInt(700000000000.0)
 var FaucetInitialBalance = common.FloatToBigInt(1000000.0)
 var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
-var blockReward = common.FloatToBigInt(1.0)
+var InitialReward = common.FloatToBigInt(10000.0)
+var HalvingInterval = uint64(2100)
 var InitialNodeBalance = 0.0000
 var FaucetValue = common.FloatToBigInt(100.0000)
 

@@ -33,7 +33,7 @@ func TestBlockValidator_ValidateContent_CoinbaseLayout(t *testing.T) {
 		Root:       common.EmptyRootHash,
 		Nonce:      1,
 	}
-	cb := coinbase.CreateCoinBaseTransation(1, miner)
+	cb := coinbase.CreateCoinBaseTransation(1, miner, 0)
 	b := block.NewBlock(head)
 	b.Transactions = []types.GTransaction{cb}
 
@@ -60,7 +60,7 @@ func TestBlockValidator_ValidateContent_GasUsedMismatch(t *testing.T) {
 		Node:     miner,
 		Root:     common.EmptyRootHash,
 	}
-	cb := coinbase.CreateCoinBaseTransation(1, miner)
+	cb := coinbase.CreateCoinBaseTransation(1, miner, 0)
 	b := block.NewBlock(head)
 	b.Transactions = []types.GTransaction{cb}
 

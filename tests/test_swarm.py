@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
 Рой аккаунтов: создаёт count кошельков, пополняет каждый через faucet
-и в бесконечном цикле каждые time секунд шлёт с каждого по одной
-транзакции (10% текущего баланса) на 10 случайных адресов из списка.
+и в бесконечном цикле каждые time секунд раздаёт с каждого 10% текущего
+баланса, поровну между 10 случайными адресами из списка.
+
+Баланс в хранилище обновляется только после майнинга блока, поэтому за раунд
+расход считается локально: сумма всех переводов плюс газ не должна превышать
+баланс на начало раунда, иначе узел отбракует хвост транзакций при сборке
+блока с ошибкой "not enought inputs".
 """
 
 import argparse
@@ -15,7 +20,12 @@ import requests
 API_URL = "http://localhost:1337/app"
 TARGETS_PER_SENDER = 10
 FAUCET_AMOUNT = 10
+# Доля баланса, раздаваемая за раунд суммарно на все TARGETS_PER_SENDER адресов.
 TRANSFER_SHARE = 0.10
+GAS_LIMIT = 21000
+# pallada.MinGasPrice(): 1 gas unit = 1 DUST = 0.000001 CER
+GAS_PRICE = 0.000001
+GAS_COST = GAS_LIMIT * GAS_PRICE
 
 
 def rpc(method, params, api_url=API_URL):
@@ -53,7 +63,7 @@ def faucet(address, amount, api_url):
 def send_tx(sender, to_addr, amount, api_url, message=""):
     return rpc(
         "cerera.transaction.send",
-        [sender["priv"], to_addr, amount, 21000, message],
+        [sender["priv"], to_addr, amount, GAS_LIMIT, message],
         api_url,
     )
 
@@ -87,14 +97,28 @@ def pick_targets(sender, accounts):
 def swarm_round(accounts, api_url, round_no):
     sent = 0
     failed = 0
+    skipped = 0
     print(f"\n--- раунд {round_no} ---")
     for sender in accounts:
         balance = get_balance(sender["address"], api_url)
-        amount = balance * TRANSFER_SHARE
-        if amount <= 0:
-            print(f"  skip {sender['address'][:10]}... баланс {balance}")
+        targets = pick_targets(sender, accounts)
+        if not targets:
             continue
-        for target in pick_targets(sender, accounts):
+
+        # Бюджет раунда: TRANSFER_SHARE баланса на переводы, остальное держим
+        # на газ. Баланс не меняется до майнинга, поэтому расход ведём локально.
+        budget = balance * TRANSFER_SHARE
+        amount = budget / len(targets)
+        required = budget + GAS_COST * len(targets)
+        if amount <= 0 or required > balance:
+            skipped += len(targets)
+            print(
+                f"  skip {sender['address'][:10]}... баланс {balance:.6f}, "
+                f"нужно {required:.6f}"
+            )
+            continue
+
+        for target in targets:
             try:
                 tx_hash = send_tx(
                     sender,
@@ -114,7 +138,7 @@ def swarm_round(accounts, api_url, round_no):
                     f"  fail {sender['address'][:10]}... -> {target['address'][:10]}... "
                     f"{amount:.6f}: {e}"
                 )
-    print(f"раунд {round_no}: отправлено {sent}, ошибок {failed}")
+    print(f"раунд {round_no}: отправлено {sent}, ошибок {failed}, пропущено {skipped}")
     return sent, failed
 
 
@@ -154,8 +178,9 @@ def main():
     accounts = setup_accounts(args.count, args.url)
     targets = min(TARGETS_PER_SENDER, args.count - 1)
     print(
-        f"\nЦикл: каждые {args.time} с каждый аккаунт шлёт "
-        f"{targets} tx по {TRANSFER_SHARE:.0%} баланса. Ctrl+C для остановки."
+        f"\nЦикл: каждые {args.time} с каждый аккаунт раздаёт {TRANSFER_SHARE:.0%} "
+        f"баланса на {targets} адресов (по {TRANSFER_SHARE / targets:.2%} на tx, "
+        f"газ {GAS_COST:.6f} за tx). Ctrl+C для остановки."
     )
 
     round_no = 0

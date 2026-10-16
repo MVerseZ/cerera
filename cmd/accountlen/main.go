@@ -7,15 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math/big"
-	"sync"
 
 	"github.com/cerera/core/account"
 	"github.com/cerera/core/address"
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/crypto"
-	"github.com/tyler-smith/go-bip32"
-	"github.com/tyler-smith/go-bip39"
 )
 
 const (
@@ -64,14 +59,6 @@ func main() {
 	if vaultAcc != nil {
 		printRow("Vault-style (bip39+KeyHash)", vaultAcc)
 	}
-
-	// 7) Разный размер Bloom
-	bloom10 := makeMinimalAccount(TypeNormal, "")
-	bloom10.Bloom = make([]byte, 10)
-	printRow("Bloom 10 байт", bloom10)
-	bloom32 := makeMinimalAccount(TypeNormal, "")
-	bloom32.Bloom = make([]byte, 32)
-	printRow("Bloom 32 байт", bloom32)
 
 	fmt.Println("\n--- Сводка по полям (фиксированные размеры) ---")
 	fmt.Println("  Type: 1 байт")
@@ -194,14 +181,9 @@ func makeMinimalAccountWithAddress(accType byte, addr address.Address) *account.
 		StateAccountData: account.StateAccountData{
 			Address: addr,
 			Nonce:   1,
-			Root:    common.Hash{},
-			KeyHash: common.Hash{},
 		},
-		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Status:     0,
-		Type:       accType,
-		Passphrase: common.Hash{},
-		Inputs:     &account.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+		Status: 0,
+		Type:   accType,
 	}
 	acc.SetBalance(0)
 	return acc
@@ -217,39 +199,15 @@ func makeRealisticAccount() *account.StateAccount {
 		StateAccountData: account.StateAccountData{
 			Address: addr,
 			Nonce:   1,
-			Root:    common.Hash(addr.Bytes()),
-			KeyHash: common.Hash{},
 		},
-		Bloom:      []byte{0xa, 0x0, 0x0, 0x0, 0xf, 0xd, 0xd, 0xd, 0xd, 0xd},
-		Status:     0,
-		Type:       TypeNormal,
-		Passphrase: common.BytesToHash([]byte("test_pass")),
-		Inputs:     &account.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+		Status: 0,
+		Type:   TypeNormal,
 	}
 	acc.SetBalance(0)
 	return acc
 }
 
 func makeVaultStyleAccount() *account.StateAccount {
-	entropy, err := bip39.NewEntropy(256)
-	if err != nil {
-		return nil
-	}
-	mnemonic, err := bip39.NewMnemonic(entropy)
-	if err != nil {
-		return nil
-	}
-	pass := "test_pass"
-	seed := bip39.NewSeed(mnemonic, pass)
-	masterKey, err := bip32.NewMasterKey(seed)
-	if err != nil {
-		return nil
-	}
-	masterKeyBytes, err := masterKey.Serialize()
-	if err != nil {
-		return nil
-	}
-	masterKeyHash := common.BytesToHash(masterKeyBytes)
 
 	priv, err := crypto.GenerateAccount()
 	if err != nil {
@@ -261,14 +219,9 @@ func makeVaultStyleAccount() *account.StateAccount {
 		StateAccountData: account.StateAccountData{
 			Address: addr,
 			Nonce:   1,
-			Root:    common.Hash(addr.Bytes()),
-			KeyHash: masterKeyHash,
 		},
-		Bloom:      []byte{0xf, 0xf, 0xf, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Status:     0,
-		Type:       TypeNormal,
-		Passphrase: common.BytesToHash([]byte(pass)),
-		Inputs:     &account.Input{RWMutex: &sync.RWMutex{}, M: make(map[common.Hash]*big.Int)},
+		Status: 0,
+		Type:   TypeNormal,
 	}
 	acc.SetBalance(0)
 	return acc

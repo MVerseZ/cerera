@@ -32,7 +32,7 @@ func (v *D5Vault) ReplayFaucetMints() error {
 		if m.Amount == nil {
 			continue
 		}
-		if _, err := v.creditMintedAmount(m.To, m.Amount, m.Hash); err != nil {
+		if _, err := v.creditMintedAmount(m.To, m.Amount); err != nil {
 			return err
 		}
 	}
@@ -67,7 +67,7 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	}
 	v.faucetMu.Unlock()
 
-	if _, err := v.creditMintedAmount(to, cnt, txHash); err != nil {
+	if _, err := v.creditMintedAmount(to, cnt); err != nil {
 		return err
 	}
 

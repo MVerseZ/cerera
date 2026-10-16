@@ -39,6 +39,8 @@ var (
 	EncodePrivateKeyToByte     = crypto.EncodePrivateKeyToByte
 	EncodePrivateKeyToToString = crypto.EncodePrivateKeyToToString
 	DecodePrivKey              = crypto.DecodePrivKey
+	NewWalletMnemonic          = crypto.NewWalletMnemonic
+	PrivateKeyFromMnemonic     = crypto.PrivateKeyFromMnemonic
 )
 
 // Event and system events (used by tests and observers)

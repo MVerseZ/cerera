@@ -1,11 +1,7 @@
 package storage
 
 import (
-	"math/big"
-	"sync"
-
 	"github.com/cerera/core/account"
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
 )
 
@@ -18,21 +14,6 @@ func cloneAccount(acc *account.StateAccount) *account.StateAccount {
 	}
 	cp := *acc
 	cp.SetBalanceBI(acc.GetBalanceBI())
-	if acc.Inputs != nil {
-		cp.Inputs = &account.Input{
-			RWMutex: &sync.RWMutex{},
-			M:       make(map[common.Hash]*big.Int, len(acc.Inputs.M)),
-		}
-		acc.Inputs.RLock()
-		for h, v := range acc.Inputs.M {
-			if v != nil {
-				cp.Inputs.M[h] = new(big.Int).Set(v)
-			} else {
-				cp.Inputs.M[h] = big.NewInt(0)
-			}
-		}
-		acc.Inputs.RUnlock()
-	}
 	return &cp
 }
 
