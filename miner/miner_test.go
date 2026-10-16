@@ -329,7 +329,7 @@ func TestMiner_CreateNewBlock_CoinbaseTxSkippedFromPool(t *testing.T) {
 	lastHeader := &block.Header{Height: 1, Index: 1, Difficulty: 1, GasLimit: 1_000_000, ChainId: 11}
 	lastBlock := block.NewBlock(lastHeader)
 
-	staleCoinbaseTx := coinbase.CreateCoinBaseTransation(0, testMinerAddr())
+	staleCoinbaseTx := coinbase.CreateCoinBaseTransation(0, testMinerAddr(), 0)
 	regularTx := types.NewTransaction(1, testMinerAddr(), big.NewInt(100), 3, big.NewInt(1), []byte("pay"))
 
 	newBlock := w.createNewBlock(blockTask(lastBlock, staleCoinbaseTx, *regularTx))
@@ -375,7 +375,7 @@ func TestMiner_CreateNewBlock_PrevHashLinksToParent(t *testing.T) {
 
 func TestMiner_ClearProcessedTransactions_SkipsCoinbase(t *testing.T) {
 	regularTx := testTx(1, 3, "pay")
-	cbTx := coinbase.CreateCoinBaseTransation(0, testMinerAddr())
+	cbTx := coinbase.CreateCoinBaseTransation(0, testMinerAddr(), 0)
 	mp := &mockTxPool{txs: []types.GTransaction{*regularTx}}
 	m := &miner{pool: mp}
 

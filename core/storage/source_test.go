@@ -27,6 +27,11 @@ func closeTestVault(t *testing.T, v *D5Vault) {
 func newDiskTestVault(t *testing.T, vaultPath string) *D5Vault {
 	t.Helper()
 	os.RemoveAll(vaultPath)
+	return openDiskTestVault(t, vaultPath)
+}
+
+func openDiskTestVault(t *testing.T, vaultPath string) *D5Vault {
+	t.Helper()
 	privateKey, _ := types.GenerateAccount()
 	cfg := &config.Config{
 		Vault: config.VaultConfig{PATH: vaultPath},
@@ -185,10 +190,51 @@ func bytesEqualPrefix(a, b []byte) bool {
 }
 
 func TestWalletRestoreRoundTrip(t *testing.T) {
-	t.Skip("wallet restore round-trip is not supported in current account model")
+	cfg := createTestConfig()
+	vault, err := NewD5Vault(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewD5Vault failed: %v", err)
+	}
+	_, _, mnemonic, address, err := vault.Create("roundtrip-pass")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	addr, priv, err := vault.Restore(mnemonic, "roundtrip-pass")
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if addr != *address || priv == "" {
+		t.Fatalf("Restore() mismatch: addr=%v priv empty=%v", addr, priv == "")
+	}
 }
 
 func TestWalletRestoreAfterPersist(t *testing.T) {
-	t.Skip("wallet restore after persist is not supported in current account model")
+	vaultPath := filepath.Join(os.TempDir(), "test_wallet_restore_persist")
+	v := newDiskTestVault(t, vaultPath)
+	defer func() {
+		closeTestVault(t, v)
+		os.RemoveAll(vaultPath)
+	}()
+
+	_, _, mnemonic, address, err := v.Create("persist-pass")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	v2 := openDiskTestVault(t, vaultPath)
+	addr, priv, err := v2.Restore(mnemonic, "persist-pass")
+	if err != nil {
+		t.Fatalf("Restore() after reopen error = %v", err)
+	}
+	if addr != *address || priv == "" {
+		t.Fatalf("Restore() mismatch after persist")
+	}
+	if v2.Get(addr) == nil {
+		t.Fatal("restored address should match persisted account in vault")
+	}
 }
 

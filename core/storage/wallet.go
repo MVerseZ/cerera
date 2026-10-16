@@ -2,7 +2,6 @@ package storage
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/cerera/core/account"
 	"github.com/cerera/core/crypto"
@@ -15,9 +14,13 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		return "", "", "", nil, ErrMnemonicEmpty
 	}
 
-	privateKey, err := types.GenerateAccount()
+	mnemonic, err := types.NewWalletMnemonic()
 	if err != nil {
-		return "", "", "", nil, err
+		return "", "", "", nil, fmt.Errorf("%w: %s", ErrGenerateMnemonicFailed, err.Error())
+	}
+	privateKey, err := types.PrivateKeyFromMnemonic(mnemonic, pass)
+	if err != nil {
+		return "", "", "", nil, fmt.Errorf("%w: %s", ErrGenerateMnemonicFailed, err.Error())
 	}
 	pubkey := &privateKey.PublicKey
 	address := types.PubkeyToAddress(pubkey)
@@ -44,7 +47,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 	}
 
 	notifyAccountCreated(newAccount)
-	return "", crypto.EncodePublicKeyToString(&privateKey.PublicKey), "", &address, nil
+	return crypto.EncodePrivateKeyToToString(privateKey), crypto.EncodePublicKeyToString(pubkey), mnemonic, &address, nil
 }
 
 // Restore recovers an account from a mnemonic phrase.
@@ -59,7 +62,15 @@ func (v *D5Vault) Restore(mnemonic string, pass string) (types.Address, string, 
 		}
 	}
 
-	return types.EmptyAddress(), "", ErrErrorWhileRestore
+	privateKey, err := types.PrivateKeyFromMnemonic(mnemonic, pass)
+	if err != nil {
+		if err == crypto.ErrInvalidMnemonic {
+			return types.EmptyAddress(), "", fmt.Errorf("%w: %s", ErrErrorWhileRestore, err.Error())
+		}
+		return types.EmptyAddress(), "", fmt.Errorf("%w: %v", ErrErrorWhileRestore, err)
+	}
+	address := types.PubkeyToAddress(&privateKey.PublicKey)
+	return address, crypto.EncodePrivateKeyToToString(privateKey), nil
 }
 
 func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address, error) {
@@ -68,25 +79,4 @@ func (v *D5Vault) VerifyAccount(addr types.Address, pass string) (types.Address,
 		return types.EmptyAddress(), ErrAccountNotFound
 	}
 	return acc.Address, nil
-}
-
-func (v *D5Vault) execRestore(params []any) any {
-	mnemonic, ok1 := params[0].(string)
-	pass, ok2 := params[1].(string)
-	if !ok1 || !ok2 {
-		return ErrErrorParsingParameters.Error()
-	}
-	if strings.Count(mnemonic, " ") != 23 {
-		return ErrWrongWordsCount.Error()
-	}
-	addr, pk, err := v.Restore(mnemonic, pass)
-	if err != nil {
-		return err.Error()
-	}
-	type res struct {
-		Addr types.Address `json:"address,omitempty"`
-		Priv string        `json:"priv,omitempty"`
-		Pub  string        `json:"pub,omitempty"`
-	}
-	return &res{Priv: pk, Addr: addr}
 }

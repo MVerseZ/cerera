@@ -15,7 +15,7 @@ var toAddr = types.HexToAddress("0xc9C5c06E29500000000000000000000557D0B284521d7
 var toAddr2 = types.HexToAddress("0xc9C5c06E29500000000000000000000557D0B284521d71A7fCA1e1C3F289849989E80B0B8100000000000000000000ff")
 
 func TestCreate(t *testing.T) {
-	var cbtx = coinbase.CreateCoinBaseTransation(1, cbto)
+	var cbtx = coinbase.CreateCoinBaseTransation(1, cbto, 0)
 
 	var content = make([]types.GTransaction, 0)
 	content = append(content, cbtx)

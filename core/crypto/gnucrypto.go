@@ -27,7 +27,11 @@ var (
 	ErrInvalidPubkey       = errors.New("invalid public key")
 	ErrSignFailed          = errors.New("signing failed")
 	ErrRecoverFailed       = errors.New("recovery failed")
+	ErrInvalidMnemonic     = errors.New("invalid mnemonic phrase")
 )
+
+// accountKDFDomain tags BIP39 seed material when deriving Cerera P-256 account keys.
+const accountKDFDomain = "cerera-account-v1"
 
 const SignatureLength = 64 + 1
 
@@ -308,4 +312,60 @@ func GenerateMasterKey(pass string) (*bip32.Key, string, error) {
 	seed := bip39.NewSeed(mnemonic, pass)
 	masterKey, _ := bip32.NewMasterKey(seed)
 	return masterKey, mnemonic, nil
+}
+
+// NewWalletMnemonic returns a new BIP39 mnemonic (24 words, 256-bit entropy).
+func NewWalletMnemonic() (string, error) {
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate entropy for mnemonic: %w", err)
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate mnemonic: %w", err)
+	}
+	return mnemonic, nil
+}
+
+// PrivateKeyFromMnemonic derives the Cerera account signing key from a BIP39 phrase and passphrase.
+func PrivateKeyFromMnemonic(mnemonic, passphrase string) (*ecdsa.PrivateKey, error) {
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return nil, ErrInvalidMnemonic
+	}
+	seed := bip39.NewSeed(mnemonic, passphrase)
+	curve := chainElliptic
+	n := curve.Params().N
+
+	for counter := 0; counter < 256; counter++ {
+		h, err := blake2b.New512(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kdf: %w", err)
+		}
+		if _, err = h.Write([]byte(accountKDFDomain)); err != nil {
+			return nil, err
+		}
+		if _, err = h.Write(seed); err != nil {
+			return nil, err
+		}
+		var ctr [4]byte
+		ctr[0] = byte(counter >> 24)
+		ctr[1] = byte(counter >> 16)
+		ctr[2] = byte(counter >> 8)
+		ctr[3] = byte(counter)
+		if _, err = h.Write(ctr[:]); err != nil {
+			return nil, err
+		}
+		digest := h.Sum(nil)
+		d := new(big.Int).SetBytes(digest[:32])
+		if d.Sign() == 0 || d.Cmp(n) >= 0 {
+			continue
+		}
+		priv := &ecdsa.PrivateKey{
+			PublicKey: ecdsa.PublicKey{Curve: curve},
+			D:         d,
+		}
+		priv.PublicKey.X, priv.PublicKey.Y = curve.ScalarBaseMult(d.Bytes())
+		return priv, nil
+	}
+	return nil, fmt.Errorf("failed to derive account key from mnemonic seed")
 }

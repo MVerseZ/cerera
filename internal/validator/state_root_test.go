@@ -73,7 +73,7 @@ func TestSimulateBlockStateRoot_CoinbaseHeight1(t *testing.T) {
 		Root:       common.EmptyRootHash,
 		Nonce:      genesis.Head.Nonce,
 	}
-	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner)
+	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner, 0)
 	b := block.NewBlock(head)
 	b.Transactions = []types.GTransaction{cb}
 
@@ -113,7 +113,7 @@ func TestSimulateBlockStateRoot_MinerPathMatchesValidation(t *testing.T) {
 		Root:       common.EmptyRootHash,
 		Nonce:      genesis.Head.Nonce,
 	}
-	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner)
+	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner, 0)
 	b := block.NewBlock(head)
 	b.Transactions = []types.GTransaction{cb}
 
@@ -188,7 +188,7 @@ func TestSimulateBlockStateRoot_FaucetFundedTransfers(t *testing.T) {
 		Root:       common.EmptyRootHash,
 		Nonce:      genesis.Head.Nonce,
 	}
-	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner)
+	cb := coinbase.CreateCoinBaseTransation(genesis.Head.Nonce, miner, 0)
 	b := block.NewBlock(head)
 	b.Transactions = append(txs, cb)
 

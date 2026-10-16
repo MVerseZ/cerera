@@ -55,6 +55,7 @@ var (
 	ErrFailedGenerateUniqueAddr  = errors.New("failed to generate unique address after retries (collision with system address)")
 	ErrAddressAlreadyExists      = errors.New("address already exists in vault, bad collision")
 	ErrInvalidMintAmount         = errors.New("invalid mint amount")
+	ErrGenerateMnemonicFailed    = errors.New("failed to generate mnemonic")
 )
 
 // vault store accounts data
@@ -409,7 +410,7 @@ func (v *D5Vault) UpdateBalance(from types.Address, to types.Address, cnt *big.I
 	return nil
 }
 
-func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash common.Hash) (*account.StateAccount, error) {
+func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int) (*account.StateAccount, error) {
 	if cnt == nil || cnt.Sign() <= 0 {
 		return nil, ErrInvalidMintAmount
 	}
@@ -435,7 +436,7 @@ func (v *D5Vault) creditMintedAmount(to types.Address, cnt *big.Int, txHash comm
 
 // RewardMiner mints new coins for the miner (coinbase transaction execution).
 func (v *D5Vault) RewardMiner(to types.Address, cnt *big.Int, txHash common.Hash) error {
-	acc, err := v.creditMintedAmount(to, cnt, txHash)
+	acc, err := v.creditMintedAmount(to, cnt)
 	if err != nil {
 		return err
 	}

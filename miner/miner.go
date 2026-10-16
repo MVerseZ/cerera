@@ -20,7 +20,6 @@ import (
 )
 
 const MINER_ID = "CERERA_MINER:937"
-const REF_COUNT_INPUTS = 50 // TODO refactor this shit
 
 var (
 	ErrServiceRegistryNotFound = errors.New("service registry not found")
@@ -97,17 +96,17 @@ type HeightLockChecker interface {
 }
 
 type miner struct {
-	mu       sync.Mutex
-	ctx      context.Context
-	status   byte
-	config   *config.Config
-	chain    *chain.Chain
-	pool     pool.TxPool
-	valid    validator.Validator
-	publisher BlockPublisher
+	mu         sync.Mutex
+	ctx        context.Context
+	status     byte
+	config     *config.Config
+	chain      *chain.Chain
+	pool       pool.TxPool
+	valid      validator.Validator
+	publisher  BlockPublisher
 	heightLock HeightLockChecker
-	mining   bool
-	stopChan chan struct{}
+	mining     bool
+	stopChan   chan struct{}
 
 	miningHeight    int   // Height currently being mined
 	miningCancelled int32 // 0 = not cancelled, 1 = cancelled (atomic access)

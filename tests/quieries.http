@@ -7,6 +7,7 @@ Content-Type: application/json
   "method": "cerera.chain.getInfo",
   "id": 121,
   "jsonrpc": "2.0",
+  "params": []
 }
 
 ### GET BLOCK INFO
@@ -160,7 +161,7 @@ Content-Type: application/json
     "method": "cerera.account.inputs",
     "jsonrpc": "2.0",
     "id": 11231,
-    "params": ["0xf50a50974397f8caa8c9fd37b438d00f54e71a4795007024bcb0f7492ca773ba"]
+    "params": ["0x34435Dd4078275B01D76A456FF9599fc07e61B90"]
 }
 
 ### GET ALL ACCOUNTS

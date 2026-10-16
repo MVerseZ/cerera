@@ -248,7 +248,7 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 	newBlock.Transactions = selectedTxs
 
 	// Добавляем coinbase транзакцию (она не учитывается в GasUsed)
-	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastHeader.Nonce, data.id)
+	coinbaaseTransaction := coinbase.CreateCoinBaseTransation(lastHeader.Nonce, data.id, uint64(lastHeader.Height))
 	newBlock.Transactions = append(newBlock.Transactions, coinbaaseTransaction)
 
 	// Устанавливаем использованный газ (только для обычных транзакций, без coinbase и faucet)
