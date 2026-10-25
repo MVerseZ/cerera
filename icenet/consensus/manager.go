@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +48,10 @@ type Manager struct {
 	// Callbacks
 	onBlockFinalized func(*block.Block)
 	broadcastMsg     func(int, []byte, []byte) error
+
+	forkCompeting interface {
+		OnCompetingBlock(local, remote *block.Block, from peer.ID)
+	}
 }
 
 // NewManager creates a new consensus manager
@@ -85,9 +91,35 @@ func NewManager(
 // Start starts the consensus manager
 func (m *Manager) Start() {
 	m.voting.Start()
+	if m.peerManager != nil {
+		m.AutoRegisterValidators()
+	} else if !m.IsValidator(m.host.ID()) {
+		m.AddValidator(m.host.ID())
+	}
 	metrics.SetConsensusStatus(1)
 	m.startConsensusMetricsUpdater()
+	if m.isSoloMode() {
+		consensusLogger().Infow("[CONSENSUS] Solo mode: no connected peers; votes are processed locally")
+	}
 	consensusLogger().Infow("Consensus manager started")
+}
+
+// isSoloMode reports whether the node has no connected peers and should finalize
+// consensus rounds locally (GossipSub does not deliver self-published messages).
+// Disabled when SEED_NODES is set (multi-node deployment): wait for peer votes instead.
+func (m *Manager) isSoloMode() bool {
+	if seedNodesConfigured() {
+		return false
+	}
+	if m.peerManager == nil {
+		return true
+	}
+	return m.peerManager.GetPeerCount() == 0
+}
+
+func seedNodesConfigured() bool {
+	v := strings.TrimSpace(os.Getenv("SEED_NODES"))
+	return v != ""
 }
 
 // Stop stops the consensus manager
@@ -330,8 +362,8 @@ func (m *Manager) handlePrePrepare(data []byte, from peer.ID) error {
 	}
 
 	// Ensure voter address exists in vault (with 0 balance) so /account shows all nodes
-	if v := storage.GetVault(); v != nil {
-		v.EnsureAccount(msg.VoterAddr)
+	if m.serviceProvider != nil {
+		m.serviceProvider.EnsureAccount(msg.VoterAddr)
 	}
 
 	consensusLogger().Infow("[CONSENSUS] Processing PrePrepare",
@@ -382,8 +414,8 @@ func (m *Manager) handlePrepare(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
-	if v := storage.GetVault(); v != nil {
-		v.EnsureAccount(msg.VoterAddr)
+	if m.serviceProvider != nil {
+		m.serviceProvider.EnsureAccount(msg.VoterAddr)
 	}
 
 	// Use the logical voter ID (origin) for consensus semantics.
@@ -426,8 +458,8 @@ func (m *Manager) handleCommit(data []byte, from peer.ID) error {
 		m.peerScorer.RecordConsensusHelp(from)
 	}
 
-	if v := storage.GetVault(); v != nil {
-		v.EnsureAccount(msg.VoterAddr)
+	if m.serviceProvider != nil {
+		m.serviceProvider.EnsureAccount(msg.VoterAddr)
 	}
 
 	// Use the logical voter ID (origin) for consensus semantics.
@@ -540,6 +572,11 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 
 	// Add to chain if available.
 	if m.serviceProvider != nil {
+		if existing := m.serviceProvider.GetBlockByHeight(b.Head.Height); existing != nil && existing.Hash != b.Hash {
+			if m.forkCompeting != nil {
+				m.forkCompeting.OnCompetingBlock(existing, b, peer.ID("consensus"))
+			}
+		}
 		consensusLogger().Infow("[CONSENSUS] Adding finalized block to chain",
 			"blockHash", blockHash,
 			"height", height,
@@ -617,7 +654,24 @@ func (m *Manager) broadcastVote(msg *VotingMessage) error {
 	}
 
 	if m.broadcastMsg != nil {
-		return m.broadcastMsg(int(msg.Type), data, nil)
+		if err := m.broadcastMsg(int(msg.Type), data, nil); err != nil {
+			return err
+		}
+	}
+
+	// GossipSub never delivers own messages; loop votes back when running alone.
+	// Must be async: broadcastVote is invoked while VotingManager holds its mutex.
+	if m.isSoloMode() {
+		msgType := int(msg.Type)
+		voterID := m.host.ID()
+		go func() {
+			if err := m.HandleConsensusMessage(msgType, data, voterID); err != nil {
+				consensusLogger().Warnw("[CONSENSUS] Solo mode local vote delivery failed",
+					"type", msgType,
+					"error", err,
+				)
+			}
+		}()
 	}
 
 	return nil
@@ -763,6 +817,15 @@ func (m *Manager) GetSequenceID() int64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sequenceID
+}
+
+// SetForkCompeting wires fork detection for competing finalized blocks.
+func (m *Manager) SetForkCompeting(fc interface {
+	OnCompetingBlock(local, remote *block.Block, from peer.ID)
+}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.forkCompeting = fc
 }
 
 // SetOnBlockFinalized sets the callback for finalized blocks

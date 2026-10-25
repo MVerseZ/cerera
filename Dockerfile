@@ -18,6 +18,7 @@ COPY . .
 # Собираем приложение
 RUN go build -v ./...
 RUN go build -v -o /app/cerera ./cmd/cerera
+RUN go build -v -o /app/cereractl ./cmd/cereractl
 
 # Этап запуска
 FROM alpine:latest
@@ -27,8 +28,9 @@ ENV nodekey="/etc/cerera/ddddd.nodekey.pem"
 # Устанавливаем зависимости для runtime (если нужны)
 RUN apk add --no-cache ca-certificates
 
-# Копируем собранный бинарник из этапа сборки
+# Копируем собранные бинарники из этапа сборки
 COPY --from=builder /app/cerera /usr/local/bin/cerera
+COPY --from=builder /app/cereractl /usr/local/bin/cereractl
 
 # Создаем директорию для ключа и копируем файл из builder stage
 RUN mkdir -p /etc/cerera
@@ -42,4 +44,4 @@ EXPOSE 1337 31000
 
 # Команда запуска
 # Используем shell форму для правильной подстановки переменной окружения
-CMD ["sh", "-c", "cerera --key=/etc/cerera/ddddd.nodekey.pem --mode=p2p --http=1337 --mem=true --miner"]
+CMD ["sh", "-c", "cerera --key=/app/config/ddddd.nodekey.pem --mode=p2p --http=1337 --data-dir=/app/data --miner"]

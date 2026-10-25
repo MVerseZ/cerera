@@ -98,6 +98,8 @@ type Pool struct {
 	mu          sync.Mutex
 	observersMu sync.RWMutex
 	sourcesMu   sync.RWMutex
+
+	txValidator func(*types.GTransaction) bool
 }
 
 // var (
@@ -131,10 +133,19 @@ type TxPool interface {
 	Register(observer observer.Observer)
 	RegisterSource(source observer.Source)
 	RemoveFromPool(txHash common.Hash) error
+	RequeueTransactions(txs []types.GTransaction)
+	SetTxValidator(func(*types.GTransaction) bool)
 	ServiceName() string
 	Stop()
 
 	Methods() map[string]service.RPCHandler
+}
+
+// SetTxValidator sets optional admission validation (must return true to accept).
+func (p *Pool) SetTxValidator(fn func(*types.GTransaction) bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.txValidator = fn
 }
 
 func InitPool(maxSize int) (TxPool, error) {
@@ -203,6 +214,12 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) error {
 	if _, exists := p.memPool[tx.Hash()]; exists {
 		p.mu.Unlock()
 		return errors.New("transaction already in pool")
+	}
+
+	if p.txValidator != nil && !p.txValidator(tx) {
+		poolTxRejectedTotal.Inc()
+		p.mu.Unlock()
+		return errors.New("transaction rejected by validator")
 	}
 
 	var minGas uint64
@@ -466,6 +483,18 @@ func (p *Pool) RemoveFromPool(txHash common.Hash) error {
 	poolTxRemovedTotal.Inc()
 	p.calcInfo()
 	return nil
+}
+
+// RequeueTransactions adds executed block txs back to the mempool when a reorg orphans them.
+func (p *Pool) RequeueTransactions(txs []types.GTransaction) {
+	for i := range txs {
+		tx := txs[i]
+		if tx.Type() == types.CoinbaseTxType || tx.Type() == types.FaucetTxType {
+			continue
+		}
+		cp := tx
+		_ = p.AddRawTransaction(&cp)
+	}
 }
 
 // ServiceName returns the service identifier string.

@@ -202,3 +202,31 @@ func ClearVault() error {
 	}
 	return nil
 }
+
+// RewriteChainFile replaces the entire chain file with the given blocks.
+func RewriteChainFile(blocks []*block.Block, chainPath string) error {
+	if chainPath == "" {
+		return fmt.Errorf("chain path is empty")
+	}
+	writeFile, err := os.OpenFile(chainPath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("open chain file: %w", err)
+	}
+	defer writeFile.Close()
+
+	writer := bufio.NewWriter(writeFile)
+	for _, bl := range blocks {
+		if bl == nil {
+			continue
+		}
+		blockData, err := json.Marshal(bl)
+		if err != nil {
+			return fmt.Errorf("marshal block: %w", err)
+		}
+		blockData = append(blockData, '\n')
+		if _, err := writer.Write(blockData); err != nil {
+			return fmt.Errorf("write chain file: %w", err)
+		}
+	}
+	return writer.Flush()
+}

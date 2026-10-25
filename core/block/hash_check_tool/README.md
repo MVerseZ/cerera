@@ -1,57 +1,53 @@
-# Block Hash Check Tool
+# Genesis / PoW Hash Tool
 
-Утилита для вычисления и проверки хэша блока на соответствие требованиям difficulty.
+Утилита для проверки **двух разных хешей** genesis-блока и поиска валидного PoW-nonce.
 
-## Компиляция
+## Два хеша
 
-Из корня проекта:
+| Хеш | Алгоритм | Где используется |
+|-----|----------|------------------|
+| **Chain genesis hash** | `CrvBlockHash` (tx + `Header.Bytes()`) | `genesisHash` в p2p status/sync |
+| **PoW hash** | `CalculateHash` (`blake2b(ToBytes())`) | майнер, `VerifyBlockHash` |
+
+Инструмент показывает оба. Не путайте их при отладке sync.
+
+## Запуск
+
+Из корня репозитория:
+
 ```bash
-go build -o hash_check.exe ./internal/cerera/block/hash_check_tool
+go run ./core/block/hash_check_tool
 ```
 
-Или из директории `hash_check_tool`:
+Показать текущий genesis и проверить PoW:
+
 ```bash
-go build -o hash_check.exe
+go run ./core/block/hash_check_tool -chainid=11
 ```
 
-## Использование
+Найти валидный nonce (использует difficulty из `genesis.go`):
 
-### Базовое использование (с параметрами по умолчанию):
 ```bash
-./hash_check.exe
+go run ./core/block/hash_check_tool -find
 ```
 
-### С кастомными параметрами:
+С другой сложностью (override):
+
 ```bash
-./hash_check.exe -chainid=11 -difficulty=1000 -nonce=12345
+go run ./core/block/hash_check_tool -find -difficulty=500
 ```
 
-### Параметры:
-- `-chainid` - Chain ID для genesis блока (по умолчанию: 11)
-- `-difficulty` - Значение difficulty (0 = использовать значение из genesis)
-- `-nonce` - Значение nonce (0 = использовать значение из genesis)
+## Флаги
 
-## Пример вывода
+| Флаг | По умолчанию | Описание |
+|------|--------------|----------|
+| `-chainid` | 11 | Chain ID |
+| `-difficulty` | 0 | Override difficulty (0 = из `genesis.go`) |
+| `-nonce` | 0 | Override nonce (0 = из `genesis.go`) |
+| `-find` | false | Искать валидный PoW nonce |
+| `-max` | 10000000 | Лимит перебора nonce |
 
-```
-=== Block Hash Calculator and Verifier ===
+## Заметки
 
-Using genesis difficulty: 11111111111111111
-Using genesis nonce: 5437
-Block Height: 0
-Block Chain ID: 11
-
-Block Hash (hex): a1b2c3d4e5f6...
-Block Hash (bytes length: 32)
-
-✓ Block hash is VALID (meets difficulty requirement)
-
-=== Detailed Verification ===
-Block Hash Verification:
-  Status: VALID
-  Height: 0
-  Difficulty: 11111111111111111
-  Nonce: 5437
-  ...
-```
-
+- Genesis в ноде: PoW **не проверяется** на height 0 (`SkipPoWAtGenesis`), но difficulty наследуется следующими блоками.
+- Текущий devnet genesis: `Difficulty=1000`, валидный PoW-nonce подобран через `-find`.

@@ -16,9 +16,8 @@ func makeAddr(seed byte) types.Address {
 	return types.BytesToAddress(b)
 }
 
-func makeStateAccount(addr types.Address, balance float64, keyHash common.Hash) *account.StateAccount {
+func makeStateAccount(addr types.Address, balance float64, _ common.Hash) *account.StateAccount {
 	sa := account.NewStateAccount(addr, balance, common.Hash{})
-	sa.KeyHash = keyHash
 	return sa
 }
 
@@ -209,51 +208,6 @@ func TestAccountsTrie_GetAll_Empty(t *testing.T) {
 	}
 	if len(all) != 0 {
 		t.Errorf("GetAll empty trie len want 0, got %d", len(all))
-	}
-}
-
-func TestAccountsTrie_FindByKeyHash_Found(t *testing.T) {
-	at := GetAccountsTrie()
-	keyHash := common.BytesToHash([]byte("unique_key_hash_32_bytes_long!!!!!!"))
-	addr := makeAddr(0x40)
-	sa := makeStateAccount(addr, 5.0, keyHash)
-	at.Append(addr, sa)
-
-	got, err := at.FindByKeyHash(keyHash)
-	if err != nil {
-		t.Fatalf("FindByKeyHash: %v", err)
-	}
-	if got != sa {
-		t.Error("FindByKeyHash returned wrong account")
-	}
-	if got.GetBalance() != 5.0 {
-		t.Errorf("balance want 5.0, got %f", got.GetBalance())
-	}
-}
-
-func TestAccountsTrie_FindByKeyHash_NotFound(t *testing.T) {
-	at := GetAccountsTrie()
-	addr := makeAddr(0x41)
-	at.Append(addr, makeStateAccount(addr, 1.0, common.Hash{}))
-
-	needle := common.BytesToHash([]byte("nonexistent_key_hash_________"))
-	got, err := at.FindByKeyHash(needle)
-	if err == nil {
-		t.Error("FindByKeyHash want error when not found")
-	}
-	if got != nil {
-		t.Errorf("FindByKeyHash(not found) want nil account, got %v", got)
-	}
-	if err != nil && err.Error() != "key hash not found" {
-		t.Errorf("error message want \"key hash not found\", got %q", err.Error())
-	}
-}
-
-func TestAccountsTrie_FindByKeyHash_EmptyTrie(t *testing.T) {
-	at := GetAccountsTrie()
-	_, err := at.FindByKeyHash(common.Hash{})
-	if err == nil {
-		t.Error("FindByKeyHash on empty trie should return error")
 	}
 }
 

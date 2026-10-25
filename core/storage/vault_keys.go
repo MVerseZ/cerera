@@ -24,10 +24,14 @@ type vaultKeysFile struct {
 }
 
 // InitVaultKeys generates ephemeral keys (in-memory vault). Disk vaults must use ensureVaultKeys.
-func InitVaultKeys() {
+func InitVaultKeys(v *D5Vault) error {
 	if err := setKeysFromMnemonic(mustNewMnemonic(), defaultVaultKeyPass); err != nil {
-		vlt.status = 0xf
+		if v != nil {
+			v.status = 0xf
+		}
+		return err
 	}
+	return nil
 }
 
 func mustNewMnemonic() string {

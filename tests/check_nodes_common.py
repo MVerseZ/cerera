@@ -123,6 +123,36 @@ def format_block_info(block: Dict[str, Any]) -> str:
     return f"Height: {height} | Hash: {hash_short} | TXs: {txs_count}{time_str}"
 
 
+def head_state_root(block: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not block:
+        return None
+    header = block.get("header") or {}
+    root = header.get("root") or header.get("stateRoot")
+    return root if isinstance(root, str) and root else None
+
+
+def print_state_root_comparison(results: Dict[str, Dict[str, Any]]) -> bool:
+    print("\n" + "=" * 80)
+    print("Сравнение stateRoot head-блоков")
+    print("=" * 80)
+
+    roots: List[str] = []
+    for node_name, data in results.items():
+        root = head_state_root(data.get("last_block"))
+        if root is not None:
+            roots.append(root)
+            print(f"OK {node_name:8}: stateRoot = {root[:22]}...")
+        else:
+            print(f"-- {node_name:8}: stateRoot unavailable")
+
+    state_roots_match = len(roots) >= 2 and len(set(roots)) == 1
+    if state_roots_match:
+        print("\nstateRoot совпадает на всех нодах — vault replay OK")
+    elif len(roots) >= 2:
+        print("\nstateRoot различается между нодами")
+    return state_roots_match
+
+
 def collect_heights(results: Dict[str, Dict[str, Any]]) -> List[int]:
     return [r["height"] for r in results.values() if r.get("height") is not None]
 
@@ -322,6 +352,8 @@ def run_basic_cluster_check(
     compose_file: str,
     node_names: List[str],
     ports: List[int],
+    *,
+    check_state_root: bool = False,
 ) -> int:
     """Standard multi-node smoke: heights + head hash must match."""
     print("=" * 80)
@@ -336,10 +368,15 @@ def run_basic_cluster_check(
     print_height_summary(results)
 
     chain_heads_match = print_head_hash_comparison(results)
+    state_roots_match = True
+    if check_state_root:
+        state_roots_match = print_state_root_comparison(results)
     print_accounts_comparison(results)
     print_node_details(results)
 
     print("\n" + "=" * 80)
     has_success, heights_ok = evaluate_chain_sync(results)
     ok = has_success and heights_ok and chain_heads_match
+    if check_state_root:
+        ok = ok and state_roots_match
     sys.exit(0 if ok else 1)

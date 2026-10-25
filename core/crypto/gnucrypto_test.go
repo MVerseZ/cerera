@@ -519,6 +519,45 @@ func TestDecodeBytesToPrivateKey(t *testing.T) {
 	}
 }
 
+func TestNewWalletMnemonicAndPrivateKeyFromMnemonic(t *testing.T) {
+	mnemonic, err := NewWalletMnemonic()
+	if err != nil {
+		t.Fatalf("NewWalletMnemonic failed: %v", err)
+	}
+	wordCount := 1
+	for _, r := range mnemonic {
+		if r == ' ' {
+			wordCount++
+		}
+	}
+	if wordCount != 24 {
+		t.Fatalf("mnemonic should have 24 words, got %d", wordCount)
+	}
+
+	pass := "test-passphrase"
+	key1, err := PrivateKeyFromMnemonic(mnemonic, pass)
+	if err != nil {
+		t.Fatalf("PrivateKeyFromMnemonic failed: %v", err)
+	}
+	key2, err := PrivateKeyFromMnemonic(mnemonic, pass)
+	if err != nil {
+		t.Fatalf("PrivateKeyFromMnemonic second call failed: %v", err)
+	}
+	if !key1.Equal(key2) {
+		t.Fatal("PrivateKeyFromMnemonic should be deterministic")
+	}
+	addr1 := PubkeyToAddress(&key1.PublicKey)
+	addr2 := PubkeyToAddress(&key2.PublicKey)
+	if addr1 != addr2 {
+		t.Fatalf("address mismatch: %s vs %s", addr1.Hex(), addr2.Hex())
+	}
+
+	_, err = PrivateKeyFromMnemonic("not a valid mnemonic phrase at all", pass)
+	if err != ErrInvalidMnemonic {
+		t.Fatalf("expected ErrInvalidMnemonic, got %v", err)
+	}
+}
+
 // TestGenerateMasterKey tests GenerateMasterKey
 func TestGenerateMasterKey(t *testing.T) {
 	masterKey, mnemonic, err := GenerateMasterKey("test_password")

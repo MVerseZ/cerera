@@ -20,7 +20,6 @@ import (
 )
 
 const MINER_ID = "CERERA_MINER:937"
-const REF_COUNT_INPUTS = 50 // TODO refactor this shit
 
 var (
 	ErrServiceRegistryNotFound = errors.New("service registry not found")
@@ -67,12 +66,25 @@ type Miner interface {
 	SetBlockPublisher(publisher BlockPublisher)
 	SetHeightLock(lock HeightLockChecker)
 	OnBlockFinalized(b *block.Block)
+	OnChainReorg(b *block.Block)
 	Update(tx *types.GTransaction)
 }
 
 // BlockPublisher proposes a mined block to the network consensus layer.
 type BlockPublisher interface {
 	ProposeBlock(b *block.Block) error
+}
+
+// PeerCounter is optionally implemented by BlockPublisher (e.g. icenet.Ice).
+type PeerCounter interface {
+	GetPeerCount() int
+}
+
+// PeerBootstrapStatus is optionally implemented by BlockPublisher (e.g. icenet.Ice).
+type PeerBootstrapStatus interface {
+	BootstrapPhaseDone() bool
+	BootstrapConnectFailed() bool
+	BootstrapDone() <-chan struct{}
 }
 
 // HeightLockChecker interface for checking height locks from main package
@@ -84,17 +96,17 @@ type HeightLockChecker interface {
 }
 
 type miner struct {
-	mu       sync.Mutex
-	ctx      context.Context
-	status   byte
-	config   *config.Config
-	chain    *chain.Chain
-	pool     pool.TxPool
-	valid    validator.Validator
-	publisher BlockPublisher
+	mu         sync.Mutex
+	ctx        context.Context
+	status     byte
+	config     *config.Config
+	chain      *chain.Chain
+	pool       pool.TxPool
+	valid      validator.Validator
+	publisher  BlockPublisher
 	heightLock HeightLockChecker
-	mining   bool
-	stopChan chan struct{}
+	mining     bool
+	stopChan   chan struct{}
 
 	miningHeight    int   // Height currently being mined
 	miningCancelled int32 // 0 = not cancelled, 1 = cancelled (atomic access)
@@ -171,8 +183,13 @@ func (m *miner) Start() error {
 	if m.heightLock != nil {
 		w.SetHeightLock(m.heightLock)
 	}
+	m.attachStateRootFn(w)
 	m.worker.Start()
-	m.worker.Compute(m.newTask(nil))
+	if m.shouldWaitForPeers() {
+		go m.waitForPeersAndMine()
+	} else {
+		m.worker.Compute(m.newTask(nil))
+	}
 	m.mu.Unlock()
 
 	go m.resultLoop()
@@ -273,6 +290,11 @@ func (m *miner) handleResult(data Result) {
 	}
 
 	if m.publisher != nil {
+		if m.shouldWaitForPeers() {
+			minerLogger().Infow("[MINER] waiting for peers before proposing block")
+			go m.waitForPeersAndMine()
+			return
+		}
 		if err := m.publisher.ProposeBlock(data.Value); err != nil {
 			minerLogger().Errorw("[MINER] failed to propose block", "error", err)
 			current := m.worker.GetCurrentTask()
@@ -356,6 +378,16 @@ func (m *miner) SetPool(p pool.TxPool) {
 
 func (m *miner) SetValidator(v validator.Validator) {
 	m.valid = v
+	if m.worker != nil {
+		m.attachStateRootFn(m.worker)
+	}
+}
+
+func (m *miner) attachStateRootFn(w *Worker) {
+	if m.valid == nil || w == nil {
+		return
+	}
+	w.SetStateRootFn(m.valid.ComputeBlockStateRoot)
 }
 
 func (m *miner) SetBlockPublisher(publisher BlockPublisher) {
@@ -367,6 +399,10 @@ func (m *miner) SetHeightLock(lock HeightLockChecker) {
 }
 
 func (m *miner) OnBlockFinalized(b *block.Block) {
+	m.onChainHeadUpdated(b)
+}
+
+func (m *miner) OnChainReorg(b *block.Block) {
 	m.onChainHeadUpdated(b)
 }
 
@@ -416,6 +452,82 @@ func (m *miner) clearProcessedTransactions(txs []types.GTransaction) {
 		// ExecuteTransaction already removes successful txs; ignore "not in mempool".
 		_ = m.pool.RemoveFromPool(txs[i].Hash())
 	}
+}
+
+func (m *miner) shouldWaitForPeers() bool {
+	if !m.hasConfiguredBootstrapPeers() {
+		return false
+	}
+	pc, ok := m.publisher.(PeerCounter)
+	if !ok || pc.GetPeerCount() > 0 {
+		return false
+	}
+	if bs, ok := m.publisher.(PeerBootstrapStatus); ok && bs.BootstrapConnectFailed() {
+		return false
+	}
+	return true
+}
+
+func (m *miner) hasConfiguredBootstrapPeers() bool {
+	if m.config == nil {
+		return false
+	}
+	return len(m.config.NetCfg.BootstrapNodes) > 0 || len(m.config.NetCfg.SeedNodes) > 0
+}
+
+func (m *miner) waitForPeersAndMine() {
+	var bootstrapDone <-chan struct{}
+	if bs, ok := m.publisher.(PeerBootstrapStatus); ok {
+		bootstrapDone = bs.BootstrapDone()
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.stopChan:
+			return
+		case <-bootstrapDone:
+			bootstrapDone = nil
+			if m.tryStartMiningAfterPeerWait() {
+				return
+			}
+		case <-ticker.C:
+			if m.tryStartMiningAfterPeerWait() {
+				return
+			}
+		}
+	}
+}
+
+func (m *miner) tryStartMiningAfterPeerWait() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.mining || m.worker == nil {
+		return true
+	}
+
+	if pc, ok := m.publisher.(PeerCounter); ok && pc.GetPeerCount() > 0 {
+		minerLogger().Infow("[MINER] peers connected, starting mining")
+		m.worker.Compute(m.newTask(nil))
+		return true
+	}
+
+	if bs, ok := m.publisher.(PeerBootstrapStatus); ok && bs.BootstrapConnectFailed() {
+		minerLogger().Warnw("[MINER] bootstrap peers unavailable, starting solo mining")
+		m.worker.Compute(m.newTask(nil))
+		return true
+	}
+
+	if !m.shouldWaitForPeers() {
+		m.worker.Compute(m.newTask(nil))
+		return true
+	}
+
+	minerLogger().Infow("[MINER] waiting for peers before mining")
+	return false
 }
 
 func (m *miner) ServiceName() string {

@@ -21,9 +21,9 @@ func GenesisHead(chainId int) *Header {
 		Node:       address.EmptyAddress(),
 		PrevHash:   common.EmptyHash(),
 		Root:       common.EmptyHash(),
-		Size:       0,
+		Size:       196,
 		V:          [8]byte{0xe, 0x0, 0xf, 0xf, 0xf, 0xf, 0x2, 0x1},
-		Nonce:      12489979,
+		Nonce:      30562266,
 	}
 	return genesisHeader
 }

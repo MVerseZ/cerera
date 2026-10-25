@@ -73,6 +73,24 @@ var (
 		Help:      "Current block height",
 	})
 
+	ForkDetectedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "fork_detected_total",
+		Help:      "Total fork events detected",
+	}, []string{"reason"})
+
+	OrphanBlocks = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "orphan_blocks",
+		Help:      "Current number of stored orphan blocks",
+	})
+
+	ReorgTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "reorg_total",
+		Help:      "Total successful chain reorgs",
+	})
+
 	// Transaction metrics
 	TxsReceived = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,
@@ -401,6 +419,19 @@ func SetConsensusVotersTotal(count int) {
 // SetConsensusNonce sets the consensus sequence ID (nonce)
 func SetConsensusNonce(nonce int64) {
 	ConsensusNonce.Set(float64(nonce))
+}
+
+func RecordForkDetected(reason string) {
+	ForkDetectedTotal.WithLabelValues(reason).Inc()
+}
+
+func SetOrphanBlocks(count int) {
+	OrphanBlocks.Set(float64(count))
+}
+
+func RecordReorg(height int) {
+	ReorgTotal.Inc()
+	_ = height
 }
 
 // RecordMessageReceived records a received message
