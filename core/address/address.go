@@ -104,10 +104,15 @@ func (a Address) String() string {
 }
 
 func (a Address) hex() []byte {
-	var buf [len(a)*2 + 2]byte
+	start := 0
+	for start < len(a)-1 && a[start] == 0 {
+		start++
+	}
+	slice := a[start:]
+	buf := make([]byte, 2+len(slice)*2)
 	copy(buf[:2], "0x")
-	hex.Encode(buf[2:], a[:])
-	return buf[:]
+	hex.Encode(buf[2:], slice)
+	return buf
 }
 
 func (a Address) IsEmpty() bool {
@@ -121,20 +126,23 @@ func (a Address) IsEmpty() bool {
 	return cnt == len(bts)
 }
 
-// MarshalText parses a hex string in a hash.
+// MarshalText returns the checksummed hex representation (without leading zero bytes).
 func (a Address) MarshalText() ([]byte, error) {
-	// fmt.Printf("call marshal of address: %s\r\n", a.Hex())
-	return common.Bytes(a[:]).MarshalText()
+	return a.checksumHex(), nil
 }
 
-// UnmarshalText parses a hash in hex syntax.
+// UnmarshalText parses a hex string in hex syntax.
 func (a *Address) UnmarshalText(input []byte) error {
-	return common.UnmarshalFixedText("Address", input, a[:])
+	*a = HexToAddress(string(input))
+	return nil
 }
 
 // UnmarshalJSON parses a hash in hex syntax.
 func (a *Address) UnmarshalJSON(input []byte) error {
-	return common.UnmarshalFixedJSON(addressT, input, a[:])
+	if len(input) < 2 || input[0] != '"' || input[len(input)-1] != '"' {
+		return fmt.Errorf("Address: expected JSON string")
+	}
+	return a.UnmarshalText(input[1 : len(input)-1])
 }
 
 // Format implements fmt.Formatter.

@@ -56,30 +56,36 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	if err != nil {
 		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
-	registry.Register(&service.Service{
+	if err := registry.Register(&service.Service{
 		Name:    vault.ServiceName(),
 		Methods: vault.Methods(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("register vault RPC service: %w", err)
+	}
 
 	//  цепочки
 	chain, err := chain.Mold(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
-	registry.Register(&service.Service{
+	if err := registry.Register(&service.Service{
 		Name:    chain.ServiceName(),
 		Methods: chain.Methods(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("register chain RPC service: %w", err)
+	}
 
 	// инициализация валидатора
 	validator, err := validator.NewValidator(ctx, *cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init validator: %w", err)
 	}
-	registry.Register(&service.Service{
+	if err := registry.Register(&service.Service{
 		Name:    validator.ServiceName(),
 		Methods: validator.Methods(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("register validator RPC service: %w", err)
+	}
 
 	// инициализация пула
 	mempool, err := pool.InitPool(cfg.POOL.MaxSize)
@@ -87,14 +93,16 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		return nil, fmt.Errorf("failed to init pool: %w", err)
 	}
 	// register pool in registry
-	registry.Register(&service.Service{
+	if err := registry.Register(&service.Service{
 		Name:    mempool.ServiceName(),
 		Methods: mempool.Methods(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("register pool RPC service: %w", err)
+	}
 
 	// Инициализация http сервера
 	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
-		appLog.Warnw("HTTP server error", "err", err)
+		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
 	// Инициализация Ice компонента
@@ -178,9 +186,9 @@ func parseFlags() (config.Config, string, string, int, bool, bool) {
 	keyPath := flag.String("key", "", "path to pem key")
 	mode := flag.String("mode", "server", "Режим работы: server, client, p2p")
 	// address := flag.String("address", "127.0.0.1:10001", "Адрес для подключения или прослушивания")
-	http := flag.Int("http", 8080, "Порт для http сервера")
+	http := flag.Int("http", 1337, "Порт для http сервера")
 	mine := flag.Bool("miner", true, "Флаг для добычи новых блоков")
-	inMem := flag.Bool("mem", false, "Хранение данных память/диск")
+	inMem := flag.Bool("mem", true, "Хранение данных память/диск")
 	tls := flag.Bool("s", false, "Включить HTTPS (TLS)")
 	flag.Parse()
 

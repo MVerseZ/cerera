@@ -2,29 +2,29 @@ package network
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 
 	"github.com/cerera/internal/service"
 )
 
-func Execute(ctx context.Context, method string, params []any) (any, error) {
+func Execute(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	registry, ok := service.GetRegistryFromContext(ctx)
 	if !ok {
-		return nil, fmt.Errorf("registry not in context")
+		return nil, &rpcError{code: -32603, msg: "Internal error"}
 	}
 
 	cmp, m := service.ParseMethod(method)
 	cmp = service.ResolveServiceName(cmp)
 
-	methods, ok := registry.GetMethods(cmp)
+	handler, ok := registry.Lookup(cmp, m)
 	if !ok {
-		return nil, fmt.Errorf("service %s not found", cmp)
+		return nil, &rpcError{code: -32601, msg: "Method not found"}
 	}
-
-	handler, ok := methods[m]
-	if !ok {
-		return nil, fmt.Errorf("method %s not found in %s", m, cmp)
+	var args []any
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, &rpcError{code: -32602, msg: "Invalid params"}
+		}
 	}
-
-	return handler(ctx, params)
+	return handler(ctx, args)
 }

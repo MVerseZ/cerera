@@ -177,6 +177,8 @@ WebSocket ping/pong is available at `GET /ws`.
 
 Prometheus metrics: `GET /metrics`.
 
+Browser cross-origin access is configured with `SEC.HTTP.AllowedOrigins` in `config.json`. An empty list allows same-origin requests only.
+
 ### Request format
 
 ```json
@@ -200,7 +202,7 @@ Success:
 }
 ```
 
-Errors are returned as HTTP 500 with a plain-text body, or inside `result` for business-logic failures (e.g. `"service account not found"`).
+Errors are returned as JSON-RPC error objects with HTTP 200. Parse errors use `-32700`, invalid requests `-32600`, unknown methods `-32601`, invalid parameters `-32602`, and internal errors `-32603`.
 
 ### Services overview
 

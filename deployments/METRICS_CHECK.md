@@ -72,9 +72,9 @@ curl http://localhost:1338/metrics | grep -E "(miner_|pool_|consensus_|p2p_|chai
 - `chain_block_gas_used` - гистограмма использованного газа
 
 ### RPC метрики
-- `rpc_requests_total{method="..."}` - счетчик запросов по методам
-- `rpc_requests_duration_seconds{method="..."}` - гистограмма длительности
-- `rpc_requests_errors_total{method="..."}` - счетчик ошибок по методам
+- `rpc_requests_total{method="...",status="..."}` - счетчик запросов по методам и результатам
+- `rpc_requests_duration_seconds{method="...",status="..."}` - гистограмма длительности
+- `rpc_requests_errors_total{method="...",status="..."}` - счетчик ошибок по методам и результатам
 
 ## Если метрики не видны
 

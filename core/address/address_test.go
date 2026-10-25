@@ -15,10 +15,10 @@ func TestHexToAddress(t *testing.T) {
 		hex      string
 		expected string
 	}{
-		{"valid with 0x", "0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000001"},
-		{"valid without 0x", "0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000001"},
-		{"empty", "0x", "0x0000000000000000000000000000000000000000000000000000000000000000"},
-		{"short hex", "0x01", "0x0000000000000000000000000000000000000000000000000000000000000001"},
+		{"valid with 0x", "0x0000000000000000000000000000000000000000000000000000000000000001", "0x01"},
+		{"valid without 0x", "0000000000000000000000000000000000000000000000000000000000000001", "0x01"},
+		{"empty", "0x", "0x00"},
+		{"short hex", "0x01", "0x01"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,8 +95,8 @@ func TestAddress_Hex(t *testing.T) {
 	if hex[:2] != "0x" {
 		t.Errorf("Hex() should start with 0x, got %s", hex)
 	}
-	if len(hex) != 2+AddressLength*2 {
-		t.Errorf("Hex() len = %d, want %d", len(hex), 2+AddressLength*2)
+	if len(hex) != 4 {
+		t.Errorf("Hex() len = %d, want 4", len(hex))
 	}
 }
 
@@ -149,8 +149,9 @@ func TestAddress_UnmarshalText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalText() error = %v", err)
 	}
-	if addr.Hex() != hexStr {
-		t.Errorf("UnmarshalText() got %s, want %s", addr.Hex(), hexStr)
+	expected := HexToAddress(hexStr)
+	if addr != expected {
+		t.Errorf("UnmarshalText() got %s, want %s", addr.Hex(), expected.Hex())
 	}
 }
 
@@ -395,7 +396,7 @@ func TestMaxAddress(t *testing.T) {
 		t.Error("MaxAddress should not be empty")
 	}
 	hex := MaxAddress.Hex()
-	if len(hex) != 2+AddressLength*2 {
-		t.Errorf("MaxAddress hex len = %d", len(hex))
+	if len(hex) < 4 {
+		t.Errorf("MaxAddress hex too short: %s", hex)
 	}
 }

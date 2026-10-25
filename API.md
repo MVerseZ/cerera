@@ -723,7 +723,7 @@ curl -X POST http://localhost:8080/app \
 
 ## Error Handling
 
-Errors are returned in the `result` field as error strings or error objects:
+Errors are returned in the JSON-RPC `error` field with HTTP status 200. Standard error codes are `-32700` (parse error), `-32600` (invalid request), `-32601` (method not found), `-32602` (invalid params), and `-32603` (internal error). Business-logic failures returned by a method remain in its `result` value.
 
 ```json
 {
