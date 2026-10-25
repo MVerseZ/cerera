@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cerera/internal/logger"
@@ -25,6 +27,7 @@ func NewRegistry() (*Registry, error) {
 }
 
 type ctxKey string
+
 const registryCtxKey ctxKey = "service_registry"
 
 func WithRegistry(ctx context.Context, r *Registry) context.Context {
@@ -36,7 +39,7 @@ func GetRegistryFromContext(ctx context.Context) (*Registry, bool) {
 	return r, ok
 }
 
-func (r *Registry) GetMethods(serviceName string) (map[string]RPCHandler, bool) {
+func (r *Registry) Lookup(serviceName, methodName string) (RPCHandler, bool) {
 	if r == nil {
 		return nil, false
 	}
@@ -46,7 +49,8 @@ func (r *Registry) GetMethods(serviceName string) (map[string]RPCHandler, bool) 
 	if !ok {
 		return nil, false
 	}
-	return s.Methods, true
+	handler, ok := s.Methods[methodName]
+	return handler, ok
 }
 
 func (r *Registry) GetService(name string) (*Service, bool) {
@@ -56,15 +60,37 @@ func (r *Registry) GetService(name string) (*Service, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.services[name]
-	return s, ok
+	if !ok {
+		return nil, false
+	}
+	methods := make(map[string]RPCHandler, len(s.Methods))
+	for method, handler := range s.Methods {
+		methods[method] = handler
+	}
+	return &Service{Name: s.Name, Methods: methods}, true
 }
 
-func (r *Registry) Register(s *Service) {
-	if s == nil {
-		return
+func (r *Registry) Register(s *Service) error {
+	if r == nil {
+		return fmt.Errorf("registry is nil")
 	}
+	if s == nil {
+		return fmt.Errorf("service is nil")
+	}
+	if strings.TrimSpace(s.Name) == "" {
+		return fmt.Errorf("service name is empty")
+	}
+	methods := make(map[string]RPCHandler, len(s.Methods))
+	for name, handler := range s.Methods {
+		methods[name] = handler
+	}
+	registered := &Service{Name: s.Name, Methods: methods}
 	registryLogger().Infow("[REGISTRY] Registering service", "name", s.Name)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.services[s.Name] = s
+	if _, exists := r.services[s.Name]; exists {
+		return fmt.Errorf("service %q is already registered", s.Name)
+	}
+	r.services[s.Name] = registered
+	return nil
 }

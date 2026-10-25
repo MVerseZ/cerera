@@ -54,7 +54,8 @@ type PoolConfig struct {
 	MaxSize int
 }
 type HttpSecConfig struct {
-	TLS bool
+	TLS            bool
+	AllowedOrigins []string
 }
 type Sec struct {
 	HTTP HttpSecConfig

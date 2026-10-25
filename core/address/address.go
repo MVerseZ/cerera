@@ -124,10 +124,15 @@ func (a Address) String() string {
 }
 
 func (a Address) hex() []byte {
-	var buf [len(a)*2 + 2]byte
+	start := 0
+	for start < len(a)-1 && a[start] == 0 {
+		start++
+	}
+	slice := a[start:]
+	buf := make([]byte, 2+len(slice)*2)
 	copy(buf[:2], "0x")
-	hex.Encode(buf[2:], a[:])
-	return buf[:]
+	hex.Encode(buf[2:], slice)
+	return buf
 }
 
 func (a Address) IsEmpty() bool {

@@ -59,10 +59,12 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	if err != nil {
 		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
-	registry.Register(&service.Service{
+	if err := registry.Register(&service.Service{
 		Name:    vault.ServiceName(),
 		Methods: vault.Methods(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("register vault RPC service: %w", err)
+	}
 
 	//  цепочки
 	bc, err := chain.Mold(cfg)
@@ -97,14 +99,16 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		return nil, fmt.Errorf("failed to init pool: %w", err)
 	}
 	// register pool in registry
-	registry.Register(&service.Service{
+	if err := registry.Register(&service.Service{
 		Name:    mempool.ServiceName(),
 		Methods: mempool.Methods(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("register pool RPC service: %w", err)
+	}
 
 	// Инициализация http сервера
 	if err := network.SetUpHttp(ctx, cfg, httpPort); err != nil {
-		appLog.Warnw("HTTP server error", "err", err)
+		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
 	// Инициализация Ice компонента
