@@ -1,9 +1,28 @@
-import base64
 import time
 import requests
-import json
 import random
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
+
+GAS_LIMIT = 1000
+MIN_GAS_PRICE = 0.000001  # 1 DUST за единицу газа
+
+
+def rpc_call(api_url: str, method: str, params: List) -> Any:
+    """Выполняет JSON-RPC запрос и возвращает его result или понятную ошибку."""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "id": random.randint(1000, 9999),
+        "params": params,
+    }
+    response = requests.post(api_url, json=payload, timeout=10)
+    response.raise_for_status()
+    body = response.json()
+    if body.get("error"):
+        raise RuntimeError(f"{method}: {body['error']}")
+    if "result" not in body:
+        raise RuntimeError(f"{method}: в ответе отсутствует result: {body}")
+    return body["result"]
 
 # Используем существующий класс CereraWavesTester
 class CereraWavesTester:
@@ -13,152 +32,76 @@ class CereraWavesTester:
         
     def create_account(self, account_id: str, password: str) -> Dict:
         """Создает новый аккаунт"""
-        data_req = {
-            "method": "cerera.account.create",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": [password]
-        }
-        
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
-                acc = json.loads(r.text)
-                res = acc.get('result')
-                if not res:
-                    print(f"❌ Пустой результат при создании аккаунта {account_id}: {acc}")
-                    return None
-                print(f"✅ Создан аккаунт {account_id}: {res['address']}")
-                return res
-            else:
-                print(f"❌ Ошибка создания аккаунта {account_id}: {r.text}")
-                return None
+            result = rpc_call(self.api_url, "cerera.account.create", [password])
+            if not isinstance(result, dict) or not result.get("address") or not result.get("priv"):
+                raise RuntimeError(f"неполный результат создания аккаунта: {result}")
+            print(f"✅ Создан аккаунт {account_id}: {result['address']}")
+            return result
         except Exception as e:
             print(f"❌ Исключение при создании аккаунта {account_id}: {e}")
             return None
     
     def send_transaction(self, sender, to_addr: str, amount: float, 
-                        gas_limit: float = 1000, message: str = "") -> Tuple[bool, str]:
+                        gas_limit: float = GAS_LIMIT, message: str = "") -> Tuple[bool, str]:
         """Отправляет транзакцию. Возвращает (успех, tx_hash/ошибка)"""
-        data_req = {
-            "method": "cerera.transaction.send",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": [sender['priv'], to_addr, amount, gas_limit, message]
-        }
-        
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
-                result = json.loads(r.text)
-                tx_hash = result.get('result', {}).get('hash', 'unknown')
-                print(f"✅ Отправлено {amount} от {sender['address'][:8]}... к {to_addr[:8]}... хеш: {tx_hash}")
-                return True, tx_hash
-            else:
-                print(f"❌ Ошибка отправки: {r.text}")
-                return False, r.text
+            tx_hash = rpc_call(
+                self.api_url,
+                "cerera.transaction.send",
+                [sender['priv'], to_addr, amount, gas_limit, message],
+            )
+            if not tx_hash:
+                raise RuntimeError("пустой hash транзакции")
+            print(f"✅ Отправлено {amount} от {sender['address'][:8]}... к {to_addr[:8]}... хеш: {tx_hash}")
+            return True, str(tx_hash)
         except Exception as e:
             print(f"❌ Исключение при отправке: {e}")
             return False, str(e)
     
     def get_chain_info(self) -> Dict:
         """Получает информацию о блокчейне"""
-        data_req = {
-            "method": "cerera.chain.getInfo",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": []
-        }
-        
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
-                result = json.loads(r.text)
-                return result.get('result', {})
-            else:
-                print(f"❌ Ошибка получения информации о блокчейне: {r.text}")
-                return {}
+            return rpc_call(self.api_url, "cerera.chain.getInfo", [])
         except Exception as e:
             print(f"❌ Исключение при получении информации о блокчейне: {e}")
             return {}
     
     def get_block_count(self) -> int:
         """Получает высоту цепочки (height)"""
-        data_req = {
-            "method": "cerera.chain.height",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": []
-        }
-        
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
-                result = json.loads(r.text)
-                return int(result.get('result', 0))
-            else:
-                print(f"❌ Ошибка получения количества блоков: {r.text}")
-                return 0
+            return int(rpc_call(self.api_url, "cerera.chain.height", []))
         except Exception as e:
             print(f"❌ Исключение при получении количества блоков: {e}")
             return 0
     
     def get_version(self) -> str:
         """Получает версию узла"""
-        data_req = {
-            "method": "cerera.validator.getVersion",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": []
-        }
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
-                result = json.loads(r.text)
-                val = result.get('result')
-                if val:
-                    return val
+            result = rpc_call(self.api_url, "cerera.validator.getVersion", [])
+            if result:
+                return str(result)
         except Exception:
             pass
         return 'Unknown'
     
     def get_balance(self, address: str) -> float:
         """Получает баланс аккаунта"""
-        data_req = {
-            "method": "cerera.account.getBalance",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": [address]
-        }
-        
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
-                result = json.loads(r.text)
-                return float(result.get('result', 0))
-            else:
-                print(f"❌ Ошибка получения баланса: {r.text}")
-                return 0.0
+            return float(rpc_call(self.api_url, "cerera.account.getBalance", [address]))
         except Exception as e:
             print(f"❌ Исключение при получении баланса: {e}")
             return 0.0
 
     def faucet(self, address: str, amount: float) -> bool:
         """Выдаёт средства из крана (faucet) на указанный адрес"""
-        data_req = {
-            "method": "cerera.account.faucet",
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": [address, amount]
-        }
         try:
-            r = requests.post(self.api_url, json=data_req, timeout=10)
-            if r.status_code == 200:
+            result = rpc_call(self.api_url, "cerera.account.faucet", [address, amount])
+            if result:
                 print(f"🚰 Faucet: выдано {amount} на {address[:12]}...")
                 return True
-            else:
-                print(f"❌ Ошибка faucet: {r.text}")
-                return False
+            print(f"❌ Faucet вернул пустой результат для {address[:12]}...")
+            return False
         except Exception as e:
             print(f"❌ Исключение faucet: {e}")
             return False
@@ -278,13 +221,12 @@ class CereraMultiAccountTester(CereraWavesTester):
         # Вычисляем ожидаемые балансы
         n = len(self.account_list)
         expected_balances = initial_balances.copy()
+        gas_fee = GAS_LIMIT * MIN_GAS_PRICE
         for (from_idx, to_idx, amount, _) in transfers:
-            expected_balances[from_idx] -= amount
+            expected_balances[from_idx] -= amount + gas_fee
             expected_balances[to_idx] += amount
-            # Небольшая комиссия? В Cerera может быть gas, но в данном тесте мы её игнорируем,
-            # т.к. считается, что faucet выдал достаточно, и gas списывается отдельно.
-            # Для точности можно уменьшить баланс отправителя ещё на gas_limit (но gas_limit не учтён в сумме).
-            # Упрощённо считаем, что комиссия незначительна или уже включена.
+
+        print(f"   Учтена комиссия: {gas_fee:.6f} за каждый исходящий перевод")
         
         # Получаем реальные балансы
         real_balances = self.show_all_balances()
@@ -341,10 +283,6 @@ class CereraMultiAccountTester(CereraWavesTester):
         if not self.fund_all_accounts(amount=100.0):
             print("❌ Не удалось пополнить все аккаунты")
             return
-        
-        # Ждём, чтобы faucet обработался (появление блоков)
-        print("\n⏳ Ожидание обработки faucet-транзакций...")
-        self.wait_for_blocks(target_blocks=2, timeout=60)
         
         # Фиксируем начальные балансы
         initial_balances = self.show_all_balances()

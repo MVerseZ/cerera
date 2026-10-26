@@ -323,10 +323,24 @@ func loadBlocksFromStorage(cfg *config.Config, genesisBlock *block.Block, chainP
 
 	dataBlocks := readBlocks
 	for _, blk := range readBlocks {
+		if blk == nil || blk.Head == nil {
+			continue
+		}
 		stats.Total++
 		stats.ChainWork += blk.Head.Size
 		stats.Latest = blk.GetHash()
+		stats.Difficulty = blk.Head.Difficulty
+		stats.Txs += uint64(len(blk.Transactions))
+		for _, tx := range blk.Transactions {
+			if tx.Type() == types.CoinbaseTxType || tx.Type() == types.FaucetTxType {
+				continue
+			}
+			stats.Gas += tx.Gas()
+		}
 	}
+	stats.Size = int64(calculateInitialTotalSize(dataBlocks))
+	avgTime, _, _, _ := computeBlockTimeStats(dataBlocks)
+	stats.AvgTime = avgTime
 
 	clogger.Infow("Loaded blocks from chain file", "count", len(readBlocks), "path", chainPath)
 	return dataBlocks, stats, nil
