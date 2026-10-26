@@ -116,9 +116,9 @@ func TestAddress_String(t *testing.T) {
 
 func TestAddress_IsEmpty(t *testing.T) {
 	tests := []struct {
-		name   string
-		addr   Address
-		empty  bool
+		name  string
+		addr  Address
+		empty bool
 	}{
 		{"zero address", Address{}, true},
 		{"empty from bytes", BytesToAddress([]byte{}), true},
@@ -157,6 +157,42 @@ func TestAddress_UnmarshalText(t *testing.T) {
 	}
 	if addr != HexToAddress("0x1") {
 		t.Errorf("UnmarshalText() got %s, want %s", addr.Hex(), HexToAddress("0x1").Hex())
+	}
+}
+
+func TestAddress_UnmarshalTextInvalidInputs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "missing prefix", input: "1234"},
+		{name: "invalid digit", input: "0x12xz"},
+		{name: "too long", input: "0x" + strings.Repeat("1", AddressLength*2+1)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var addr Address
+			if err := addr.UnmarshalText([]byte(tt.input)); err == nil {
+				t.Fatalf("UnmarshalText(%q) succeeded, want error", tt.input)
+			}
+		})
+	}
+
+	var addr Address
+	if err := addr.UnmarshalText(nil); err != nil || !addr.IsEmpty() {
+		t.Fatalf("empty input should decode to zero address, got %v, %v", addr, err)
+	}
+	if err := addr.UnmarshalText([]byte("0x")); err != nil || !addr.IsEmpty() {
+		t.Fatalf("prefix-only input should decode to zero address, got %v, %v", addr, err)
+	}
+}
+
+func TestAddress_UnmarshalJSONInvalidInputs(t *testing.T) {
+	for _, input := range []string{`null`, `123`, `""`, `"1234"`, `"0xzz"`} {
+		var addr Address
+		if err := json.Unmarshal([]byte(input), &addr); err == nil {
+			t.Errorf("UnmarshalJSON(%s) succeeded, want error", input)
+		}
 	}
 }
 

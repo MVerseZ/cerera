@@ -725,3 +725,18 @@ func TestEncodeKeysRoundTrip(t *testing.T) {
 		t.Fatal("Decoded public key should match")
 	}
 }
+
+func TestKeyDecodersRejectMalformedPEMBlocks(t *testing.T) {
+	badPrivate := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("not DER")})
+	if _, err := DecodePrivKey(string(badPrivate)); err == nil {
+		t.Fatal("DecodePrivKey accepted malformed private-key DER")
+	}
+	if _, err := DecodeBytesToPrivateKey(badPrivate); err == nil {
+		t.Fatal("DecodeBytesToPrivateKey accepted malformed private-key DER")
+	}
+
+	badPublic := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("not DER")})
+	if _, err := DecodeByteToPublicKey(badPublic); err == nil {
+		t.Fatal("DecodeByteToPublicKey accepted malformed public-key DER")
+	}
+}

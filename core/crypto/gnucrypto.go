@@ -213,7 +213,10 @@ func DecodeBytesToPrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 		return nil, fmt.Errorf("failed to decode PEM block containing private key")
 	}
 	x509Encoded := block.Bytes
-	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
+	privateKey, err := x509.ParseECPrivateKey(x509Encoded)
+	if err != nil {
+		return nil, err
+	}
 	return privateKey, nil
 }
 

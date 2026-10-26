@@ -288,3 +288,38 @@ func TestStateAccount_Size_WithSpecialAddresses(t *testing.T) {
 	t.Logf("FaucetAddressHex size: %d bytes", size3)
 	t.Logf("CoreStakingAddressHex size: %d bytes", size4)
 }
+
+func TestValidSerialized(t *testing.T) {
+	account := CreateTestStateAccount()
+	valid := account.Bytes()
+	if !ValidSerialized(valid) {
+		t.Fatal("ValidSerialized rejected a serialized state account")
+	}
+	for _, malformed := range [][]byte{nil, {}, {0xff}, {0, 0, 0}} {
+		if ValidSerialized(malformed) {
+			t.Errorf("ValidSerialized accepted malformed data %x", malformed)
+		}
+	}
+}
+
+func TestStateAccount_GetBalanceBINilBalance(t *testing.T) {
+	var account StateAccount
+	if got := account.GetBalanceBI(); got.Sign() != 0 {
+		t.Fatalf("GetBalanceBI() for nil balance = %s, want 0", got)
+	}
+}
+
+func TestFromBytesRejectsTruncatedAndInvalidRecords(t *testing.T) {
+	account := CreateTestStateAccount()
+	valid := account.Bytes()
+	for _, malformed := range [][]byte{
+		valid[:1],
+		valid[:5],
+		valid[:len(valid)-5], // truncate the balance bytes, not the ignored input-count trailer
+		append([]byte{5}, valid[1:]...),
+	} {
+		if got := FromBytes(malformed); got != nil {
+			t.Errorf("FromBytes(%x) returned account, want nil", malformed)
+		}
+	}
+}

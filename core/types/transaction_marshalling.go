@@ -219,7 +219,7 @@ func (tx *GTransaction) unmarshalFromNewFormat(dec txJSONInput) error {
 			itx.V = (*big.Int)(dec.V)
 		}
 	case FaucetTxType:
-		var itx PGTransaction
+		var itx FaucetTransaction
 		inner = &itx
 		if dec.To == nil {
 			return errors.New("missing required field 'to' in transaction")
@@ -398,7 +398,7 @@ func (tx *GTransaction) UnmarshalJSON(input []byte) error {
 		itx.Dna = *dec.Dna
 		itx.Time = dec.Time
 	case FaucetTxType:
-		var itx PGTransaction
+		var itx FaucetTransaction
 		inner = &itx
 		if dec.To == nil {
 			return errors.New("missing required field 'to' in transaction")

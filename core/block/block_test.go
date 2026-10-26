@@ -1,6 +1,7 @@
 package block
 
 import (
+	"encoding/json"
 	"math/big"
 	"reflect"
 	"testing"
@@ -301,5 +302,102 @@ func TestBlockEquals(t *testing.T) {
 	}
 	if equal {
 		t.Error("Different blocks should not be equal")
+	}
+}
+
+func TestBlockSizeAndHashHelpers(t *testing.T) {
+	block := createTestBlock()
+	tx, err := types.CreateUnbroadcastTransaction(1, addr1, 2, 21000, big.NewInt(3), "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block.Transactions = append(block.Transactions, *tx)
+
+	if got := CalculateSize(*block); got <= 0 {
+		t.Fatalf("CalculateSize() = %d, want positive size", got)
+	}
+	if got := headerSize(); got != len(block.Head.Bytes()) {
+		t.Errorf("headerSize() = %d, Header.Bytes() = %d", got, len(block.Head.Bytes()))
+	}
+	if got := txSize(*tx); got <= 0 {
+		t.Errorf("txSize() = %d, want positive size", got)
+	}
+	if got := block.GetHash(); got != block.Hash {
+		t.Errorf("GetHash() = %v, want %v", got, block.Hash)
+	}
+	if CrvBlockHash(*block) == (common.Hash{}) || CrvHeaderHash(*block.Head) == (common.Hash{}) {
+		t.Fatal("block/header hash helper returned zero hash")
+	}
+
+	withHash := NewBlockWithHeaderAndHash(block.Head)
+	if withHash.Hash == (common.Hash{}) {
+		t.Fatal("NewBlockWithHeaderAndHash returned zero hash")
+	}
+	if got := CalculateSize(Block{}); got != 8+common.HashSize {
+		t.Errorf("CalculateSize(Block{}) = %d, want %d", got, 8+common.HashSize)
+	}
+}
+
+func TestBlockJSONAndPoWHelpers(t *testing.T) {
+	block := createTestBlock()
+	encoded, err := json.Marshal(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := FromBytes(encoded)
+	if err != nil || decoded == nil || decoded.Head.Height != block.Head.Height {
+		t.Fatalf("FromBytes round trip failed: block=%v err=%v", decoded, err)
+	}
+	if _, err := FromBytes([]byte("{")); err == nil {
+		t.Fatal("FromBytes accepted malformed JSON")
+	}
+	if _, err := CalculateBlockHash(nil); err == nil {
+		t.Fatal("CalculateBlockHash(nil) succeeded")
+	}
+	if _, err := VerifyBlockHash(nil); err == nil {
+		t.Fatal("VerifyBlockHash(nil) succeeded")
+	}
+	if _, err := VerifyBlockHash(&Block{}); err == nil {
+		t.Fatal("VerifyBlockHash accepted a nil header")
+	}
+
+	zeroDifficulty := &Block{Head: &Header{}}
+	if _, err := VerifyBlockHash(zeroDifficulty); err == nil {
+		t.Fatal("VerifyBlockHash accepted zero difficulty")
+	}
+	result, err := VerifyBlockHashWithDetails(zeroDifficulty)
+	if err != nil || result.Error == "" || result.String() == "" {
+		t.Fatalf("expected detailed zero-difficulty result, got result=%v err=%v", result, err)
+	}
+
+	block.Head.Difficulty = 1
+	valid, err := VerifyBlockHash(block)
+	if err != nil || !valid {
+		t.Fatalf("difficulty 1 should accept any block hash, valid=%v err=%v", valid, err)
+	}
+	details, err := VerifyBlockHashWithDetails(block)
+	if err != nil || !details.IsValid || details.Difference == nil {
+		t.Fatalf("unexpected PoW details: result=%+v err=%v", details, err)
+	}
+	if _, _, err := FindValidNonce(nil, 0, 1); err == nil {
+		t.Fatal("FindValidNonce(nil) succeeded")
+	}
+	if _, _, err := FindValidNonce(&Block{Head: &Header{}}, 0, 1); err == nil {
+		t.Fatal("FindValidNonce accepted zero difficulty")
+	}
+	if nonce, attempts, err := FindValidNonce(block, 7, 1); err != nil || nonce != 7 || attempts != 1 {
+		t.Fatalf("FindValidNonce() = (%d, %d, %v), want (7, 1, nil)", nonce, attempts, err)
+	}
+	if _, _, err := FindValidNonceForGenesis(nil, 1); err == nil {
+		t.Fatal("FindValidNonceForGenesis(nil) succeeded")
+	}
+	if _, _, err := FindValidNonceForGenesis(block.Head, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CalculateBlockHash(&Block{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&Block{}).CalculateHash(); err != nil {
+		t.Fatalf("CalculateHash without header failed: %v", err)
 	}
 }

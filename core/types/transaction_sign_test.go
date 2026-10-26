@@ -352,3 +352,42 @@ func BenchmarkSender(b *testing.B) {
 		}
 	}
 }
+
+func TestSimpleSignerSignTransactionAndVerifySignature(t *testing.T) {
+	key, err := GenerateAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	message := []byte("coverage signing test")
+	signature, err := Sign(message, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !VerifySignature(&key.PublicKey, message, signature) {
+		t.Fatal("VerifySignature rejected a valid signature")
+	}
+	if VerifySignature(&key.PublicKey, []byte("different message"), signature) {
+		t.Fatal("VerifySignature accepted a signature for another message")
+	}
+	if VerifySignature(&key.PublicKey, message, signature[:len(signature)-1]) {
+		t.Fatal("VerifySignature accepted a truncated signature")
+	}
+
+	tx, err := CreateUnbroadcastTransaction(1, HexToAddress("0x1234"), 1, 21000, big.NewInt(2), "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := NewSimpleSigner(big.NewInt(11))
+	hash, err := signer.SignTransaction(tx, key)
+	if err != nil {
+		t.Fatalf("SignTransaction failed: %v", err)
+	}
+	if hash == common.EmptyHash() {
+		t.Fatal("SignTransaction returned an empty hash")
+	}
+
+	if !NewSimpleSigner(nil).Equal(NewSimpleSigner(big.NewInt(0))) {
+		t.Fatal("nil chain ID should be equivalent to zero")
+	}
+}
