@@ -1,0 +1,235 @@
+@baseUrl = http://localhost:1337/app
+@address = 0x34435Dd4078275B01D76A456FF9599fc07e61B90
+@blockHash = 0x0000000000000000000000000000000000000000000000000000000000000000
+@txHash = 0x0000000000000000000000000000000000000000000000000000000000000000
+
+### Chain: general information (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.getInfo",
+  "params": [],
+  "id": 1
+}
+
+### Chain: current height (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.height",
+  "params": [],
+  "id": 2
+}
+
+### Chain: latest block (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.getLatestBlock",
+  "params": [],
+  "id": 3
+}
+
+### Chain: block by height (read only; change height as needed)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.getBlockByIndex",
+  "params": [0],
+  "id": 4
+}
+
+### Chain: block by hash (read only; replace blockHash)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.getBlockByHash",
+  "params": ["{{blockHash}}"],
+  "id": 5
+}
+
+### Chain ID (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.chain.getChainId",
+  "params": [],
+  "id": 6
+}
+
+### Account: list accounts (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.getAll",
+  "params": [],
+  "id": 10
+}
+
+### Account: count (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.getCount",
+  "params": [],
+  "id": 11
+}
+
+### Account: balance (read only; replace address)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.getBalance",
+  "params": ["{{address}}"],
+  "id": 12
+}
+
+### Account: inputs (read only; replace address)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.inputs",
+  "params": ["{{address}}"],
+  "id": 13
+}
+
+### Account: total supply (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.getTotalSupply",
+  "params": [],
+  "id": 14
+}
+
+### Pool: information (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.pool.getInfo",
+  "params": [],
+  "id": 20
+}
+
+### Pool: minimum gas value (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.pool.minGas",
+  "params": [],
+  "id": 21
+}
+
+### Pool: pending transactions (read only)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.pool.getPendingTransactions",
+  "params": [],
+  "id": 22
+}
+
+### Pool: transaction by hash (read only; replace txHash)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.pool.getTransaction",
+  "params": ["{{txHash}}"],
+  "id": 23
+}
+
+### Transaction: get transaction by hash (read only; replace txHash)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.transaction.get",
+  "params": ["{{txHash}}"],
+  "id": 30
+}
+
+### Account: verify credentials (replace address and passphrase)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.verify",
+  "params": ["{{address}}", "YOUR_PASSPHRASE"],
+  "id": 40
+}
+
+### Account: create account (changes local vault; replace passphrase)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.create",
+  "params": ["YOUR_PASSPHRASE"],
+  "id": 41
+}
+
+### Account: restore account (changes local vault; replace mnemonic and passphrase)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.restore",
+  "params": ["YOUR_MNEMONIC_WORDS_HERE", "YOUR_PASSPHRASE"],
+  "id": 42
+}
+
+### Faucet (state changing; replace address and amount)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.account.faucet",
+  "params": ["{{address}}", 1],
+  "id": 43
+}
+
+### Transaction: send (state changing; replace signing key, recipient, amount, gas and message)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.transaction.send",
+  "params": ["YOUR_PRIVATE_KEY", "{{address}}", 1, 21000, "hello"],
+  "id": 44
+}
