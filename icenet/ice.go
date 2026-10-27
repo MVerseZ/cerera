@@ -63,6 +63,7 @@ type Ice struct {
 	devValidators bool
 
 	onBlockFinalized func(*block.Block)
+	txSubmitter      func(*types.GTransaction) error
 
 	serviceProviderPtr *service.ServiceProvider
 	forkDetector       *fork.Detector
@@ -76,11 +77,11 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	iceLogger().Infow("Starting Ice P2P network...", "version", IceVersion, "port", port)
 
 	iceLogger().Infow("Retrieving keys from vault...")
-	priv, pub, err := storage.GetKeys()
+	_, _, err := storage.GetKeys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve keys from vault: %w", err)
 	}
-	iceLogger().Infow("Keys retrieved from vault", "keys", priv, pub)
+	// iceLogger().Infow("Keys retrieved from vault", "keys", priv, pub)
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -146,6 +147,12 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 		return nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 	ice.PubSub = pubsubMgr
+	// Install callbacks before Start launches the subscription handler goroutines.
+	pubsubMgr.SetOnBlock(ice.onPubSubBlock)
+	pubsubMgr.SetOnTx(ice.onPubSubTx)
+	pubsubMgr.SetOnTxRejected(ice.onPubSubTxRejected)
+	pubsubMgr.SetOnConsensus(ice.onPubSubConsensus)
+	pubsubMgr.SetOnAccount(ice.onPubSubAccount)
 
 	// Start PubSub
 	if err := pubsubMgr.Start(); err != nil {
@@ -154,13 +161,6 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 		h.Close()
 		return nil, fmt.Errorf("failed to start pubsub: %w", err)
 	}
-
-	// Wire PubSub callbacks to Ice handlers so that incoming
-	// blocks/transactions/consensus messages are processed.
-	pubsubMgr.SetOnBlock(ice.onPubSubBlock)
-	pubsubMgr.SetOnTx(ice.onPubSubTx)
-	pubsubMgr.SetOnConsensus(ice.onPubSubConsensus)
-	pubsubMgr.SetOnAccount(ice.onPubSubAccount)
 
 	// Setup peer callbacks
 	ice.PeerManager.SetOnPeerConnected(ice.onPeerConnected)
@@ -313,6 +313,13 @@ func (ice *Ice) SetTxValidator(fn func(*types.GTransaction) bool) {
 	}
 }
 
+// SetTxSubmitter wires accepted inbound P2P transactions into the node's mempool.
+func (ice *Ice) SetTxSubmitter(submit func(*types.GTransaction) error) {
+	ice.mu.Lock()
+	ice.txSubmitter = submit
+	ice.mu.Unlock()
+}
+
 // SetOnBlockFinalized registers a callback invoked when consensus finalizes a block.
 func (ice *Ice) SetOnBlockFinalized(callback func(*block.Block)) {
 	ice.mu.Lock()
@@ -410,17 +417,42 @@ func (ice *Ice) onPubSubBlock(b *block.Block, from peer.ID) {
 func (ice *Ice) onPubSubTx(tx *types.GTransaction, from peer.ID) {
 	metrics.RecordTxReceived()
 	metrics.RecordPubSubMessageReceived(TopicTxs)
+	if tx == nil {
+		metrics.RecordTxRejected()
+		iceLogger().Warnw("Rejected empty peer transaction", "from", from)
+		return
+	}
 
-	// if ice.ApiProvider != nil {
-	// 	if err := ice.ApiProvider.AddTx(tx); err != nil {
-	// 		iceLogger().Debugw("Failed to add tx to pool", "error", err, "from", from)
-	// 		metrics.RecordTxRejected()
-	// 		ice.PeerScorer.RecordInvalidTx(from)
-	// 	} else {
-	// 		metrics.RecordTxValidated()
-	// 		ice.PeerScorer.RecordValidTx(from)
-	// 	}
-	// }
+	ice.mu.RLock()
+	submit := ice.txSubmitter
+	ice.mu.RUnlock()
+	if submit == nil {
+		metrics.RecordTxRejected()
+		iceLogger().Warnw("Cannot accept peer transaction: transaction pool is not connected", "from", from)
+		return
+	}
+
+	if err := submit(tx); err != nil {
+		metrics.RecordTxRejected()
+		iceLogger().Debugw("Peer transaction was not added to the pool", "hash", tx.Hash(), "from", from, "error", err)
+		return
+	}
+
+	metrics.RecordTxValidated()
+	if ice.PeerScorer != nil {
+		ice.PeerScorer.RecordValidTx(from)
+	}
+	iceLogger().Debugw("Peer transaction added to the pool", "hash", tx.Hash(), "from", from)
+}
+
+func (ice *Ice) onPubSubTxRejected(from peer.ID, reason string) {
+	metrics.RecordTxReceived()
+	metrics.RecordPubSubMessageReceived(TopicTxs)
+	metrics.RecordTxRejected()
+	if ice.PeerScorer != nil {
+		ice.PeerScorer.RecordInvalidTx(from)
+	}
+	iceLogger().Warnw("Rejected peer transaction", "from", from, "reason", reason)
 }
 
 // onPubSubAccount merges a StateAccount blob from a peer (same format as storage snapshot / Vault.Sync).

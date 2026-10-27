@@ -94,13 +94,15 @@ type PubSubManager struct {
 
 	// Message cache to prevent duplicates
 	seenMessages sync.Map
+	callbacksMu  sync.RWMutex
 
 	// Callbacks
-	onBlock     func(*block.Block, peer.ID)
-	onBlockHash func(common.Hash, int, peer.ID)
-	onTx        func(*types.GTransaction, peer.ID)
-	onConsensus func(int, []byte, peer.ID)
-	onAccount   func([]byte, peer.ID)
+	onBlock      func(*block.Block, peer.ID)
+	onBlockHash  func(common.Hash, int, peer.ID)
+	onTx         func(*types.GTransaction, peer.ID)
+	onTxRejected func(peer.ID, string)
+	onConsensus  func(int, []byte, peer.ID)
+	onAccount    func([]byte, peer.ID)
 
 	// Validation functions
 	validateBlock func(*block.Block) bool
@@ -312,6 +314,15 @@ func (psm *PubSubManager) handleTxs() {
 		var pubsubMsg PubSubMessage
 		if err := json.Unmarshal(msg.Data, &pubsubMsg); err != nil {
 			iceLogger().Warnw("Failed to unmarshal tx message", "error", err)
+			if psm.onTxRejected != nil {
+				psm.onTxRejected(msg.ReceivedFrom, "malformed transaction envelope")
+			}
+			continue
+		}
+		if pubsubMsg.Type != PubSubMsgTypeTx {
+			if psm.onTxRejected != nil {
+				psm.onTxRejected(msg.ReceivedFrom, "unexpected transaction message type")
+			}
 			continue
 		}
 
@@ -325,13 +336,29 @@ func (psm *PubSubManager) handleTxs() {
 		var txMsg TxMessage
 		if err := json.Unmarshal(pubsubMsg.Payload, &txMsg); err != nil {
 			iceLogger().Warnw("Failed to unmarshal tx payload", "error", err)
+			if psm.onTxRejected != nil {
+				psm.onTxRejected(msg.ReceivedFrom, "malformed transaction payload")
+			}
 			continue
 		}
 
 		if txMsg.Tx != nil {
+			if txMsg.Tx.Hash() != txMsg.Hash {
+				if psm.onTxRejected != nil {
+					psm.onTxRejected(msg.ReceivedFrom, "transaction hash does not match payload")
+				}
+				continue
+			}
+
 			// Validate tx if validator is set
-			if psm.validateTx != nil && !psm.validateTx(txMsg.Tx) {
+			psm.callbacksMu.RLock()
+			validateTx := psm.validateTx
+			psm.callbacksMu.RUnlock()
+			if validateTx != nil && !validateTx(txMsg.Tx) {
 				iceLogger().Warnw("Transaction validation failed", "hash", txMsg.Hash)
+				if psm.onTxRejected != nil {
+					psm.onTxRejected(msg.ReceivedFrom, "transaction validation failed")
+				}
 				continue
 			}
 
@@ -339,6 +366,8 @@ func (psm *PubSubManager) handleTxs() {
 			if psm.onTx != nil {
 				psm.onTx(txMsg.Tx, msg.ReceivedFrom)
 			}
+		} else if psm.onTxRejected != nil {
+			psm.onTxRejected(msg.ReceivedFrom, "empty transaction")
 		}
 	}
 }
@@ -637,6 +666,11 @@ func (psm *PubSubManager) SetOnTx(callback func(*types.GTransaction, peer.ID)) {
 	psm.onTx = callback
 }
 
+// SetOnTxRejected sets the callback for malformed or invalid peer transactions.
+func (psm *PubSubManager) SetOnTxRejected(callback func(peer.ID, string)) {
+	psm.onTxRejected = callback
+}
+
 // SetOnConsensus sets the callback for consensus messages
 func (psm *PubSubManager) SetOnConsensus(callback func(int, []byte, peer.ID)) {
 	psm.onConsensus = callback
@@ -654,6 +688,8 @@ func (psm *PubSubManager) SetBlockValidator(validator func(*block.Block) bool) {
 
 // SetTxValidator sets the transaction validation function
 func (psm *PubSubManager) SetTxValidator(validator func(*types.GTransaction) bool) {
+	psm.callbacksMu.Lock()
+	defer psm.callbacksMu.Unlock()
 	psm.validateTx = validator
 }
 

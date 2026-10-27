@@ -29,8 +29,8 @@ var appLog = logger.Named("cmd.cerera")
 
 // Cerera объединяет основные компоненты приложения.
 type Cerera struct {
-	bc *chain.Chain
-	g  validator.Validator
+	bc       *chain.Chain
+	g        validator.Validator
 	p        pool.TxPool
 	v        storage.Vault
 	txTable  *storage.TxTable
@@ -128,6 +128,7 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	ice.SetTxValidator(func(tx *types.GTransaction) bool {
 		return validatorInst.ValidateRawTransaction(*tx)
 	})
+	ice.SetTxSubmitter(mempool.AddRawTransaction)
 	ice.SetVault(d5Vault)
 
 	chain.SetReorgHandler(validatorInst.ReplayChain)
