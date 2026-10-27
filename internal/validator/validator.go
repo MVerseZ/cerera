@@ -608,6 +608,43 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			}
 			return tx.Hash(), nil
 		},
+		"getNextNonce": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("address required")
+			}
+			addressHex, ok := params[0].(string)
+			if !ok {
+				return nil, errors.New("address must be a string")
+			}
+			address := types.HexToAddress(addressHex)
+			next := uint64(1)
+			if account := v.vault.Get(address); account != nil {
+				next = account.Nonce
+			}
+			used := make(map[uint64]struct{})
+			if v.pool != nil {
+				pending := v.pool.GetPendingTransactions()
+				for i := range pending {
+					tx := &pending[i]
+					if tx.Type() != types.LegacyTxType {
+						continue
+					}
+					sender, err := validation.RecoverSender(v.signer, tx)
+					if err == nil && sender == address && tx.Nonce() >= next {
+						used[tx.Nonce()] = struct{}{}
+					}
+				}
+			}
+			for {
+				if _, exists := used[next]; !exists {
+					return next, nil
+				}
+				if next == ^uint64(0) {
+					return nil, errors.New("nonce overflow")
+				}
+				next++
+			}
+		},
 		"get": func(ctx context.Context, params []any) (any, error) {
 			if len(params) == 1 {
 				if p, ok := params[0].(string); ok {

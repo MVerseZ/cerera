@@ -28,11 +28,7 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
-func rpcURL(httpPort int) string {
-	return fmt.Sprintf("http://127.0.0.1:%d/", httpPort)
-}
-
-func rpcCall(httpPort int, method string, params []any) (json.RawMessage, error) {
+func rpcCall(endpoint string, method string, params []any) (json.RawMessage, error) {
 	body, err := json.Marshal(rpcRequest{
 		JSONRPC: "2.0",
 		Method:  method,
@@ -44,7 +40,7 @@ func rpcCall(httpPort int, method string, params []any) (json.RawMessage, error)
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(rpcURL(httpPort), "application/json", bytes.NewReader(body))
+	resp, err := client.Post(endpoint, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -68,17 +64,17 @@ func rpcCall(httpPort int, method string, params []any) (json.RawMessage, error)
 	return envelope.Result, nil
 }
 
-func queryNodeHealth(httpPort int) (height int, info json.RawMessage, err error) {
-	heightRaw, err := rpcCall(httpPort, "cerera.chain.height", []any{})
+func queryNodeHealth(endpoint string) (height int, info json.RawMessage, err error) {
+	heightRaw, err := rpcCall(endpoint, "cerera.chain.height", []any{})
 	if err != nil {
 		return 0, nil, err
 	}
 	if err := json.Unmarshal(heightRaw, &height); err != nil {
 		return 0, nil, err
 	}
-	info, err = rpcCall(httpPort, "cerera.chain.getInfo", []any{})
+	info, err = rpcCall(endpoint, "cerera.chain.getInfo", []any{})
 	if err != nil {
-		return height, nil, nil
+		return height, nil, err
 	}
 	return height, info, nil
 }

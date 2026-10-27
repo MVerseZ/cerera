@@ -3,6 +3,7 @@ package pool
 import (
 	"container/heap"
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -553,6 +554,29 @@ func (p *Pool) Methods() map[string]service.RPCHandler {
 				return nil, errors.New("transaction hash must be string")
 			}
 			return p.GetTransaction(common.HexToHash(hashStr)), nil
+		},
+		"sendRawTransaction": func(ctx context.Context, params []any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("signed transaction JSON required")
+			}
+			raw, ok := params[0].(string)
+			if !ok {
+				return nil, errors.New("signed transaction must be a JSON string")
+			}
+			var tx types.GTransaction
+			if err := json.Unmarshal([]byte(raw), &tx); err != nil {
+				return nil, errors.New("invalid signed transaction JSON: " + err.Error())
+			}
+			if !tx.IsSigned() || tx.Type() != types.LegacyTxType {
+				return nil, errors.New("expected a signed legacy transaction")
+			}
+			if p.txValidator == nil {
+				return nil, errors.New("transaction validator is not configured")
+			}
+			if err := p.AddRawTransaction(&tx); err != nil {
+				return nil, err
+			}
+			return tx.Hash().Hex(), nil
 		},
 		"getTopN": func(ctx context.Context, params []any) (any, error) {
 			if len(params) < 1 {

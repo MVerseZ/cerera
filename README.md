@@ -426,6 +426,24 @@ Docker Compose configurations for multi-node setups are available in `deployment
 
 Disk persistence and backup/restore: [deployments/PERSISTENCE.md](deployments/PERSISTENCE.md).
 
+### Node Control Console
+
+Run `cereractl` with no arguments to open the keyboard-driven node console. It shows node status, the latest block, and the transaction pool. Use `1`/`2`/`3` to switch views, `r` to refresh, `s` to start a local node, `x` to request a confirmed stop, and `q` to leave the console. Leaving the console keeps a node started by it running. Set the RPC port with `--http` (for example, `cereractl --http 9090`); a full `--endpoint` URL takes precedence.
+
+Press `t` in the console to prepare a transfer from the node identity; enter the recipient and amount, review the sender/nonce, then confirm. The key is read from `ddddd.nodekey.pem` by default and never sent over RPC. Pass `--node-key` when the node uses another key file.
+
+The console looks for a `cerera` executable beside itself. Pass `--node-bin` if it is elsewhere. `--endpoint` selects the JSON-RPC URL; local start uses its port and TLS scheme. `--data-dir`, `--node-key`, `--port`, `--http`, and `--miner` configure the process started by `s`. Process start/stop is available for local loopback endpoints and only stops a process started by this console; remote nodes are monitored over RPC.
+
+```bash
+cereractl --http 9090
+cereractl tui --endpoint http://127.0.0.1:8080/
+cereractl tui --refresh 1s
+cereractl tui --node-bin ./cerera --data-dir ./data --port 31000 --http 8080 --miner=false
+cereractl send --to 0x1234 --amount 1.25 --http 9090
+```
+
+`send` signs locally with the node key (default `ddddd.nodekey.pem`), displays the sender, recipient, amount, nonce, and chain ID, then asks for confirmation. Use `--node-key`, `--data-dir`, or `--endpoint` for non-default paths and endpoints. `--yes` skips the confirmation. Only the signed transaction is sent over RPC. `backup`, `restore`, and `inspect` remain explicit non-interactive subcommands.
+
 ```bash
 # Backup (node stopped)
 cereractl backup --data-dir ./data --node-key ./ddddd.nodekey.pem --output backup.tar.gz
