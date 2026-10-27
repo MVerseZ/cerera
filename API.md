@@ -461,7 +461,7 @@ Creates a new transaction (without broadcasting).
   "jsonrpc": "2.0",
   "method": "cerera.transaction.create",
   "params": [{
-    "key": "xpub...",
+    "key": "<PEM-encoded private key>",
     "nonce": 0,
     "to": "0x...",
     "amount": "1.5",
@@ -478,7 +478,7 @@ Creates a new transaction (without broadcasting).
   "jsonrpc": "2.0",
   "method": "cerera.transaction.create",
   "params": [
-    "xpub...",
+    "<PEM-encoded private key>",
     0,
     "0x...",
     1.5,
@@ -489,7 +489,7 @@ Creates a new transaction (without broadcasting).
 }
 ```
 
-**Note:** The `key` parameter should be a public key (B58 serialized format, e.g., `xpub...`), which can be obtained from the `pub` field when creating an account via `cerera.account.create`.
+**Note:** The current implementation expects the PEM-encoded private key in `key`. Avoid sending it to an untrusted RPC endpoint. For node-identity transfers, prefer `cereractl send`, which signs locally and sends only the signed transaction.
 
 **Response:**
 ```json
@@ -512,7 +512,7 @@ Creates a new transaction (without broadcasting).
 - `amount` should be provided as a decimal string (e.g., `"1.5"`) for precision
 - `to` can be an address object or hex string
 - `gas` must be non-negative
-- `key` should be a public key (B58 serialized format, e.g., `xpub...`), obtained from the `pub` field when creating an account
+- `key` is a PEM-encoded private key in the current implementation; do not send it over an untrusted RPC connection
 
 #### `send`
 
@@ -524,7 +524,7 @@ Creates, signs, and queues a transaction for mining.
   "jsonrpc": "2.0",
   "method": "cerera.transaction.send",
   "params": [{
-    "key": "xpub...",
+  "key": "<PEM-encoded private key>",
     "toHex": "0x...",
     "amount": "1.5",
     "gas": 21000,
@@ -540,7 +540,7 @@ Creates, signs, and queues a transaction for mining.
   "jsonrpc": "2.0",
   "method": "cerera.transaction.send",
   "params": [
-    "xpub...",
+    "<PEM-encoded private key>",
     "0x...",
     1.5,
     21000,
@@ -550,7 +550,7 @@ Creates, signs, and queues a transaction for mining.
 }
 ```
 
-**Note:** The `key` parameter should be a public key (B58 serialized format, e.g., `xpub...`), which can be obtained from the `pub` field when creating an account via `cerera.account.create`.
+**Note:** The current implementation expects a PEM-encoded private key in `key`, not a public key. Sending this method over an untrusted RPC connection exposes the key. For node-identity transfers, use `cereractl send` to sign on the client.
 
 **Response:**
 ```json
@@ -566,7 +566,16 @@ Creates, signs, and queues a transaction for mining.
 - Transaction is automatically queued in the mempool
 - Nonce is automatically incremented
 - Message length is limited to 1024 characters
-- `key` should be a public key (B58 serialized format, e.g., `xpub...`), obtained from the `pub` field when creating an account
+- `key` is a PEM-encoded private key in the current implementation; do not send it over an untrusted RPC connection
+
+#### `getNextNonce`
+
+Returns the lowest unused nonce for an address, considering the node's current account state and pending signed transactions.
+
+**Request:**
+```json
+{"jsonrpc":"2.0","method":"cerera.transaction.getNextNonce","params":["0x..."],"id":1}
+```
 
 #### `get`
 
@@ -607,6 +616,20 @@ Retrieves a transaction by its hash.
 The Pool Service provides information about the transaction mempool.
 
 ### Methods
+
+#### `sendRawTransaction`
+
+Accepts a serialized, already-signed legacy transaction and validates it before adding it to the mempool. `signedTransactionJSON` is the JSON string produced by the transaction's JSON encoding. The request contains no private key.
+
+**Request:**
+```json
+{"jsonrpc":"2.0","method":"cerera.pool.sendRawTransaction","params":["{...signed transaction JSON...}"],"id":1}
+```
+
+**Response:**
+```json
+{"jsonrpc":"2.0","result":"0x...transaction-hash...","id":1}
+```
 
 #### `getInfo`
 
@@ -705,7 +728,7 @@ curl -X POST http://localhost:8080/ \
     "jsonrpc": "2.0",
     "method": "cerera.transaction.send",
     "params": [{
-      "key": "xpub...",
+      "key": "<PEM-encoded private key>",
       "toHex": "0x...",
       "amount": "10.5",
       "gas": 21000,
@@ -973,7 +996,7 @@ Then set `VITE_CERERA_RPC_URL=/api/rpc`.
 | Block list | `chain.getBlockByIndex` × N | Walk from `height` down; throttle requests |
 | Block detail | `chain.getBlock` or `getBlockByIndex` | Show `timestamp` as ms |
 | Wallet balance | `account.getBalance` | Balance is `float64` CER — use decimal lib for UI |
-| Send tx | `transaction.send` | Prefer DTO param; `amount` as string `"1.5"` |
+| Send tx | `cereractl send` or `pool.sendRawTransaction` | Sign locally; CLI amount is an exact CER decimal with up to 6 fractional digits |
 | Faucet (testnet) | `account.faucet` | Amount as string |
 
 ### Error handling checklist
@@ -1008,7 +1031,7 @@ const res = await fetch(url, {
 ### Security notes for frontend
 
 - **`create` / `restore` return `priv` and `mnemonic`** — never log them, never send to analytics, avoid `localStorage` unless encrypted wallet vault.
-- **`transaction.send` with `key`** — in production, signing should happen server-side or in a dedicated wallet; the RPC `key` field expects public key material for the current validator API shape.
+- **`transaction.send` / `transaction.create` with `key`** — the current implementation expects a PEM-encoded private key. Avoid sending it through an untrusted RPC endpoint. `cereractl send` signs locally and submits only the signed transaction.
 - Node RPC has **no auth** by default — bind to localhost in production or put an API gateway in front.
 
 ### Minimal fetch example (no framework)

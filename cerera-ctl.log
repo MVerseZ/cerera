@@ -1,0 +1,473 @@
+{"level":"info","ts":"2026-10-27T13:05:41.556+0300","logger":"registry","caller":"cerera/main.go:44","msg":"[REGISTRY] Creating new registry"}
+Engine started
+{"level":"info","ts":"2026-10-27T13:05:41.581+0300","logger":"vault","caller":"cerera/main.go:58","msg":"Init vault","address":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","service":"D5_VAULT_CERERA_001_1_7"}
+{"level":"info","ts":"2026-10-27T13:05:41.581+0300","logger":"vault","caller":"storage/vault.go:256","msg":"Vault keys loaded from file","path":"D:\\Projects\\GNU LAB\\cerera\\vault\\.vault_keys"}
+{"level":"info","ts":"2026-10-27T13:05:41.585+0300","logger":"vault","caller":"storage/vault_keys.go:93","msg":"Vault keys loaded","masterKey":"xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC","publicKey":"xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg"}
+{"level":"info","ts":"2026-10-27T13:05:41.587+0300","logger":"vault","caller":"storage/vault.go:636","msg":"Read account from pogreb vault","address":"0x34435Dd4078275B01D76a456ff9599FC07E61B90"}
+{"level":"info","ts":"2026-10-27T13:05:41.587+0300","logger":"vault","caller":"cerera/main.go:58","msg":"Synced existing vault"}
+{"level":"info","ts":"2026-10-27T13:05:41.587+0300","logger":"registry","caller":"cerera/main.go:62","msg":"[REGISTRY] Registering service","name":"D5_VAULT_CERERA_001_1_7"}
+{"level":"info","ts":"2026-10-27T13:05:41.626+0300","logger":"registry","caller":"cerera/main.go:74","msg":"[REGISTRY] Registering service","name":"CHAIN_CERERA_001_1_7"}
+{"level":"info","ts":"2026-10-27T13:05:41.626+0300","logger":"registry","caller":"cerera/main.go:91","msg":"[REGISTRY] Registering service","name":"CERERA_VALIDATOR_54013.10.25"}
+{"level":"info","ts":"2026-10-27T13:05:41.629+0300","logger":"registry","caller":"cerera/main.go:102","msg":"[REGISTRY] Registering service","name":"POOL_CERERA_001_1_3"}
+{"level":"info","ts":"2026-10-27T13:05:41.630+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Starting Ice P2P network...","version":"1.0.0","port":"31000"}
+{"level":"info","ts":"2026-10-27T13:05:41.630+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Retrieving keys from vault..."}
+{"level":"error","ts":"2026-10-27T13:05:41.630+0300","logger":"icenet","caller":"icenet/ice.go:83","msg":"Ignored key without a value.","ignored":"xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg"}
+{"level":"info","ts":"2026-10-27T13:05:41.630+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Keys retrieved from vault","keys":"xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC"}
+{"level":"info","ts":"2026-10-27T13:05:41.630+0300","logger":"icenet","caller":"icenet/ice.go:95","msg":"Creating libp2p host","port":"31000"}
+{"level":"info","ts":"2026-10-27T13:05:41.695+0300","logger":"icenet","caller":"icenet/ice.go:95","msg":"Host created successfully","peerID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","addresses":["/ip4/127.0.0.1/tcp/31000","/ip4/192.168.1.2/tcp/31000","/ip6/::1/tcp/31000"]}
+{"level":"info","ts":"2026-10-27T13:05:41.695+0300","logger":"peers","caller":"icenet/ice.go:114","msg":"Peer manager started","maxPeers":50}
+{"level":"debug","ts":"2026-10-27T13:05:41.695+0300","logger":"protocol","caller":"icenet/ice.go:121","msg":"Protocol handlers registered","protocols":["/cerera/account/1.0.0","/cerera/status/1.0.0","/cerera/system/1.0.0","/cerera/sync/1.0.0","/cerera/storage-snapshot/1.0.0","/cerera/block/1.0.0","/cerera/tx/1.0.0","/cerera/consensus/1.0.0","/cerera/ping/1.0.0"]}
+{"level":"debug","ts":"2026-10-27T13:05:41.695+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/172.20.0.11/tcp/31100"}
+{"level":"debug","ts":"2026-10-27T13:05:41.695+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/172.25.0.11/tcp/31100"}
+{"level":"debug","ts":"2026-10-27T13:05:41.695+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/172.25.0.12/tcp/31101"}
+{"level":"debug","ts":"2026-10-27T13:05:41.695+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/192.168.1.6/tcp/31100"}
+{"level":"info","ts":"2026-10-27T13:05:41.695+0300","logger":"icenet","caller":"icenet/discovery.go:91","msg":"DHT initialized","mode":3}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"icenet/discovery.go:174","msg":"mDNS discovery started","service":"cerera-network"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"[NETWORK DISCOVERY] Advertising on DHT","namespace":"cerera-network"}
+{"level":"warn","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/172.20.0.11/tcp/31100","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/192.168.1.6/tcp/31100","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/172.25.0.11/tcp/31100","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/172.25.0.12/tcp/31101","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"[NETWORK DISCOVERY] Bootstrap connection phase complete — no peers connected, solo mode available","configuredBootstrapPeers":0,"configuredRawAddrs":4}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"icenet/ice.go:151","msg":"PubSub manager started","topics":["cerera/blocks","cerera/txs","cerera/consensus","cerera/accounts"]}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Ice P2P network started","peerID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","addresses":["/ip4/127.0.0.1/tcp/31000/p2p/QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","/ip4/192.168.1.2/tcp/31000/p2p/QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","/ip6/::1/tcp/31000/p2p/QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"],"cAddr":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","version":"1.0.0"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"consensus","caller":"consensus/manager.go:93","msg":"Voting manager started"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"consensus","caller":"consensus/manager.go:918","msg":"[CONSENSUS] Validator added","peer":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"consensus","caller":"icenet/ice.go:228","msg":"[CONSENSUS] Solo mode: no connected peers; votes are processed locally"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"consensus","caller":"icenet/ice.go:228","msg":"Consensus manager started"}
+{"level":"debug","ts":"2026-10-27T13:05:41.761+0300","logger":"protocol","caller":"icenet/ice.go:240","msg":"Protocol handlers registered","protocols":["/cerera/account/1.0.0","/cerera/status/1.0.0","/cerera/system/1.0.0","/cerera/sync/1.0.0","/cerera/storage-snapshot/1.0.0","/cerera/block/1.0.0","/cerera/tx/1.0.0","/cerera/consensus/1.0.0","/cerera/ping/1.0.0"]}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"sync","caller":"icenet/ice.go:268","msg":"Sync manager started"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"icenet","caller":"icenet/ice.go:188","msg":"API provider set, sync manager and handler started"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"miner","caller":"cerera/main.go:157","msg":"[MINER] Starting miner","id":"CERERA_MINER:937"}
+{"level":"info","ts":"2026-10-27T13:05:41.761+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:05:41.763+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1766,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:05:41.863+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:41.875+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:41.885+0300","caller":"v2@v2.2.0/server.go:593","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:41.920+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:41.933+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:41.978+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:41.992+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.035+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.047+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.094+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.105+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.169+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.210+0300","caller":"v2@v2.2.0/server.go:593","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.511+0300","caller":"v2@v2.2.0/server.go:593","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:42.888+0300","caller":"v2@v2.2.0/server.go:620","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:44.041+0300","caller":"v2@v2.2.0/server.go:620","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:45.923+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:45.935+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:45.980+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:45.994+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.043+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.056+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.105+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.117+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.168+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.179+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:46.223+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:49.122+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1766,"nonce":19000485629,"hash":"000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742"}
+✅ Mining completed! Result: 0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742 (time: 7.3601894s)
+{"level":"debug","ts":"2026-10-27T13:05:49.122+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.123+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.123+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"viewID":0,"seqID":1,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:05:49.123+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","blockHeight":1766,"viewID":0,"seqID":1,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3046022100b17a759f3caaa925f1db09da9c22a3719949a816e3cefdb6a5f250c0edaab6600221008f9164e9519d6ae44cf37c7b68dc56f5f2789d4e7ae17ad983f682f748f11d07
+{"level":"info","ts":"2026-10-27T13:05:49.124+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"viewID":0,"seqID":1}
+{"level":"info","ts":"2026-10-27T13:05:49.124+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1766,"hash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742"}
+{"level":"debug","ts":"2026-10-27T13:05:49.124+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Received PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"viewID":0,"seqID":1,"voterID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"}
+{"level":"info","ts":"2026-10-27T13:05:49.125+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Processing PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"viewID":0,"seqID":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	30450221008cfe3481f4d4931f3a23508f0911a4551552435d68de97f4d065dc93a5ec72c7022079f96aa37b9ffafd5d8087e5dac538d52e16748b03f6f04b1f748365a6db8501
+{"level":"debug","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"consensus/manager.go:260","msg":"[CONSENSUS] Received Prepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"viewID":0,"seqID":1,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"prepareVotes":1,"quorum":1,"state":"Prepare"}
+{"level":"info","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare quorum reached - moving to commit phase","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"prepareVotes":1,"quorum":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3045022100a4b2f4e73503e81158dcdb41debd6215f5645e9867498d911bd86462a33a2c5d02207ec45a6cc9822913436812f01ea92aea00f02b529556e7ca33edd803477a94e0
+{"level":"info","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Prepare quorum reached","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"prepareVotes":1,"quorum":1}
+{"level":"debug","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"consensus/manager.go:262","msg":"[CONSENSUS] Received Commit","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"viewID":0,"seqID":1,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"commitVotes":1,"quorum":1,"state":"Commit"}
+{"level":"info","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit quorum reached - block finalized","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"commitVotes":1,"quorum":1}
+{"level":"info","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Commit quorum reached - finalizing block","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766,"commitVotes":0,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.126+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Validating finalized block","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Adding finalized block to chain","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Block successfully added to chain","blockHash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"icenet","caller":"icenet/ice.go:464","msg":"Block broadcast","hash":"0x000000c78ae4aa6bdfe67813bdd0c29520258773e02314dd6151c9c14f4d3742","height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1766}
+{"level":"info","ts":"2026-10-27T13:05:49.127+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.128+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1767,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"debug","ts":"2026-10-27T13:05:49.128+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] mining cancelled before nonce search"}
+{"level":"debug","ts":"2026-10-27T13:05:49.130+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1767,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:05:49.225+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1767,"nonce":19000570352,"hash":"00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8"}
+✅ Mining completed! Result: 0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8 (time: 97.9018ms)
+{"level":"debug","ts":"2026-10-27T13:05:49.225+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.226+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.226+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"viewID":0,"seqID":2,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:05:49.226+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","blockHeight":1767,"viewID":0,"seqID":2,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3045022100c210de0bca580287a68403c9f03cfe63daf6c01591a36153801280b71d8bb8e202202216ad692c2ff23182b0f37c84357333fea944851b68874676eb1072f5483c61
+{"level":"info","ts":"2026-10-27T13:05:49.226+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"viewID":0,"seqID":2}
+{"level":"info","ts":"2026-10-27T13:05:49.226+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1767,"hash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8"}
+{"level":"debug","ts":"2026-10-27T13:05:49.226+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Received PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"viewID":0,"seqID":2,"voterID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"}
+{"level":"info","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Processing PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"viewID":0,"seqID":2}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3045022009653f57a180163b5b0ac5b799b9939d9b85f32d26f24373e588c8dd94e2f5d3022100e91222ce2aa07a053b73f12ed295ffcbc6adfda59ec9233aa02102c0ee9720c4
+{"level":"debug","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:260","msg":"[CONSENSUS] Received Prepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"viewID":0,"seqID":2,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"prepareVotes":1,"quorum":1,"state":"Prepare"}
+{"level":"info","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare quorum reached - moving to commit phase","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"prepareVotes":1,"quorum":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304502210084503d5e22f36fd9a8878a3550c9e45dcd28614874afe5cb3d9aa88f1e89855e02202bbeeabda4564ec5141cf2d4e3c248149405cda7842ad45797f17ef49407ca21
+{"level":"info","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Prepare quorum reached","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"prepareVotes":1,"quorum":1}
+{"level":"debug","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:262","msg":"[CONSENSUS] Received Commit","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"viewID":0,"seqID":2,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"commitVotes":1,"quorum":1,"state":"Commit"}
+{"level":"info","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit quorum reached - block finalized","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"commitVotes":1,"quorum":1}
+{"level":"info","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Commit quorum reached - finalizing block","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767,"commitVotes":0,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.228+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Validating finalized block","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.230+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Adding finalized block to chain","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.232+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.232+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Block successfully added to chain","blockHash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.232+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"info","ts":"2026-10-27T13:05:49.232+0300","logger":"icenet","caller":"icenet/ice.go:464","msg":"Block broadcast","hash":"0x00000043d41e6814929086508df79a588f9f65c049897f995751ae1ec855a9e8","height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.232+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1767}
+{"level":"info","ts":"2026-10-27T13:05:49.232+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:05:49.233+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1768,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"debug","ts":"2026-10-27T13:05:49.233+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] mining cancelled before nonce search"}
+{"level":"debug","ts":"2026-10-27T13:05:49.234+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1768,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:05:50.342+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1768,"nonce":19001578088,"hash":"000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f"}
+✅ Mining completed! Result: 0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f (time: 1.1105909s)
+{"level":"debug","ts":"2026-10-27T13:05:50.343+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:05:50.344+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.344+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"viewID":0,"seqID":3,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:05:50.344+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","blockHeight":1768,"viewID":0,"seqID":3,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304502203d8c73a30cea8debbd1b590676c655211b4c8cddb6f067249c173b479483d17a022100f3955c4cb06260253774c35db139497e57e2e7df68c6deb1ca8d928a662e151b
+{"level":"info","ts":"2026-10-27T13:05:50.345+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"viewID":0,"seqID":3}
+{"level":"info","ts":"2026-10-27T13:05:50.345+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1768,"hash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f"}
+{"level":"debug","ts":"2026-10-27T13:05:50.345+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Received PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"viewID":0,"seqID":3,"voterID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"}
+{"level":"info","ts":"2026-10-27T13:05:50.347+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Processing PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"viewID":0,"seqID":3}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3046022100f7de096f179b3310c136f5230a8ca3ddc78ad822a32c55c61a24fc13b22d8a620221009014250f7f5cf4ae757c02c4cb23c5f11984fbdbe1f1ac6d0e3af3130b54e0c6
+{"level":"debug","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"consensus/manager.go:260","msg":"[CONSENSUS] Received Prepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"viewID":0,"seqID":3,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"prepareVotes":1,"quorum":1,"state":"Prepare"}
+{"level":"info","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare quorum reached - moving to commit phase","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"prepareVotes":1,"quorum":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304502205abb6b842eee8360919699f92518a73a812b47beab07a71dd0702ad13202fd5d022100a42be300daff7f7ec2e3d8abf139fd8de74dade888bc6987cd9822e3f09bd59b
+{"level":"info","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Prepare quorum reached","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"prepareVotes":1,"quorum":1}
+{"level":"debug","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"consensus/manager.go:262","msg":"[CONSENSUS] Received Commit","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"viewID":0,"seqID":3,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"commitVotes":1,"quorum":1,"state":"Commit"}
+{"level":"info","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit quorum reached - block finalized","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"commitVotes":1,"quorum":1}
+{"level":"info","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Commit quorum reached - finalizing block","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768,"commitVotes":0,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:05:50.358+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Validating finalized block","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Adding finalized block to chain","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Block successfully added to chain","blockHash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"icenet","caller":"icenet/ice.go:464","msg":"Block broadcast","hash":"0x000000ef9552d7691bfdd31e8d8be52a8e3c4d7c020f04af47d7c4445295f54f","height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1768}
+{"level":"info","ts":"2026-10-27T13:05:50.360+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:05:50.362+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1769,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"debug","ts":"2026-10-27T13:05:50.362+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] mining cancelled before nonce search"}
+{"level":"debug","ts":"2026-10-27T13:05:50.363+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1769,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:05:53.668+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.680+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.727+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.739+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.783+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.797+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.840+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.851+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.896+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.909+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:05:53.950+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+Received signal:  interrupt
+{"level":"info","ts":"2026-10-27T13:06:07.315+0300","logger":"vault","caller":"cerera/main.go:299","msg":"Close(): pogreb database closed successfully"}
+{"level":"info","ts":"2026-10-27T13:06:14.681+0300","logger":"registry","caller":"cerera/main.go:44","msg":"[REGISTRY] Creating new registry"}
+Engine started
+{"level":"info","ts":"2026-10-27T13:06:14.705+0300","logger":"vault","caller":"cerera/main.go:58","msg":"Init vault","address":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","service":"D5_VAULT_CERERA_001_1_7"}
+{"level":"info","ts":"2026-10-27T13:06:14.705+0300","logger":"vault","caller":"storage/vault.go:256","msg":"Vault keys loaded from file","path":"D:\\Projects\\GNU LAB\\cerera\\vault\\.vault_keys"}
+{"level":"info","ts":"2026-10-27T13:06:14.708+0300","logger":"vault","caller":"storage/vault_keys.go:93","msg":"Vault keys loaded","masterKey":"xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC","publicKey":"xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg"}
+{"level":"info","ts":"2026-10-27T13:06:14.710+0300","logger":"vault","caller":"storage/vault.go:636","msg":"Read account from pogreb vault","address":"0x34435Dd4078275B01D76a456ff9599FC07E61B90"}
+{"level":"info","ts":"2026-10-27T13:06:14.710+0300","logger":"vault","caller":"cerera/main.go:58","msg":"Synced existing vault"}
+{"level":"info","ts":"2026-10-27T13:06:14.710+0300","logger":"registry","caller":"cerera/main.go:62","msg":"[REGISTRY] Registering service","name":"D5_VAULT_CERERA_001_1_7"}
+{"level":"info","ts":"2026-10-27T13:06:14.740+0300","logger":"registry","caller":"cerera/main.go:74","msg":"[REGISTRY] Registering service","name":"CHAIN_CERERA_001_1_7"}
+{"level":"info","ts":"2026-10-27T13:06:14.740+0300","logger":"registry","caller":"cerera/main.go:91","msg":"[REGISTRY] Registering service","name":"CERERA_VALIDATOR_54013.10.25"}
+{"level":"info","ts":"2026-10-27T13:06:14.741+0300","logger":"registry","caller":"cerera/main.go:102","msg":"[REGISTRY] Registering service","name":"POOL_CERERA_001_1_3"}
+{"level":"info","ts":"2026-10-27T13:06:14.743+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Starting Ice P2P network...","version":"1.0.0","port":"31000"}
+{"level":"info","ts":"2026-10-27T13:06:14.743+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Retrieving keys from vault..."}
+{"level":"error","ts":"2026-10-27T13:06:14.743+0300","logger":"icenet","caller":"icenet/ice.go:83","msg":"Ignored key without a value.","ignored":"xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg"}
+{"level":"info","ts":"2026-10-27T13:06:14.743+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Keys retrieved from vault","keys":"xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC"}
+{"level":"info","ts":"2026-10-27T13:06:14.743+0300","logger":"icenet","caller":"icenet/ice.go:95","msg":"Creating libp2p host","port":"31000"}
+{"level":"info","ts":"2026-10-27T13:06:14.808+0300","logger":"icenet","caller":"icenet/ice.go:95","msg":"Host created successfully","peerID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","addresses":["/ip4/127.0.0.1/tcp/31000","/ip4/192.168.1.2/tcp/31000","/ip6/::1/tcp/31000"]}
+{"level":"info","ts":"2026-10-27T13:06:14.808+0300","logger":"peers","caller":"icenet/ice.go:114","msg":"Peer manager started","maxPeers":50}
+{"level":"debug","ts":"2026-10-27T13:06:14.809+0300","logger":"protocol","caller":"icenet/ice.go:121","msg":"Protocol handlers registered","protocols":["/cerera/account/1.0.0","/cerera/status/1.0.0","/cerera/system/1.0.0","/cerera/sync/1.0.0","/cerera/storage-snapshot/1.0.0","/cerera/block/1.0.0","/cerera/tx/1.0.0","/cerera/consensus/1.0.0","/cerera/ping/1.0.0"]}
+{"level":"debug","ts":"2026-10-27T13:06:14.809+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/172.20.0.11/tcp/31100"}
+{"level":"debug","ts":"2026-10-27T13:06:14.809+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/172.25.0.11/tcp/31100"}
+{"level":"debug","ts":"2026-10-27T13:06:14.809+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/172.25.0.12/tcp/31101"}
+{"level":"debug","ts":"2026-10-27T13:06:14.809+0300","logger":"icenet","caller":"icenet/discovery.go:86","msg":"Bootstrap address without peer ID, will try raw dial","addr":"/ip4/192.168.1.6/tcp/31100"}
+{"level":"info","ts":"2026-10-27T13:06:14.809+0300","logger":"icenet","caller":"icenet/discovery.go:91","msg":"DHT initialized","mode":3}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"icenet/discovery.go:174","msg":"mDNS discovery started","service":"cerera-network"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"[NETWORK DISCOVERY] Advertising on DHT","namespace":"cerera-network"}
+{"level":"warn","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/172.20.0.11/tcp/31100","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/192.168.1.6/tcp/31100","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/172.25.0.12/tcp/31101","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"Failed to connect to bootstrap address","addr":"/ip4/172.25.0.11/tcp/31100","error":"failed to dial: empty peer ID"}
+{"level":"warn","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"runtime/asm_amd64.s:1264","msg":"[NETWORK DISCOVERY] Bootstrap connection phase complete — no peers connected, solo mode available","configuredBootstrapPeers":0,"configuredRawAddrs":4}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"icenet/ice.go:151","msg":"PubSub manager started","topics":["cerera/blocks","cerera/txs","cerera/consensus","cerera/accounts"]}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"cerera/main.go:115","msg":"Ice P2P network started","peerID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","addresses":["/ip4/127.0.0.1/tcp/31000/p2p/QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","/ip4/192.168.1.2/tcp/31000/p2p/QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","/ip6/::1/tcp/31000/p2p/QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"],"cAddr":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","version":"1.0.0"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"consensus","caller":"consensus/manager.go:93","msg":"Voting manager started"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"consensus","caller":"consensus/manager.go:918","msg":"[CONSENSUS] Validator added","peer":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"consensus","caller":"icenet/ice.go:228","msg":"[CONSENSUS] Solo mode: no connected peers; votes are processed locally"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"consensus","caller":"icenet/ice.go:228","msg":"Consensus manager started"}
+{"level":"debug","ts":"2026-10-27T13:06:14.875+0300","logger":"protocol","caller":"icenet/ice.go:240","msg":"Protocol handlers registered","protocols":["/cerera/account/1.0.0","/cerera/status/1.0.0","/cerera/system/1.0.0","/cerera/sync/1.0.0","/cerera/storage-snapshot/1.0.0","/cerera/block/1.0.0","/cerera/tx/1.0.0","/cerera/consensus/1.0.0","/cerera/ping/1.0.0"]}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"sync","caller":"icenet/ice.go:268","msg":"Sync manager started"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"icenet","caller":"icenet/ice.go:188","msg":"API provider set, sync manager and handler started"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"miner","caller":"cerera/main.go:157","msg":"[MINER] Starting miner","id":"CERERA_MINER:937"}
+{"level":"info","ts":"2026-10-27T13:06:14.875+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:06:14.877+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1769,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:06:14.952+0300","caller":"v2@v2.2.0/server.go:593","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.005+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.017+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.062+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.076+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.118+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.132+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.174+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.191+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.232+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.251+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.261+0300","caller":"v2@v2.2.0/server.go:593","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.289+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.561+0300","caller":"v2@v2.2.0/server.go:593","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:15.962+0300","caller":"v2@v2.2.0/server.go:620","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:17.290+0300","caller":"v2@v2.2.0/server.go:620","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.065+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.077+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.125+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.138+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.183+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.196+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.251+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.267+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.323+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.338+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:19.385+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.062+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.072+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.119+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.130+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.177+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.189+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.234+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.246+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.292+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.304+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.345+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:28.844+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1769,"nonce":19013411198,"hash":"0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2"}
+✅ Mining completed! Result: 0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2 (time: 13.9691544s)
+{"level":"debug","ts":"2026-10-27T13:06:28.844+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:28.846+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.846+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"viewID":0,"seqID":1,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:06:28.846+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","blockHeight":1769,"viewID":0,"seqID":1,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304402200a6313c7147f05cca9b8bfa5b45296628943845f7a966ab690617309055c90ff0220266315b7374f83465f4d4effb464106253d0fc1e59bcfa64aa72bb0a030db3db
+{"level":"info","ts":"2026-10-27T13:06:28.846+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"viewID":0,"seqID":1}
+{"level":"info","ts":"2026-10-27T13:06:28.846+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1769,"hash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2"}
+{"level":"debug","ts":"2026-10-27T13:06:28.847+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Received PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"viewID":0,"seqID":1,"voterID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"}
+{"level":"info","ts":"2026-10-27T13:06:28.849+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Processing PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"viewID":0,"seqID":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3045022054a501114568ac34319f80e7c8236a3f291b03e9b14110f9f822aed974096ce7022100ef46bdfc572cbbf55a06c3a9347a46f34bb2cd71bb8e537f59ebfbac65f529eb
+{"level":"debug","ts":"2026-10-27T13:06:28.849+0300","logger":"consensus","caller":"consensus/manager.go:260","msg":"[CONSENSUS] Received Prepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"viewID":0,"seqID":1,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:06:28.849+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"prepareVotes":1,"quorum":1,"state":"Prepare"}
+{"level":"info","ts":"2026-10-27T13:06:28.849+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare quorum reached - moving to commit phase","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"prepareVotes":1,"quorum":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304602210090ec9504e42c1bcaf48d9ad157e9e20672ed96abe8394f7b25f0e88b010a550c022100be907a3a626947c3845dcd6e504d1008d74c55b507e50a321945c02403473dd8
+{"level":"info","ts":"2026-10-27T13:06:28.850+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Prepare quorum reached","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"prepareVotes":1,"quorum":1}
+{"level":"debug","ts":"2026-10-27T13:06:28.850+0300","logger":"consensus","caller":"consensus/manager.go:262","msg":"[CONSENSUS] Received Commit","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"viewID":0,"seqID":1,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:06:28.850+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"commitVotes":1,"quorum":1,"state":"Commit"}
+{"level":"info","ts":"2026-10-27T13:06:28.850+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit quorum reached - block finalized","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"commitVotes":1,"quorum":1}
+{"level":"info","ts":"2026-10-27T13:06:28.850+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Commit quorum reached - finalizing block","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769,"commitVotes":0,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:28.850+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Validating finalized block","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.851+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Adding finalized block to chain","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.851+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.851+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Block successfully added to chain","blockHash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.851+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"info","ts":"2026-10-27T13:06:28.852+0300","logger":"icenet","caller":"icenet/ice.go:464","msg":"Block broadcast","hash":"0x0000017add320a6fba1afdd845008c2bb6664578c22695653eb1c9ce74c7aee2","height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.852+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1769}
+{"level":"info","ts":"2026-10-27T13:06:28.852+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:06:28.853+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1770,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"debug","ts":"2026-10-27T13:06:28.853+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] mining cancelled before nonce search"}
+{"level":"debug","ts":"2026-10-27T13:06:28.854+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1770,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:06:29.155+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1770,"nonce":19013673917,"hash":"0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141"}
+✅ Mining completed! Result: 0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141 (time: 303.1993ms)
+{"level":"debug","ts":"2026-10-27T13:06:29.155+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:29.156+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.156+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"viewID":0,"seqID":2,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:06:29.156+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","blockHeight":1770,"viewID":0,"seqID":2,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3045022100d3437342fc9e7ceca3c655c7fe4eb5e0835aac65d9de660de19e7d78796be50a0220502688837764b3ade9368e3fe6e63b04c6050cc306a089b9195e5c07778288a2
+{"level":"info","ts":"2026-10-27T13:06:29.156+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"viewID":0,"seqID":2}
+{"level":"info","ts":"2026-10-27T13:06:29.156+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1770,"hash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141"}
+{"level":"debug","ts":"2026-10-27T13:06:29.156+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Received PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"viewID":0,"seqID":2,"voterID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"}
+{"level":"info","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Processing PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"viewID":0,"seqID":2}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3046022100b06b8095bc99a8056724b5f22c5fa360030b044918fde2c340115a32ef3701cd022100cd30a7a1c93f258dc696f8be7c675e72f555e01216788ad8f915905895ec7405
+{"level":"debug","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:260","msg":"[CONSENSUS] Received Prepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"viewID":0,"seqID":2,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"prepareVotes":1,"quorum":1,"state":"Prepare"}
+{"level":"info","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare quorum reached - moving to commit phase","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"prepareVotes":1,"quorum":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3044022042253db9e49f1919453522f74d928fe9e249faadbec741d0d9a7f7b6b57860b802204156ba862945fecabddac10c4476a0df782f41b2f7d34e9de8ea4ba4efa01251
+{"level":"info","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Prepare quorum reached","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"prepareVotes":1,"quorum":1}
+{"level":"debug","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:262","msg":"[CONSENSUS] Received Commit","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"viewID":0,"seqID":2,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"commitVotes":1,"quorum":1,"state":"Commit"}
+{"level":"info","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit quorum reached - block finalized","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"commitVotes":1,"quorum":1}
+{"level":"info","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Commit quorum reached - finalizing block","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770,"commitVotes":0,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:29.158+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Validating finalized block","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.161+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Adding finalized block to chain","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.161+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.161+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Block successfully added to chain","blockHash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.161+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"info","ts":"2026-10-27T13:06:29.162+0300","logger":"icenet","caller":"icenet/ice.go:464","msg":"Block broadcast","hash":"0x0000003ea7cd0e1a613fcba2fdb980a4c6b01da7c5aaace6db300e49679a1141","height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.162+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1770}
+{"level":"info","ts":"2026-10-27T13:06:29.162+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:06:29.163+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1771,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"debug","ts":"2026-10-27T13:06:29.163+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] mining cancelled before nonce search"}
+{"level":"debug","ts":"2026-10-27T13:06:29.164+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1771,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"info","ts":"2026-10-27T13:06:40.286+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1771,"nonce":19023635162,"hash":"0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1"}
+✅ Mining completed! Result: 0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1 (time: 11.123604s)
+{"level":"debug","ts":"2026-10-27T13:06:40.286+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:40.287+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.287+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"viewID":0,"seqID":3,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:06:40.287+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","blockHeight":1771,"viewID":0,"seqID":3,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304502206449e498b2d247916efb20591367ab8e3550e609ca5e532be932fb72407e72060221008599f4edc59e6cc3ea0c8320e1b350d30e76250097ed1bc901d56813111354f3
+{"level":"info","ts":"2026-10-27T13:06:40.287+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"viewID":0,"seqID":3}
+{"level":"info","ts":"2026-10-27T13:06:40.287+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1771,"hash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1"}
+{"level":"debug","ts":"2026-10-27T13:06:40.287+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Received PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"viewID":0,"seqID":3,"voterID":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"}
+{"level":"info","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:258","msg":"[CONSENSUS] Processing PrePrepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"viewID":0,"seqID":3}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304402202a716152ffedab66d357e5f5c08369c18376c3ca363ad923a0bee066b57ff0b30220564fbce59c69705ac6dfa3d59b38f1cf6b2c34796be37f6d40affe7b6f6b0c63
+{"level":"debug","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:260","msg":"[CONSENSUS] Received Prepare","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"viewID":0,"seqID":3,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"prepareVotes":1,"quorum":1,"state":"Prepare"}
+{"level":"info","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:422","msg":"[CONSENSUS] Prepare quorum reached - moving to commit phase","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"prepareVotes":1,"quorum":1}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	304502200c625277ead1572483244ec01c217e6efdf0d54a62f939452ba0ae0fa1765e72022100b7c817d1f123bf193752ecbd0bf8c8f7ee5210e5da4f597079efb75f984bbfd6
+{"level":"info","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Prepare quorum reached","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"prepareVotes":1,"quorum":1}
+{"level":"debug","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:262","msg":"[CONSENSUS] Received Commit","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"viewID":0,"seqID":3,"voteType":0}
+{"level":"debug","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit vote received","from":"QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"commitVotes":1,"quorum":1,"state":"Commit"}
+{"level":"info","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"consensus/manager.go:466","msg":"[CONSENSUS] Commit quorum reached - block finalized","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"commitVotes":1,"quorum":1}
+{"level":"info","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Commit quorum reached - finalizing block","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771,"commitVotes":0,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:40.289+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Validating finalized block","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.291+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Adding finalized block to chain","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.291+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.291+0300","logger":"consensus","caller":"runtime/asm_amd64.s:1264","msg":"[CONSENSUS] Block successfully added to chain","blockHash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.291+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"info","ts":"2026-10-27T13:06:40.292+0300","logger":"icenet","caller":"icenet/ice.go:464","msg":"Block broadcast","hash":"0x0000003adcacfda11579ed3c6fbe73e0007eaae2428ee52964a67406afa74ed1","height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.292+0300","logger":"miner","caller":"miner/miner.go:254","msg":"[MINER] executed block txs","count":1,"height":1771}
+{"level":"info","ts":"2026-10-27T13:06:40.292+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] 🚀 Started mining ","task id":"0x34435Dd4078275B01D76a456ff9599FC07E61B90","task txs":0}
+{"level":"debug","ts":"2026-10-27T13:06:40.292+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1772,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+{"level":"debug","ts":"2026-10-27T13:06:40.292+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] mining cancelled before nonce search"}
+{"level":"debug","ts":"2026-10-27T13:06:40.294+0300","logger":"miner","caller":"miner/worker.go:303","msg":"[MINER] Block created","height":1772,"gas_used":0,"gas_limit":750000,"txs_count":0,"total_txs_in_block":1}
+Received signal:  interrupt
+{"level":"info","ts":"2026-10-27T13:06:46.014+0300","logger":"vault","caller":"cerera/main.go:299","msg":"Close(): pogreb database closed successfully"}
+{"level":"info","ts":"2026-10-27T13:06:46.457+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.468+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.471+0300","caller":"v2@v2.2.0/client.go:431","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.481+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.512+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.524+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.525+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.537+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.566+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.579+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.579+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.591+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.620+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.634+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.639+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.651+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.680+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.693+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.696+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.710+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:46.733+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: no such interface"}
+{"level":"info","ts":"2026-10-27T13:06:46.745+0300","caller":"v2@v2.2.0/server.go:356","msg":"[WARN] mdns: Failed to set multicast interface: setsockopt: An invalid argument was supplied."}
+{"level":"info","ts":"2026-10-27T13:06:47.300+0300","logger":"miner","caller":"runtime/asm_amd64.s:1264","msg":"[MINER] Block mined","height":1772,"nonce":19029888434,"hash":"00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295"}
+✅ Mining completed! Result: 0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295 (time: 7.0075168s)
+{"level":"debug","ts":"2026-10-27T13:06:47.300+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] ProposeBlock called","hash":"0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295","height":1772,"validatorCount":1,"quorum":0}
+{"level":"debug","ts":"2026-10-27T13:06:47.301+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block validation passed","hash":"0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295","height":1772}
+{"level":"info","ts":"2026-10-27T13:06:47.302+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Starting consensus round","hash":"0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295","height":1772,"viewID":0,"seqID":4,"validatorCount":1,"quorum":0}
+{"level":"info","ts":"2026-10-27T13:06:47.302+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"[CONSENSUS] Started consensus round","blockHash":"0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295","blockHeight":1772,"viewID":0,"seqID":4,"validatorCount":1,"quorum":1,"validators":["QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp"]}
+Get keys: 	xprv9s21ZrQH143K4REHDXg6WHTJqyTzLWqUK4VYWx6xAWd2vfspfPeTScdNyJiePCubNrdPBNeANsUMS2hu3DR8aPfQqTnrC3Whx38Rxs4DDhC
+	xpub661MyMwAqRbcGuJkKZD6sRQ3Q1JUjyZKgHR9KLWZirA1oUCyCvxhzQwrpahcy1moqcShPVPLsJuJcBZSUD6KvQqXtiCxa4qHZn5NgvJApxg
+Block header: Node: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Voter ID: 	QmQPtefSitbv789cvnzw14jRPYYgoG2gqHupmmZ7Hzfevp
+Voter Address: 	0x34435Dd4078275B01D76a456ff9599FC07E61B90
+Message signature: 	3045022072fc11ed36bb1a35a7862adbc9eb40273b179629c74fff7b62de4c5f60bca16b022100c5e4674aa8aec8f253188e06e7c1bf89b4f4178e1f04f43cb7ee4b37c24dc40f
+{"level":"warn","ts":"2026-10-27T13:06:47.302+0300","logger":"consensus","caller":"consensus/manager.go:231","msg":"Failed to broadcast pre-prepare","error":"context canceled"}
+{"level":"info","ts":"2026-10-27T13:06:47.302+0300","logger":"consensus","caller":"icenet/ice.go:482","msg":"[CONSENSUS] Block proposed for consensus","hash":"0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295","height":1772,"viewID":0,"seqID":4}
+{"level":"info","ts":"2026-10-27T13:06:47.302+0300","logger":"miner","caller":"miner/miner.go:213","msg":"[MINER] block proposed for consensus","height":1772,"hash":"0x00000049f243dc678ecfc377f15567c7914fd6073e0f5b614a4caf5f38d6a295"}

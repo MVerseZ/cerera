@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/backup"
@@ -12,20 +13,28 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(2)
+		runTUI(nil)
+		return
 	}
 
 	switch os.Args[1] {
+	case "tui":
+		runTUI(os.Args[2:])
 	case "backup":
 		runBackup(os.Args[2:])
 	case "restore":
 		runRestore(os.Args[2:])
 	case "inspect":
 		runInspect(os.Args[2:])
+	case "send":
+		runSend(os.Args[2:])
 	case "help", "-h", "--help":
 		printUsage()
 	default:
+		if strings.HasPrefix(os.Args[1], "-") {
+			runTUI(os.Args[1:])
+			return
+		}
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
 		printUsage()
 		os.Exit(2)
@@ -107,12 +116,17 @@ func runInspect(args []string) {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `Cerera node data utility
+	fmt.Fprintf(os.Stderr, `Cerera node control console and data utility
 
 Usage:
+  cereractl [--http <port>]         Open the node control screen
+  cereractl tui [--endpoint <url>]  Open the node control screen
+                  [--refresh <duration>] [--node-bin <path>] [--node-key <pem>] [--data-dir <dir>] [--port <p2p>] [--http <rpc>] [--miner=false]
   cereractl backup  --data-dir <dir> --output <file.tar.gz> [--node-key <pem>]
   cereractl restore --data-dir <dir> --input <file.tar.gz> [--force]
   cereractl inspect --input <file.tar.gz>
+  cereractl send --to <address> --amount <CER> [--message <text>] [--gas <limit>]
+                  [--http <port>] [--endpoint <url>] [--node-key <pem>] [--data-dir <dir>] [--yes]
 
 Data directory layout (disk mode):
   %s/
@@ -124,6 +138,7 @@ Stop the cerera node before restore.
 
 Environment:
   CERERA_DATA_DIR  Default for --data-dir when set
+  CERERA_RPC_URL   Node JSON-RPC endpoint (default http://127.0.0.1:8080/)
 
 `, "data", config.ChainFileName, config.VaultDirName, config.ConfigFileName)
 }
