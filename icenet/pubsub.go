@@ -30,7 +30,6 @@ const (
 	PubSubMsgTypeTx        = "tx"
 	PubSubMsgTypeConsensus = "consensus"
 	PubSubMsgTypeAccount   = "account"
-	PubSubMsgTypeFaucetMint = "faucet_mint"
 	// MaxMessageAge is the maximum age of a message before it's considered stale
 	MaxMessageAge = 5 * time.Minute
 )
@@ -62,42 +61,9 @@ type TxMessage struct {
 	Hash common.Hash         `json:"hash"`
 }
 
-// marshalTxPubSubPayload JSON-encodes a tx for pubsub and ensures the envelope hash matches the decoded body.
-func marshalTxPubSubPayload(tx *types.GTransaction) (json.RawMessage, common.Hash, error) {
-	if tx == nil {
-		return nil, common.Hash{}, fmt.Errorf("nil transaction")
-	}
-	msg := TxMessage{Tx: tx, Hash: tx.Hash()}
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		return nil, common.Hash{}, fmt.Errorf("failed to marshal tx: %w", err)
-	}
-	var check TxMessage
-	if err := json.Unmarshal(payload, &check); err != nil {
-		return nil, common.Hash{}, fmt.Errorf("tx payload roundtrip decode: %w", err)
-	}
-	if check.Tx == nil {
-		return nil, common.Hash{}, fmt.Errorf("tx payload roundtrip missing tx")
-	}
-	bodyHash := check.Tx.Hash()
-	if bodyHash != msg.Hash {
-		msg.Hash = bodyHash
-		payload, err = json.Marshal(msg)
-		if err != nil {
-			return nil, common.Hash{}, fmt.Errorf("failed to remarshal tx: %w", err)
-		}
-	}
-	return payload, msg.Hash, nil
-}
-
 // AccountStateMessage is the payload for a newly created account (StateAccount.Bytes()).
 type AccountStateMessage struct {
 	Account []byte `json:"account"`
-}
-
-// FaucetMintMessage replicates off-chain faucet journal entries.
-type FaucetMintMessage struct {
-	Mint []byte `json:"mint"`
 }
 
 // ConsensusPayload is the payload for consensus messages
@@ -137,7 +103,6 @@ type PubSubManager struct {
 	onTxRejected func(peer.ID, string)
 	onConsensus  func(int, []byte, peer.ID)
 	onAccount    func([]byte, peer.ID)
-	onFaucetMint func([]byte, peer.ID)
 
 	// Validation functions
 	validateBlock func(*block.Block) bool
@@ -378,13 +343,11 @@ func (psm *PubSubManager) handleTxs() {
 		}
 
 		if txMsg.Tx != nil {
-			computed := txMsg.Tx.Hash()
-			if txMsg.Hash != computed {
-				iceLogger().Debugw("Tx envelope hash corrected from JSON body",
-					"declared", txMsg.Hash,
-					"computed", computed,
-				)
-				txMsg.Hash = computed
+			if txMsg.Tx.Hash() != txMsg.Hash {
+				if psm.onTxRejected != nil {
+					psm.onTxRejected(msg.ReceivedFrom, "transaction hash does not match payload")
+				}
+				continue
 			}
 
 			// Validate tx if validator is set
@@ -466,21 +429,6 @@ func (psm *PubSubManager) handleAccounts() {
 		var pubsubMsg PubSubMessage
 		if err := json.Unmarshal(msg.Data, &pubsubMsg); err != nil {
 			iceLogger().Warnw("Failed to unmarshal account pubsub message", "error", err)
-			continue
-		}
-
-		if pubsubMsg.Type == PubSubMsgTypeFaucetMint {
-			var mintMsg FaucetMintMessage
-			if err := json.Unmarshal(pubsubMsg.Payload, &mintMsg); err != nil {
-				iceLogger().Warnw("Failed to unmarshal faucet mint payload", "error", err)
-				continue
-			}
-			if len(mintMsg.Mint) == 0 {
-				continue
-			}
-			if psm.onFaucetMint != nil {
-				psm.onFaucetMint(mintMsg.Mint, msg.ReceivedFrom)
-			}
 			continue
 		}
 
@@ -606,9 +554,14 @@ func (psm *PubSubManager) BroadcastTx(tx *types.GTransaction) error {
 		return fmt.Errorf("txs topic not initialized")
 	}
 
-	payload, hash, err := marshalTxPubSubPayload(tx)
+	txMsg := TxMessage{
+		Tx:   tx,
+		Hash: tx.Hash(),
+	}
+
+	payload, err := json.Marshal(txMsg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal tx: %w", err)
 	}
 
 	msg := PubSubMessage{
@@ -627,7 +580,7 @@ func (psm *PubSubManager) BroadcastTx(tx *types.GTransaction) error {
 		return fmt.Errorf("failed to publish tx: %w", err)
 	}
 
-	iceLogger().Debugw("Transaction broadcast", "hash", hash)
+	iceLogger().Debugw("Transaction broadcast", "hash", tx.Hash())
 	return nil
 }
 
@@ -663,41 +616,6 @@ func (psm *PubSubManager) BroadcastAccountState(accountBytes []byte) error {
 	}
 
 	iceLogger().Debugw("Account state broadcast", "bytes", len(accountBytes))
-	return nil
-}
-
-// BroadcastFaucetMint publishes a faucet journal entry to all subscribers.
-func (psm *PubSubManager) BroadcastFaucetMint(wire []byte) error {
-	if psm.accountsTopic == nil {
-		return fmt.Errorf("accounts topic not initialized")
-	}
-	if len(wire) == 0 {
-		return fmt.Errorf("empty faucet mint payload")
-	}
-
-	mintMsg := FaucetMintMessage{Mint: wire}
-	payload, err := json.Marshal(mintMsg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal faucet mint message: %w", err)
-	}
-
-	msg := PubSubMessage{
-		Type:      PubSubMsgTypeFaucetMint,
-		Timestamp: time.Now().UnixNano(),
-		From:      psm.host.ID().String(),
-		Payload:   payload,
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal pubsub message: %w", err)
-	}
-
-	if err := psm.accountsTopic.Publish(psm.ctx, data); err != nil {
-		return fmt.Errorf("failed to publish faucet mint message: %w", err)
-	}
-
-	iceLogger().Debugw("Faucet mint broadcast", "bytes", len(wire))
 	return nil
 }
 
@@ -761,11 +679,6 @@ func (psm *PubSubManager) SetOnConsensus(callback func(int, []byte, peer.ID)) {
 // SetOnAccount sets the callback for merged account state from peers.
 func (psm *PubSubManager) SetOnAccount(callback func([]byte, peer.ID)) {
 	psm.onAccount = callback
-}
-
-// SetOnFaucetMint sets the callback for replicated faucet journal entries.
-func (psm *PubSubManager) SetOnFaucetMint(callback func([]byte, peer.ID)) {
-	psm.onFaucetMint = callback
 }
 
 // SetBlockValidator sets the block validation function

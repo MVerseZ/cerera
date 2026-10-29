@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/cerera/config"
-	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/storage"
@@ -130,23 +129,13 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		return validatorInst.ValidateRawTransaction(*tx)
 	})
 	ice.SetTxSubmitter(mempool.AddRawTransaction)
-	if p, ok := mempool.(*pool.Pool); ok {
-		p.SetTxBroadcaster(func(tx *types.GTransaction) {
-			if err := ice.BroadcastTx(tx); err != nil {
-				appLog.Warnw("Failed to broadcast transaction to network", "hash", tx.Hash(), "err", err)
-			}
-		})
-	}
 	ice.SetVault(d5Vault)
 
-	chain.SetReorgHandler(func(blocks []*block.Block) error {
-		return validatorInst.SyncLiveVaultFromChain()
-	})
+	chain.SetReorgHandler(validatorInst.ReplayChain)
 	sp := ice.ServiceProviderPtr()
 	if sp != nil {
 		sp.SetChainRef(bc)
 		sp.SetVault(d5Vault)
-		sp.SetChainStateSync(validatorInst.SyncLiveVaultFromChain)
 	}
 
 	if err := registry.Register(&service.Service{
@@ -172,21 +161,6 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	ice.SetForkDetector(forkDet)
 
 	ice.SetOnBlockFinalized(minerInstance.OnBlockFinalized)
-
-	validatorInst.SetPostReplayEnsure(func() {
-		if sp == nil {
-			return
-		}
-		sp.EnsureAccount(cfg.NetCfg.ADDR)
-		if ice.PeerManager != nil {
-			for _, rec := range ice.PeerManager.ListConfirmedPeers() {
-				if rec != nil && !rec.CereraAddress.IsEmpty() {
-					sp.EnsureAccount(rec.CereraAddress)
-				}
-			}
-		}
-	})
-
 	if mine {
 		if err := minerInstance.Start(); err != nil {
 			appLog.Errorw("Failed to start miner", "err", err)

@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/metrics"
 	"github.com/cerera/icenet/protocol"
@@ -442,46 +441,24 @@ func (m *Manager) GetPeerCount() int {
 	return len(m.peers)
 }
 
-// GetBestPeer returns the ready peer with the highest height, preferring the same head hash when provided.
-func (m *Manager) GetBestPeer(localHead common.Hash) *PeerInfo {
+// GetBestPeer returns the ready peer with the highest height.
+// Peers that are not marked as ready (IsReady == false) are ignored.
+// A peer may be ready while vault account counts still lag; sync uses Status.StorageData to catch up.
+func (m *Manager) GetBestPeer() *PeerInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var maxHeight int
+	var best *PeerInfo
 	for _, info := range m.peers {
 		if !info.IsReady {
 			continue
 		}
-		if info.Height > maxHeight {
-			maxHeight = info.Height
+		if best == nil || info.Height > best.Height {
+			copy := *info
+			best = &copy
 		}
 	}
-	if maxHeight == 0 {
-		return nil
-	}
-
-	pick := func(requireHeadMatch bool) *PeerInfo {
-		var best *PeerInfo
-		for _, info := range m.peers {
-			if !info.IsReady || info.Height != maxHeight {
-				continue
-			}
-			if requireHeadMatch && localHead != (common.Hash{}) && info.Status.HeadHash != (common.Hash{}) &&
-				info.Status.HeadHash != localHead {
-				continue
-			}
-			if best == nil {
-				copy := *info
-				best = &copy
-			}
-		}
-		return best
-	}
-
-	if best := pick(true); best != nil {
-		return best
-	}
-	return pick(false)
+	return best
 }
 
 // GetPeersAboveHeight returns peers with height greater than the given height

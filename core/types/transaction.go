@@ -328,18 +328,10 @@ func (tx *GTransaction) setDecoded(inner TxData, size uint64) {
 	tx.dna = inner.dna()
 	tx.time = inner.time()
 	tx.inner = inner
-	if inner == nil {
-		tx.hash.Store(common.Hash{})
-	} else {
-		tx.hash.Store(crvTxHash(inner))
-	}
+	tx.hash.Store(tx.Hash())
 
 	// Always recalculate size to ensure consistency
-	if size == 0 {
-		tx.size.Store(tx.Size())
-	} else {
-		tx.size.Store(size)
-	}
+	tx.size.Store(tx.Size())
 }
 
 func (tx *GTransaction) SetTime(t time.Time) {

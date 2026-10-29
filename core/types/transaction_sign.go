@@ -351,8 +351,7 @@ func SignTx(tx *GTransaction, s Signer, prv *ecdsa.PrivateKey) (*GTransaction, e
 func Sender(signer Signer, tx *GTransaction) (Address, error) {
 	if sc := tx.from.Load(); sc != nil {
 		sigCache := sc.(sigCache)
-		// SetFrom (e.g. after JSON decode) may cache from without signer — do not call Equal on nil.
-		if sigCache.signer != nil && sigCache.signer.Equal(signer) {
+		if sigCache.signer.Equal(signer) {
 			return sigCache.from, nil
 		}
 	}

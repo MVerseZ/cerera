@@ -19,10 +19,9 @@ var splogger = logger.Named("chain")
 type ServiceProvider struct {
 	ctx context.Context
 
-	blockVal       *validation.BlockValidator
-	chainRef       *chain.Chain
-	vault          *storage.D5Vault
-	chainStateSync func() error
+	blockVal *validation.BlockValidator
+	chainRef *chain.Chain
+	vault    *storage.D5Vault
 }
 
 func (sp *ServiceProvider) SetVault(v *storage.D5Vault) {
@@ -31,18 +30,6 @@ func (sp *ServiceProvider) SetVault(v *storage.D5Vault) {
 
 func (sp *ServiceProvider) SetChainRef(bc *chain.Chain) {
 	sp.chainRef = bc
-}
-
-func (sp *ServiceProvider) SetChainStateSync(fn func() error) {
-	sp.chainStateSync = fn
-}
-
-// SyncLiveVaultFromChain rebuilds vault from canonical chain (when wired from node validator).
-func (sp *ServiceProvider) SyncLiveVaultFromChain() error {
-	if sp.chainStateSync == nil {
-		return nil
-	}
-	return sp.chainStateSync()
 }
 
 func NewServiceProvider(ctx context.Context) (*ServiceProvider, error) {

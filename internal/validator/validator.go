@@ -103,9 +103,6 @@ type Validator interface {
 	Methods() map[string]service.RPCHandler
 
 	ReplayChain(blocks []*block.Block) error
-	// SyncLiveVaultFromChain rebuilds live vault from canonical chain (+ faucet journal) and post-replay hooks.
-	SyncLiveVaultFromChain() error
-	SetPostReplayEnsure(fn func())
 	SetPool(pool pool.TxPool)
 	SetChain(chain *chain.Chain)
 }
@@ -125,8 +122,6 @@ type CoreValidator struct {
 
 	blockVal *validation.BlockValidator
 	simMu    sync.Mutex
-
-	postReplayEnsure func()
 }
 
 func (v *CoreValidator) SetPool(pool pool.TxPool) {
@@ -135,25 +130,6 @@ func (v *CoreValidator) SetPool(pool pool.TxPool) {
 
 func (v *CoreValidator) SetChain(bc *chain.Chain) {
 	v.Chain = bc
-}
-
-func (v *CoreValidator) SetPostReplayEnsure(fn func()) {
-	v.postReplayEnsure = fn
-}
-
-// SyncLiveVaultFromChain applies canonical blocks to the live vault (same path as validation replay).
-func (v *CoreValidator) SyncLiveVaultFromChain() error {
-	if v.Chain == nil {
-		return errors.New("chain not set")
-	}
-	blocks := v.Chain.GetData()
-	if err := v.ReplayChain(blocks); err != nil {
-		return fmt.Errorf("replay chain: %w", err)
-	}
-	if v.postReplayEnsure != nil {
-		v.postReplayEnsure()
-	}
-	return nil
 }
 
 func NewValidator(ctx context.Context, cfg config.Config, vault *storage.D5Vault, txTable *storage.TxTable) (Validator, error) {
@@ -626,7 +602,7 @@ func (v *CoreValidator) Methods() map[string]service.RPCHandler {
 			if err := v.SignRawTransactionWithKey(tx, spk); err != nil {
 				return nil, err
 			}
-			err = v.pool.AddLocalRawTransaction(tx)
+			err = v.pool.AddRawTransaction(tx)
 			if err != nil {
 				return nil, err
 			}

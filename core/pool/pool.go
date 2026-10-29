@@ -66,14 +66,14 @@ func init() {
 }
 
 type MemPoolInfo struct {
-	Size             int                   `json:"size"`
-	Bytes            int                   `json:"bytes"`
-	Usage            uintptr               `json:"usage"`
-	MaxMempool       int                   `json:"maxMempool"`
-	Mempoolminfee    int                   `json:"mempoolminfee"`
-	UnbroadcastCount int                   `json:"unbroadcastCount"`
-	Hashes           []common.Hash         `json:"hashes"`
-	Txs              []*types.GTransaction `json:"txs"`
+	Size             int     // current tx count
+	Bytes            int     // size of tx
+	Usage            uintptr // Total mem for mempool
+	MaxMempool       int     // Maximum mem for mempool
+	Mempoolminfee    int     // min fee for tx
+	UnbroadcastCount int     // local pool transactions
+	Hashes           []common.Hash
+	Txs              []*types.GTransaction
 }
 
 // for simplification of mining, pool sorts transactions by gas*gasPrice with coefficient of payload
@@ -101,9 +101,6 @@ type Pool struct {
 	sourcesMu   sync.RWMutex
 
 	txValidator func(*types.GTransaction) bool
-
-	txBroadcaster   func(*types.GTransaction)
-	broadcasterMu sync.RWMutex
 }
 
 // var (
@@ -119,8 +116,6 @@ type Pool struct {
 
 type TxPool interface {
 	AddRawTransaction(tx *types.GTransaction) error
-	// AddLocalRawTransaction adds a locally submitted tx and invokes the P2P broadcaster when configured.
-	AddLocalRawTransaction(tx *types.GTransaction) error
 	GetInfo() MemPoolInfo
 	GetRawMemPool() []any
 	GetPendingTransactions() []types.GTransaction
@@ -152,22 +147,6 @@ func (p *Pool) SetTxValidator(fn func(*types.GTransaction) bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.txValidator = fn
-}
-
-// SetTxBroadcaster is called for txs accepted via AddLocalRawTransaction (RPC send, sendRawTransaction).
-func (p *Pool) SetTxBroadcaster(fn func(*types.GTransaction)) {
-	p.broadcasterMu.Lock()
-	p.txBroadcaster = fn
-	p.broadcasterMu.Unlock()
-}
-
-func (p *Pool) broadcastLocal(tx *types.GTransaction) {
-	p.broadcasterMu.RLock()
-	fn := p.txBroadcaster
-	p.broadcasterMu.RUnlock()
-	if fn != nil && tx != nil {
-		fn(tx)
-	}
 }
 
 func InitPool(maxSize int) (TxPool, error) {
@@ -231,15 +210,6 @@ func removeFromSlice(observerList []observer.Observer, observerToRemove observer
 // AddRawTransaction validates and adds a transaction to the pool.
 // Returns an error if the transaction is rejected (duplicate, low gas, or pool full).
 func (p *Pool) AddRawTransaction(tx *types.GTransaction) error {
-	return p.addRawTransaction(tx, false)
-}
-
-// AddLocalRawTransaction is like AddRawTransaction but gossips the tx to peers when a broadcaster is set.
-func (p *Pool) AddLocalRawTransaction(tx *types.GTransaction) error {
-	return p.addRawTransaction(tx, true)
-}
-
-func (p *Pool) addRawTransaction(tx *types.GTransaction, gossip bool) error {
 	p.mu.Lock()
 
 	if _, exists := p.memPool[tx.Hash()]; exists {
@@ -287,9 +257,6 @@ func (p *Pool) addRawTransaction(tx *types.GTransaction, gossip bool) error {
 	p.mu.Unlock()
 
 	p.NotifyAll(tx)
-	if gossip {
-		p.broadcastLocal(tx)
-	}
 	return nil
 }
 
@@ -606,7 +573,7 @@ func (p *Pool) Methods() map[string]service.RPCHandler {
 			if p.txValidator == nil {
 				return nil, errors.New("transaction validator is not configured")
 			}
-			if err := p.AddLocalRawTransaction(&tx); err != nil {
+			if err := p.AddRawTransaction(&tx); err != nil {
 				return nil, err
 			}
 			return tx.Hash().Hex(), nil

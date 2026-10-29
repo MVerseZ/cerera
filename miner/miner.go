@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -252,6 +251,7 @@ func (m *miner) onChainHeadUpdated(finalized *block.Block) {
 		blockToApply = m.pendingBlock
 	}
 	if blockToApply != nil {
+		m.applyBlock(blockToApply)
 		m.clearProcessedTransactions(blockToApply.Transactions)
 	}
 	m.pendingBlock = nil
@@ -296,10 +296,6 @@ func (m *miner) handleResult(data Result) {
 			return
 		}
 		if err := m.publisher.ProposeBlock(data.Value); err != nil {
-			if isConsensusRoundBusy(err) {
-				go m.retryProposeBlock(data.Value, data.jobID)
-				return
-			}
 			minerLogger().Errorw("[MINER] failed to propose block", "error", err)
 			current := m.worker.GetCurrentTask()
 			var txs []*types.GTransaction
@@ -328,72 +324,10 @@ func (m *miner) handleResult(data Result) {
 		return
 	}
 
-	m.syncVaultFromChain()
+	m.applyBlock(data.Value)
 	m.clearProcessedTransactions(data.Value.Transactions)
 	remaining := remainingTxs(m.worker.GetCurrentTask(), data.Value)
 	m.worker.Compute(m.newTask(remaining))
-}
-
-func isConsensusRoundBusy(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "consensus round already in progress")
-}
-
-func (m *miner) retryProposeBlock(b *block.Block, jobID uint64) {
-	const attempts = 15
-	for i := 0; i < attempts; i++ {
-		time.Sleep(2 * time.Second)
-
-		m.mu.Lock()
-		if !m.mining || m.worker == nil || m.publisher == nil || m.worker.isStale(jobID) {
-			m.mu.Unlock()
-			return
-		}
-		pub := m.publisher
-		m.mu.Unlock()
-
-		if err := pub.ProposeBlock(b); err != nil {
-			if isConsensusRoundBusy(err) {
-				continue
-			}
-			m.mu.Lock()
-			if m.mining && m.worker != nil && !m.worker.isStale(jobID) {
-				current := m.worker.GetCurrentTask()
-				var txs []*types.GTransaction
-				if current != nil {
-					txs = current.txs
-				}
-				m.worker.Compute(m.newTask(txs))
-			}
-			m.mu.Unlock()
-			minerLogger().Errorw("[MINER] failed to propose block after retries", "error", err)
-			return
-		}
-
-		m.mu.Lock()
-		if m.mining && m.worker != nil && !m.worker.isStale(jobID) {
-			m.pendingBlock = b
-			minerLogger().Infow("[MINER] block proposed for consensus",
-				"height", b.Head.Height,
-				"hash", b.Hash,
-			)
-		}
-		m.mu.Unlock()
-		return
-	}
-	minerLogger().Warnw("[MINER] gave up proposing block while consensus round busy",
-		"height", b.Head.Height,
-		"hash", b.Hash,
-	)
-	m.mu.Lock()
-	if m.mining && m.worker != nil && !m.worker.isStale(jobID) {
-		current := m.worker.GetCurrentTask()
-		var txs []*types.GTransaction
-		if current != nil {
-			txs = current.txs
-		}
-		m.worker.Compute(m.newTask(txs))
-	}
-	m.mu.Unlock()
 }
 
 func (m *miner) Stop() {
@@ -464,23 +398,46 @@ func (m *miner) SetHeightLock(lock HeightLockChecker) {
 	m.heightLock = lock
 }
 
-func (m *miner) syncVaultFromChain() {
-	if m.valid == nil {
-		return
-	}
-	if err := m.valid.SyncLiveVaultFromChain(); err != nil {
-		minerLogger().Errorw("[MINER] SyncLiveVaultFromChain failed", "error", err)
-	}
-}
-
 func (m *miner) OnBlockFinalized(b *block.Block) {
-	m.syncVaultFromChain()
 	m.onChainHeadUpdated(b)
 }
 
 func (m *miner) OnChainReorg(b *block.Block) {
-	// ReorgHandler already replayed vault; refresh worker state only.
 	m.onChainHeadUpdated(b)
+}
+
+func (m *miner) applyBlock(b *block.Block) {
+	if m.valid == nil || b == nil {
+		return
+	}
+	idx := 0
+	if h := b.Header(); h != nil {
+		idx = int(h.Index)
+	}
+	executed := 0
+	for i := range b.Transactions {
+		tx := b.Transactions[i]
+		// Faucet RPC already credits the account; do not apply it twice if it lands in a block.
+		if tx.Type() == types.FaucetTxType {
+			continue
+		}
+		if err := m.valid.ExecuteTransaction(tx); err != nil {
+			minerLogger().Errorw("[MINER] failed to execute tx",
+				"tx", tx.Hash(),
+				"type", tx.Type(),
+				"error", err)
+			continue
+		}
+		m.valid.UpdateTxTree(&b.Transactions[i], idx)
+		executed++
+	}
+	if executed > 0 {
+		height := 0
+		if h := b.Header(); h != nil {
+			height = h.Height
+		}
+		minerLogger().Infow("[MINER] executed block txs", "count", executed, "height", height)
+	}
 }
 
 func (m *miner) clearProcessedTransactions(txs []types.GTransaction) {

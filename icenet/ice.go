@@ -157,7 +157,6 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	pubsubMgr.SetOnTxRejected(ice.onPubSubTxRejected)
 	pubsubMgr.SetOnConsensus(ice.onPubSubConsensus)
 	pubsubMgr.SetOnAccount(ice.onPubSubAccount)
-	pubsubMgr.SetOnFaucetMint(ice.onPubSubFaucetMint)
 
 	// Start PubSub
 	if err := pubsubMgr.Start(); err != nil {
@@ -267,14 +266,8 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 				iceLogger().Warnw("BroadcastAccountState failed", "err", err)
 			}
 		}
-		storage.FaucetMintHook = func(wire []byte) {
-			if err := ice.PubSub.BroadcastFaucetMint(wire); err != nil {
-				iceLogger().Warnw("BroadcastFaucetMint failed", "err", err)
-			}
-		}
 	} else {
 		storage.AccountCreatedHook = nil
-		storage.FaucetMintHook = nil
 	}
 
 	ice.mu.Unlock()
@@ -497,38 +490,8 @@ func (ice *Ice) onPubSubAccount(accountBytes []byte, from peer.ID) {
 	if v == nil {
 		return
 	}
-	v.MergePeerAccountMetadata(accountBytes)
+	v.Sync(accountBytes)
 	iceLogger().Debugw("Merged account state from pubsub", "from", from, "bytes", len(accountBytes))
-}
-
-// onPubSubFaucetMint merges a faucet journal entry and rebuilds vault from chain replay.
-func (ice *Ice) onPubSubFaucetMint(wire []byte, from peer.ID) {
-	if from == ice.Host.ID() {
-		return
-	}
-	metrics.RecordPubSubMessageReceived(TopicAccounts)
-
-	ice.mu.RLock()
-	v := ice.vault
-	sp := ice.serviceProviderPtr
-	ice.mu.RUnlock()
-	if v == nil {
-		return
-	}
-	added, err := v.ImportFaucetMintWire(wire)
-	if err != nil {
-		iceLogger().Warnw("ImportFaucetMintWire failed", "from", from, "error", err)
-		return
-	}
-	if !added {
-		return
-	}
-	if sp != nil {
-		if err := sp.SyncLiveVaultFromChain(); err != nil {
-			iceLogger().Warnw("SyncLiveVaultFromChain after faucet mint failed", "error", err)
-		}
-	}
-	iceLogger().Debugw("Merged faucet mint from pubsub", "from", from, "bytes", len(wire))
 }
 
 // onPubSubConsensus handles consensus messages received via PubSub
@@ -659,7 +622,6 @@ func (ice *Ice) Stop(ctx context.Context) {
 	iceLogger().Infow("Stopping Ice P2P network...")
 
 	storage.AccountCreatedHook = nil
-	storage.FaucetMintHook = nil
 
 	// Stop consensus
 	if ice.Consensus != nil {

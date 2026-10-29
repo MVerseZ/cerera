@@ -1,3 +1,4 @@
+import base64
 import time
 import requests
 import json
@@ -9,23 +10,6 @@ class CereraStressTester:
     def __init__(self, api_url: str = "http://localhost:1337/app"):
         self.api_url = api_url
         self.accounts: Dict[str, Dict] = {}
-
-    def rpc(self, method: str, params=None):
-        """JSON-RPC с проверкой error в теле ответа."""
-        if params is None:
-            params = []
-        data_req = {
-            "method": method,
-            "jsonrpc": "2.0",
-            "id": random.randint(1000, 9999),
-            "params": params,
-        }
-        r = requests.post(self.api_url, json=data_req, timeout=10)
-        r.raise_for_status()
-        body = r.json()
-        if body.get("error"):
-            raise RuntimeError(body["error"].get("message", str(body["error"])))
-        return body.get("result")
         
     def create_account(self, account_id: str, password: str) -> Dict:
         """Создает новый аккаунт"""
@@ -56,18 +40,25 @@ class CereraStressTester:
             return None
     
     def send_transaction(self, sender, to_addr: str, amount: float, 
-                        gas_limit: float = 21000, message: str = "") -> bool:
+                        gas_limit: float = 1000, message: str = "") -> bool:
         """Отправляет транзакцию"""
+        data_req = {
+            "method": "cerera.transaction.send",
+            "jsonrpc": "2.0",
+            "id": random.randint(1000, 9999),
+            "params": [sender['priv'], to_addr, amount, gas_limit, message]
+        }
+        
         try:
-            result = self.rpc(
-                "cerera.transaction.send",
-                [sender['priv'], to_addr, amount, gas_limit, message],
-            )
-            tx_hash = result if isinstance(result, str) else (result or {}).get("hash", result)
-            print(f"✅ Отправлено {amount} от {sender['address'][:8]}... к {to_addr[:8]}... ({tx_hash})")
-            return True
+            r = requests.post(self.api_url, json=data_req, timeout=10)
+            if r.status_code == 200:
+                print(f"✅ Отправлено {amount} от {sender['address'][:8]}... к {to_addr[:8]}...")
+                return True
+            else:
+                print(f"❌ Ошибка отправки: {r.text}")
+                return False
         except Exception as e:
-            print(f"❌ Ошибка отправки: {e}")
+            print(f"❌ Исключение при отправке: {e}")
             return False
     
     def get_chain_info(self) -> Dict:
@@ -234,9 +225,28 @@ class CereraStressTester:
         transaction_count = 0
         direction = True  # True: 1→2, False: 2→1
 
+        import os
+        import random
+
+        # Папка с изображениями
+        img_dir = r"D:\Pictures\tmp_vid\w"
+        # Получаем список всех файлов в папке (фильтруем картинки, например jpg/png)
+        files = [f for f in os.listdir(img_dir) if f.lower().endswith(
+            ('.jpg', '.jpeg', '.png', '.bmp'))]
+
         try:
             while True:
+                # Берём случайное изображение
+                img_file = random.choice(files)
+                img_path = os.path.join(img_dir, img_file)
+                # Читаем как байты
+                with open(img_path, "rb") as f:
+                    img_bytes = f.read()
+                print(
+                    f"🖼️ Взято случайное изображение: {img_file} ({len(img_bytes)} байт)")
+                # Выводим байты в консоль
                 message = "TEST MESSAGE " + str(transaction_count)
+                # message = base64.b64encode(img_bytes).decode('utf-8')
                 if direction:
                     # Отправляем от аккаунта 1 к аккаунту 2
                     success = self.send_transaction(
@@ -262,9 +272,9 @@ class CereraStressTester:
                     if transaction_count % 10 == 0:
                         print(f"\n📊 Выполнено транзакций: {transaction_count}")
                         self.show_balances()
+                        # Показываем текущее количество блоков
                         current_blocks = self.get_block_count()
-                        print(f"   Высота цепочки: {current_blocks}")
-                        print("   (балансы меняются только после включения tx в блок)")
+                        print(f"   Текущих блоков в цепочке: {current_blocks}")
                         print("-" * 30)
                 
                 time.sleep(delay)

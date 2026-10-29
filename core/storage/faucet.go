@@ -73,16 +73,12 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 
 	v.faucetMu.Lock()
 	v.faucetLastRequest[to] = time.Now()
-	v.faucetMu.Unlock()
-
-	m := faucetMint{
+	v.faucetMints = append(v.faucetMints, faucetMint{
 		To:     to,
 		Amount: new(big.Int).Set(cnt),
 		Hash:   txHash,
-	}
-	if _, err := v.AddFaucetMintRecord(m); err != nil {
-		return err
-	}
+	})
+	v.faucetMu.Unlock()
 
 	vaultFaucetAmountTotal.Add(types.BigIntToFloat(cnt))
 	return nil
