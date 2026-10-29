@@ -19,6 +19,7 @@ import (
 	"github.com/cerera/icenet/service"
 	icesync "github.com/cerera/icenet/sync"
 	"github.com/cerera/internal/logger"
+	internalservice "github.com/cerera/internal/service"
 	"github.com/cerera/internal/validation"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -119,6 +120,9 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 
 	// Create protocol handler (initially without chain/txPool - will be set later)
 	ice.Handler = protocol.NewHandler(h, nil, cfg.NetCfg.ADDR, cfg.GetVersion())
+	if ice.PeerManager != nil {
+		ice.Handler.SetPeerManager(ice.PeerManager)
+	}
 	ice.Handler.RegisterHandlers()
 
 	// Create discovery service
@@ -237,6 +241,9 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 
 	// Handler with chain + txPool from same provider
 	ice.Handler = protocol.NewHandler(ice.Host, provider, ice.cfg.NetCfg.ADDR, ice.cfg.GetVersion())
+	if ice.PeerManager != nil {
+		ice.Handler.SetPeerManager(ice.PeerManager)
+	}
 	ice.Handler.RegisterHandlers()
 
 	// Sync manager using provider as chain
@@ -275,6 +282,24 @@ func (ice *Ice) SetVault(v *storage.D5Vault) {
 	ice.mu.Lock()
 	ice.vault = v
 	ice.mu.Unlock()
+	ice.broadcastLocalNodeIdentity()
+}
+
+func (ice *Ice) broadcastLocalNodeIdentity() {
+	ice.mu.RLock()
+	v := ice.vault
+	ps := ice.PubSub
+	ice.mu.RUnlock()
+	if v == nil || ps == nil {
+		return
+	}
+	owner := v.GetOwner()
+	if owner == nil {
+		return
+	}
+	if err := ps.BroadcastAccountState(owner.Bytes()); err != nil {
+		iceLogger().Debugw("broadcastLocalNodeIdentity failed", "err", err)
+	}
 }
 
 // ServiceProviderPtr returns the live service provider used by sync/consensus.
@@ -730,4 +755,64 @@ func (ice *Ice) GetStatus() *Status {
 	metrics.PeersReady.Set(float64(status.PeersReady))
 
 	return status
+}
+
+// Methods exposes JSON-RPC handlers for the network (ice) service.
+func (ice *Ice) Methods() map[string]internalservice.RPCHandler {
+	return map[string]internalservice.RPCHandler{
+		"listPeers": func(ctx context.Context, params []any) (any, error) {
+			_ = ctx
+			_ = params
+			return ice.listPeersRPC(), nil
+		},
+	}
+}
+
+type listPeerEntry struct {
+	CereraAddress string   `json:"cereraAddress"`
+	PeerID        string   `json:"peerId"`
+	ListenAddrs   []string `json:"listenAddrs,omitempty"`
+	Height        int      `json:"height"`
+	IsReady       bool     `json:"isReady"`
+	Direction     string   `json:"direction,omitempty"`
+}
+
+func (ice *Ice) listPeersRPC() []listPeerEntry {
+	ice.mu.RLock()
+	pm := ice.PeerManager
+	ice.mu.RUnlock()
+	if pm == nil {
+		return nil
+	}
+	confirmed := pm.ListConfirmedPeers()
+	out := make([]listPeerEntry, 0, len(confirmed))
+	for _, rec := range confirmed {
+		if rec == nil {
+			continue
+		}
+		out = append(out, listPeerEntry{
+			CereraAddress: rec.CereraAddress.Hex(),
+			PeerID:        rec.PeerID.String(),
+			ListenAddrs:   rec.ListenAddrs,
+			Height:        rec.Height,
+			IsReady:       rec.IsReady,
+		})
+	}
+	for _, p := range pm.GetPeers() {
+		if p == nil || p.Address.IsEmpty() {
+			continue
+		}
+		if pm.GetConfirmedPeer(p.Address) != nil {
+			continue
+		}
+		out = append(out, listPeerEntry{
+			CereraAddress: p.Address.Hex(),
+			PeerID:        p.ID.String(),
+			ListenAddrs:   p.ListenAddrs,
+			Height:        p.Height,
+			IsReady:       p.IsReady,
+			Direction:     p.Direction,
+		})
+	}
+	return out
 }

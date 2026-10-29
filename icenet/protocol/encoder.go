@@ -140,6 +140,10 @@ func decodeMessage(msgType MessageType, data []byte) (Message, error) {
 		msg = &PingMessage{}
 	case MsgTypePong:
 		msg = &PongMessage{}
+	case MsgTypeSystemPeerList:
+		msg = &SystemPeerListRequest{}
+	case MsgTypeSystemPeerListResponse:
+		msg = &SystemPeerListResponse{}
 	default:
 		return nil, fmt.Errorf("unknown message type: %d", msgType)
 	}

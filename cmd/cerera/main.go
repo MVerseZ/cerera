@@ -138,6 +138,13 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		sp.SetVault(d5Vault)
 	}
 
+	if err := registry.Register(&service.Service{
+		Name:    ice.ServiceName(),
+		Methods: ice.Methods(),
+	}); err != nil {
+		return nil, fmt.Errorf("register ice RPC service: %w", err)
+	}
+
 	// Инициализация майнера
 	minerInstance, err := miner.Init(ctx, cfg)
 	if err != nil {

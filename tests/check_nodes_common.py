@@ -241,7 +241,7 @@ def print_accounts_comparison(results: Dict[str, Dict[str, Any]]) -> bool:
         unique_acc = set(valid_fps)
         if len(unique_acc) != 1:
             accounts_match = False
-            print("\nНаборы аккаунтов (getAll) различаются между нодами (ожидаемо при разных node address).")
+            print("\nНаборы аккаунтов (getAll) различаются между нодами — vault sync не выровнялся.")
             by_fp: Dict[str, List[str]] = {}
             for node, fp in account_fps.items():
                 if fp is None:
@@ -371,12 +371,12 @@ def run_basic_cluster_check(
     state_roots_match = True
     if check_state_root:
         state_roots_match = print_state_root_comparison(results)
-    print_accounts_comparison(results)
+    accounts_match = print_accounts_comparison(results)
     print_node_details(results)
 
     print("\n" + "=" * 80)
     has_success, heights_ok = evaluate_chain_sync(results)
-    ok = has_success and heights_ok and chain_heads_match
+    ok = has_success and heights_ok and chain_heads_match and accounts_match
     if check_state_root:
         ok = ok and state_roots_match
     sys.exit(0 if ok else 1)

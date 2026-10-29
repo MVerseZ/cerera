@@ -14,7 +14,7 @@ const (
 
 // Protocol IDs for different message types
 var (
-	// AccountProtocolID is used for account messages
+	// AccountProtocolID was reserved for a dedicated account stream; use storage-snapshot + pubsub instead.
 	AccountProtocolID = protocol.ID(ProtocolPrefix + "/account/" + ProtocolVersion)
 
 	// StatusProtocolID is used for exchanging node status information
@@ -45,7 +45,6 @@ var (
 // AllProtocols returns all supported protocol IDs
 func AllProtocols() []protocol.ID {
 	return []protocol.ID{
-		AccountProtocolID,
 		StatusProtocolID,
 		SystemProtocolID,
 		SyncProtocolID,

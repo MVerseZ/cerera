@@ -686,6 +686,26 @@ Returns the minimum gas price required for transactions.
 }
 ```
 
+## Network Service (`cerera.network.*`)
+
+Maps to the ICENet service (`ICE_CERERA_001_1_0`).
+
+#### `listPeers`
+
+Returns confirmed Cerera↔libp2p peer mappings (from status handshake) plus connected peers not yet confirmed.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "cerera.network.listPeers",
+  "params": [],
+  "id": 1
+}
+```
+
+**Response:** array of `{ "cereraAddress", "peerId", "listenAddrs", "height", "isReady", "direction?" }`.
+
 ## Examples
 
 ### Complete Workflow: Create Account, Get Balance, Send Transaction

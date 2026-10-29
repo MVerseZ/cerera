@@ -58,12 +58,14 @@ type StatusResponse struct {
 	Version     string        `json:"version"`
 	Height      int           `json:"height"`
 	NodeAddress types.Address `json:"nodeAddress"`
+	PeerID      string        `json:"peerId,omitempty"`
+	ListenAddrs []string      `json:"listenAddrs,omitempty"`
 	PeerCount   int           `json:"peerCount"`
 	Status      Status        `json:"status"`
 }
 
 // NewStatusResponse creates a new status response message
-func NewStatusResponse(chainID int, version string, height int, status Status, nodeAddr types.Address, peerCount int) *StatusResponse {
+func NewStatusResponse(chainID int, version string, height int, status Status, nodeAddr types.Address, peerCount int, libp2pPeerID string, listenAddrs []string) *StatusResponse {
 	return &StatusResponse{
 		BaseMessage: BaseMessage{
 			MsgType:   MsgTypeStatusResponse,
@@ -74,6 +76,8 @@ func NewStatusResponse(chainID int, version string, height int, status Status, n
 		Version:     version,
 		Height:      height,
 		NodeAddress: nodeAddr,
+		PeerID:      libp2pPeerID,
+		ListenAddrs: listenAddrs,
 		PeerCount:   peerCount,
 		Status:      status,
 	}

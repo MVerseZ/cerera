@@ -34,6 +34,7 @@ func peersLogger() *zap.SugaredLogger {
 type PeerInfo struct {
 	ID           peer.ID         `json:"id"`
 	Address      types.Address   `json:"address,omitempty"` // Cerera address
+	ListenAddrs  []string        `json:"listenAddrs,omitempty"`
 	Height       int             `json:"height"`
 	BestHash     string          `json:"bestHash,omitempty"`
 	Version      string          `json:"version,omitempty"`
@@ -49,12 +50,21 @@ type PeerInfo struct {
 	IsReady bool `json:"isReady"`
 }
 
+// PeerRecord is a confirmed Cerera address to libp2p mapping.
+type PeerRecord struct {
+	CereraAddress types.Address `json:"cereraAddress"`
+	PeerID        peer.ID       `json:"peerId"`
+	ListenAddrs   []string      `json:"listenAddrs,omitempty"`
+	Height        int           `json:"height"`
+	IsReady       bool          `json:"isReady"`
+}
+
 // Manager manages peer connections and information
 type Manager struct {
 	host           host.Host
 	mu             sync.RWMutex
 	peers          map[peer.ID]*PeerInfo
-	confirmedPeers map[types.Address]*PeerInfo // extends network communication => same as DNS, ip <-> libp2p_addr <-> Cerera address
+	confirmedPeers map[types.Address]*PeerRecord // Cerera address ↔ libp2p peer ID (+ listen addrs)
 	banned         map[peer.ID]time.Time
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -77,7 +87,7 @@ func NewManager(ctx context.Context, h host.Host, maxPeers int) *Manager {
 	m := &Manager{
 		host:           h,
 		peers:          make(map[peer.ID]*PeerInfo),
-		confirmedPeers: make(map[types.Address]*PeerInfo),
+		confirmedPeers: make(map[types.Address]*PeerRecord),
 		banned:         make(map[peer.ID]time.Time),
 		ctx:            ctx,
 		cancel:         cancel,
@@ -174,6 +184,9 @@ func (m *Manager) handleDisconnect(n network.Network, conn network.Conn) {
 	peerID := conn.RemotePeer()
 
 	m.mu.Lock()
+	if info, exists := m.peers[peerID]; exists && !info.Address.IsEmpty() {
+		delete(m.confirmedPeers, info.Address)
+	}
 	delete(m.peers, peerID)
 	m.mu.Unlock()
 
@@ -247,6 +260,12 @@ func (m *Manager) MarkPeerReady(peerID peer.ID, isReady bool) {
 			}
 			metrics.PeersReady.Add(delta)
 		}
+		if !info.Address.IsEmpty() {
+			if rec, ok := m.confirmedPeers[info.Address]; ok && rec != nil {
+				rec.IsReady = isReady
+				rec.Height = info.Height
+			}
+		}
 	}
 }
 
@@ -261,6 +280,88 @@ func (m *Manager) UpdatePeerInfo(peerID peer.ID, height int, status protocol.Sta
 		info.Address = address
 		info.LastSeen = time.Now()
 	}
+}
+
+// ConfirmPeer records a verified Cerera↔libp2p mapping from a status exchange.
+func (m *Manager) ConfirmPeer(peerID peer.ID, cereraAddr types.Address, listenAddrs []string, reportedPeerID string) {
+	if cereraAddr.IsEmpty() {
+		return
+	}
+	if reportedPeerID != "" && reportedPeerID != peerID.String() {
+		peersLogger().Warnw("Peer ID mismatch in status handshake",
+			"connPeer", peerID,
+			"reportedPeer", reportedPeerID,
+		)
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	info, exists := m.peers[peerID]
+	if !exists {
+		return
+	}
+	info.Address = cereraAddr
+	if len(listenAddrs) > 0 {
+		info.ListenAddrs = append([]string(nil), listenAddrs...)
+	}
+	info.LastSeen = time.Now()
+
+	rec := PeerRecord{
+		CereraAddress: cereraAddr,
+		PeerID:        peerID,
+		ListenAddrs:   append([]string(nil), info.ListenAddrs...),
+		Height:        info.Height,
+		IsReady:       info.IsReady,
+	}
+	m.confirmedPeers[cereraAddr] = &rec
+}
+
+// ListConfirmedPeers returns all confirmed Cerera↔libp2p mappings.
+func (m *Manager) ListConfirmedPeers() []*PeerRecord {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make([]*PeerRecord, 0, len(m.confirmedPeers))
+	for _, rec := range m.confirmedPeers {
+		if rec == nil {
+			continue
+		}
+		copy := *rec
+		out = append(out, &copy)
+	}
+	return out
+}
+
+// ConfirmedPeerRecords returns wire-friendly peer registry rows (implements protocol.peerRegistry).
+func (m *Manager) ConfirmedPeerRecords() []protocol.PeerRegistryEntry {
+	records := m.ListConfirmedPeers()
+	out := make([]protocol.PeerRegistryEntry, 0, len(records))
+	for _, rec := range records {
+		if rec == nil {
+			continue
+		}
+		out = append(out, protocol.PeerRegistryEntry{
+			CereraAddress: rec.CereraAddress.Hex(),
+			PeerID:        rec.PeerID.String(),
+			ListenAddrs:   rec.ListenAddrs,
+			Height:        rec.Height,
+			IsReady:       rec.IsReady,
+		})
+	}
+	return out
+}
+
+// GetConfirmedPeer returns a mapping by Cerera address.
+func (m *Manager) GetConfirmedPeer(addr types.Address) *PeerRecord {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if rec, ok := m.confirmedPeers[addr]; ok && rec != nil {
+		copy := *rec
+		return &copy
+	}
+	return nil
 }
 
 // UpdatePeerHeight updates just the height of a peer
