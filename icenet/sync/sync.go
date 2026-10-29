@@ -163,10 +163,6 @@ func (m *Manager) refreshPeerStatuses() {
 		}
 
 		m.peerManager.UpdatePeerInfo(p.ID, status.Height, status.Status, status.NodeAddress)
-		m.peerManager.ConfirmPeer(p.ID, status.NodeAddress, status.ListenAddrs, status.PeerID)
-		if m.serviceProvider != nil && !status.NodeAddress.IsEmpty() {
-			m.serviceProvider.EnsureAccount(status.NodeAddress)
-		}
 		m.peerTracker.UpdatePeer(p.ID, status.Height, status.Status)
 	}
 }
@@ -400,39 +396,24 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 const storageSnapshotChunkLimit = 256
 
 func vaultSyncNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
-	if peer.AccountsFingerprint != (common.Hash{}) &&
-		local.AccountsFingerprint != peer.AccountsFingerprint {
-		return true
-	}
 	return peer.StorageData > local.Accounts ||
 		peer.ContractCodes > local.ContractCodes ||
 		peer.ContractSlots > local.ContractSlots
 }
 
-func accountsSnapshotNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
-	if peer.AccountsFingerprint != (common.Hash{}) &&
-		local.AccountsFingerprint != peer.AccountsFingerprint {
-		return true
-	}
-	return peer.StorageData > local.Accounts
-}
-
 // syncFullVaultWithPeer pulls accounts, contract code, and contract storage from the peer.
 func (m *Manager) syncFullVaultWithPeer(peerID peer.ID, local storage.VaultSyncStats, peer protocol.Status) {
-	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotAccounts, local.Accounts, peer.StorageData,
-		accountsSnapshotNeeded(local, peer))
-	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractCode, local.ContractCodes, peer.ContractCodes,
-		peer.ContractCodes > local.ContractCodes)
-	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractStorage, local.ContractSlots, peer.ContractSlots,
-		peer.ContractSlots > local.ContractSlots)
+	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotAccounts, local.Accounts, peer.StorageData)
+	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractCode, local.ContractCodes, peer.ContractCodes)
+	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractStorage, local.ContractSlots, peer.ContractSlots)
 }
 
 // syncVaultKindWithPeer pulls one vault snapshot kind from the peer (chunked) and merges locally.
-func (m *Manager) syncVaultKindWithPeer(peerID peer.ID, kind protocol.VaultSnapshotKind, localCount, peerCount int, force bool) {
+func (m *Manager) syncVaultKindWithPeer(peerID peer.ID, kind protocol.VaultSnapshotKind, localCount, peerCount int) {
 	if m.handler == nil || m.serviceProvider == nil {
 		return
 	}
-	if !force && peerCount <= localCount {
+	if peerCount <= localCount {
 		return
 	}
 
@@ -603,18 +584,12 @@ func (m *Manager) HandleNewPeer(peerID peer.ID) {
 
 	// Update peer info
 	m.peerManager.UpdatePeerInfo(peerID, status.Height, status.Status, status.NodeAddress)
-	if m.serviceProvider != nil && !status.NodeAddress.IsEmpty() {
-		m.serviceProvider.EnsureAccount(status.NodeAddress)
-	}
 	// Ready for sync/block work if chain and vault implementation match; divergent
 	// account counts must not hide the peer from GetBestPeer or storage sync stalls.
 	if chainMatch && storageSvcMatch {
 		m.peerManager.MarkPeerReady(peerID, true)
 	} else {
 		m.peerManager.MarkPeerReady(peerID, false)
-	}
-	if m.peerManager != nil {
-		m.peerManager.ConfirmPeer(peerID, status.NodeAddress, status.ListenAddrs, status.PeerID)
 	}
 	m.peerTracker.UpdatePeer(peerID, status.Height, status.Status)
 

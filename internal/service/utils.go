@@ -32,7 +32,6 @@ var NamespaceToService = map[string]string{
 	"pool":        POOL_SERVICE_NAME,
 	"validator":   VALIDATOR_SERVICE_NAME,
 	"ice":         ICE_SERVICE_NAME,
-	"network":     ICE_SERVICE_NAME,
 	"miner":       MINER_SERVICE_NAME,
 	"transaction": VALIDATOR_SERVICE_NAME,
 }

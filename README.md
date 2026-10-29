@@ -214,7 +214,7 @@ Errors are returned as JSON-RPC error objects with HTTP 200. Parse errors use `-
 | `cerera.transaction.*` | Validator | Send and query transactions |
 | `cerera.pool.*` | Mempool | Pending transactions, gas limits |
 
-**Chain vs account data:** `cerera.chain.*` reflects the canonical blockchain and should match on synced nodes. After ICENet vault sync, `cerera.account.getAll` should expose the same address set on connected peers (node identities merged via status + pubsub). For multi-node checks, compare `chain.height`, head block hash, and `getAll` fingerprints.
+**Chain vs account data:** `cerera.chain.*` reflects the canonical blockchain and should match on synced nodes. `cerera.account.*` reads the local vault (each node has its own identity address plus merged peer accounts). For multi-node checks, compare `chain.height` and head block hash; use `account.getBalance` for a specific address rather than comparing full `getAll` snapshots.
 
 Full request/response examples: [API.md](API.md).
 

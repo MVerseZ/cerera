@@ -41,8 +41,7 @@ PYTHONIOENCODING=utf-8 python tests/check_3nodes.py
 - all nodes respond on RPC
 - **heights match** across nodes
 - **head block hash matches** across nodes (chain sync OK)
-- **`cerera.account.getAll` fingerprints match** across connected nodes (vault account set synced via ICENet)
-- optional: `cerera.network.listPeers` returns Cerera↔libp2p mappings after status handshake
+- `cerera.account.getAll` may differ per node (each node has its own address) — this is informational only
 
 4. Verify in logs you see something like:
 
@@ -73,7 +72,6 @@ PYTHONIOENCODING=utf-8 python tests/check_1node.py
 
 ## Notes
 
-- **Bootstrap / `SEED_NODES`:** prefer full libp2p multiaddrs including `/p2p/<PeerID>` (see node startup log `Ice P2P network started`). IP:port-only seeds rely on DHT (`cerera-network`, `cerera-peer/<CereraAddress>`) and mDNS after the first peer connects.
 - To disable dev validator behavior (connected peers == validators), set `ICE_DEV_VALIDATORS=0`.
 - Quorum is computed from the **validator snapshot at round start**, so peers connecting/disconnecting mid-round won't change the required quorum.
 - To (re)apply `ICE_DEV_VALIDATORS=1` across compose files idempotently: `python tests/update_compose_env.py`

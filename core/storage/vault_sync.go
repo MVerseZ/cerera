@@ -2,15 +2,12 @@ package storage
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math/big"
 	"sort"
 
 	"github.com/akrylysov/pogreb"
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"golang.org/x/crypto/blake2b"
 )
 
 const (
@@ -33,10 +30,9 @@ const (
 
 // VaultSyncStats summarizes vault rows relevant for P2P sync.
 type VaultSyncStats struct {
-	Accounts            int
-	ContractCodes       int
-	ContractSlots       int
-	AccountsFingerprint common.Hash
+	Accounts      int
+	ContractCodes int
+	ContractSlots int
 }
 
 type contractStorageSlot struct {
@@ -50,48 +46,10 @@ func (v *D5Vault) VaultSyncStats() VaultSyncStats {
 		return VaultSyncStats{}
 	}
 	return VaultSyncStats{
-		Accounts:            v.GetCount(),
-		ContractCodes:       v.contractCodeCount(),
-		ContractSlots:       v.contractStorageSlotCount(),
-		AccountsFingerprint: v.AccountsFingerprint(),
+		Accounts:      v.GetCount(),
+		ContractCodes: v.contractCodeCount(),
+		ContractSlots: v.contractStorageSlotCount(),
 	}
-}
-
-// AccountsFingerprint hashes all vault accounts (including OP_ACC_NODE) for P2P drift detection.
-func (v *D5Vault) AccountsFingerprint() common.Hash {
-	if v == nil || v.accounts == nil {
-		return common.Hash{}
-	}
-	hexes := v.accounts.sortedAddresses()
-	v.accounts.mu.RLock()
-	defer v.accounts.mu.RUnlock()
-
-	h, err := blake2b.New256(nil)
-	if err != nil {
-		return common.Hash{}
-	}
-	for _, hexKey := range hexes {
-		addr := types.HexToAddress(hexKey)
-		acc := v.accounts.accounts[addr]
-		if acc == nil {
-			continue
-		}
-		h.Write(acc.Address.Bytes())
-		bal := acc.GetBalanceBI().Bytes()
-		padded := make([]byte, 32)
-		if len(bal) > 32 {
-			copy(padded, bal[len(bal)-32:])
-		} else {
-			copy(padded[32-len(bal):], bal)
-		}
-		h.Write(padded)
-		h.Write([]byte{acc.Status})
-		var nonceBuf [8]byte
-		binary.LittleEndian.PutUint64(nonceBuf[:], acc.Nonce)
-		h.Write(nonceBuf[:])
-	}
-	sum := h.Sum(nil)
-	return common.BytesToHash(sum)
 }
 
 func (v *D5Vault) contractCodeCount() int {

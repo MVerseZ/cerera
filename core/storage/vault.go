@@ -354,7 +354,6 @@ func (v *D5Vault) EnsureAccount(addr types.Address) {
 	v.accounts.Append(addr, acc)
 	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	v.markDirty(addr)
-	notifyAccountCreated(acc)
 }
 func (v *D5Vault) Size() int64 {
 	if v.inMem || v.db == nil {

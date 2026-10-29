@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/cerera/core/common"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 )
@@ -49,24 +48,12 @@ func TestStorageSnapshotWireRoundtrip(t *testing.T) {
 func TestVaultSyncNeeded(t *testing.T) {
 	local := storage.VaultSyncStats{Accounts: 1, ContractCodes: 1, ContractSlots: 1}
 	peer := Status{StorageData: 1, ContractCodes: 1, ContractSlots: 2}
-	if !vaultSyncNeededForTest(local, peer) {
+	if !needsVaultSyncForTest(local, peer) {
 		t.Fatal("expected vault sync needed when contract slots differ")
-	}
-
-	fpA := common.BytesToHash([]byte("fingerprint-a"))
-	fpB := common.BytesToHash([]byte("fingerprint-b"))
-	localSameCount := storage.VaultSyncStats{Accounts: 2, AccountsFingerprint: fpA}
-	peerMismatch := Status{StorageData: 2, AccountsFingerprint: fpB}
-	if !vaultSyncNeededForTest(localSameCount, peerMismatch) {
-		t.Fatal("expected vault sync when account fingerprints differ at same count")
 	}
 }
 
-func vaultSyncNeededForTest(local storage.VaultSyncStats, peer Status) bool {
-	if peer.AccountsFingerprint != (common.Hash{}) &&
-		local.AccountsFingerprint != peer.AccountsFingerprint {
-		return true
-	}
+func needsVaultSyncForTest(local storage.VaultSyncStats, peer Status) bool {
 	return peer.StorageData > local.Accounts ||
 		peer.ContractCodes > local.ContractCodes ||
 		peer.ContractSlots > local.ContractSlots

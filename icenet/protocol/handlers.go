@@ -32,7 +32,6 @@ func protocolLogger() *zap.SugaredLogger {
 type Handler struct {
 	host            host.Host
 	serviceProvider *service.ServiceProvider
-	peerManager     peerRegistry
 	nodeAddr        types.Address
 	version         string
 
@@ -41,20 +40,6 @@ type Handler struct {
 	onNewTx        func(*types.GTransaction, peer.ID)
 	onConsensusMsg func(*ConsensusMessage, peer.ID)
 	onVote         func(*VoteMessage, peer.ID)
-}
-
-// peerRegistry exposes confirmed peer records for the system protocol.
-type peerRegistry interface {
-	ConfirmedPeerRecords() []PeerRegistryEntry
-}
-
-// PeerRegistryEntry is a Cerera↔libp2p mapping for system/RPC export.
-type PeerRegistryEntry struct {
-	CereraAddress string
-	PeerID        string
-	ListenAddrs   []string
-	Height        int
-	IsReady       bool
 }
 
 // NewHandler creates a new protocol handler
@@ -67,11 +52,6 @@ func NewHandler(h host.Host, serviceProvider *service.ServiceProvider, nodeAddr 
 	}
 }
 
-// SetPeerManager wires the peer registry used by the system protocol.
-func (h *Handler) SetPeerManager(m peerRegistry) {
-	h.peerManager = m
-}
-
 // RegisterHandlers registers all protocol handlers with the host
 func (h *Handler) RegisterHandlers() {
 	h.host.SetStreamHandler(StatusProtocolID, h.handleStatusStream)
@@ -81,7 +61,6 @@ func (h *Handler) RegisterHandlers() {
 	h.host.SetStreamHandler(TxProtocolID, h.handleTxStream)
 	h.host.SetStreamHandler(ConsensusProtocolID, h.handleConsensusStream)
 	h.host.SetStreamHandler(PingProtocolID, h.handlePingStream)
-	h.host.SetStreamHandler(SystemProtocolID, h.handleSystemStream)
 
 	protocolLogger().Debugw("Protocol handlers registered",
 		"protocols", AllProtocols(),
@@ -166,8 +145,6 @@ func (h *Handler) handleStatusStream(s network.Stream) {
 		status,
 		h.nodeAddr,
 		len(h.host.Network().Peers()),
-		h.host.ID().String(),
-		GetListenAddresses(h.host),
 	)
 
 	encoder := NewEncoder(s)

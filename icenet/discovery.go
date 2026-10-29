@@ -19,8 +19,6 @@ import (
 const (
 	// DiscoveryNamespace is the namespace for peer discovery
 	DiscoveryNamespace = "cerera-network"
-	// DiscoveryPeerRecordPrefix is prepended to a Cerera address hex for DHT peer-record routing.
-	DiscoveryPeerRecordPrefix = "cerera-peer/"
 	// DiscoveryInterval is the interval between discovery attempts
 	DiscoveryInterval = 30 * time.Second
 	// ConnectionTimeout is the timeout for connecting to peers
@@ -185,7 +183,6 @@ func (d *Discovery) Start() error {
 
 	// Start continuous discovery
 	go d.discoverPeers()
-	go d.advertisePeerRecordLoop()
 
 	// Setup connection notifier
 	d.host.Network().Notify(&network.NotifyBundle{
@@ -348,7 +345,6 @@ func (d *Discovery) discoverPeers() {
 
 	// Initial discovery
 	d.findPeers(routingDiscovery)
-	d.findPeerRecords(routingDiscovery)
 
 	for {
 		select {
@@ -356,60 +352,7 @@ func (d *Discovery) discoverPeers() {
 			return
 		case <-ticker.C:
 			d.findPeers(routingDiscovery)
-			d.findPeerRecords(routingDiscovery)
 		}
-	}
-}
-
-func (d *Discovery) peerRecordNamespace() string {
-	addr := d.cfg.NetCfg.ADDR
-	if addr.IsEmpty() {
-		return ""
-	}
-	return DiscoveryPeerRecordPrefix + addr.Hex()
-}
-
-func (d *Discovery) advertisePeerRecordLoop() {
-	ns := d.peerRecordNamespace()
-	if ns == "" || d.dht == nil {
-		return
-	}
-	routingDiscovery := routing.NewRoutingDiscovery(d.dht)
-	util.Advertise(d.ctx, routingDiscovery, ns)
-	ticker := time.NewTicker(DiscoveryInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-d.ctx.Done():
-			return
-		case <-ticker.C:
-			util.Advertise(d.ctx, routingDiscovery, ns)
-		}
-	}
-}
-
-func (d *Discovery) findPeerRecords(routingDiscovery *routing.RoutingDiscovery) {
-	if routingDiscovery == nil {
-		return
-	}
-	peerChan, err := routingDiscovery.FindPeers(d.ctx, DiscoveryPeerRecordPrefix)
-	if err != nil {
-		return
-	}
-	for peerInfo := range peerChan {
-		if peerInfo.ID == d.host.ID() {
-			continue
-		}
-		if d.host.Network().Connectedness(peerInfo.ID) == network.Connected {
-			continue
-		}
-		go func(pi peer.AddrInfo) {
-			ctx, cancel := context.WithTimeout(d.ctx, ConnectionTimeout)
-			defer cancel()
-			if err := d.host.Connect(ctx, pi); err != nil {
-				iceLogger().Debugw("Failed to connect via peer-record DHT", "peer", pi.ID, "error", err)
-			}
-		}(peerInfo)
 	}
 }
 
