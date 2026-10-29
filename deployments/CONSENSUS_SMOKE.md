@@ -41,7 +41,7 @@ PYTHONIOENCODING=utf-8 python tests/check_3nodes.py
 - all nodes respond on RPC
 - **heights match** across nodes
 - **head block hash matches** across nodes (chain sync OK)
-- **`cerera.account.getAll` fingerprints match** across connected nodes (vault account set synced via ICENet)
+- **`cerera.account.getAll` fingerprints match** across connected nodes (live vault = **chain replay** + replicated faucet journal; P2P account snapshots do not overwrite balances)
 - optional: `cerera.network.listPeers` returns Cerera↔libp2p mappings after status handshake
 
 4. Verify in logs you see something like:
@@ -110,3 +110,10 @@ PYTHONIOENCODING=utf-8 python tests/check_nodes_common.py --check-state-root
 ```
 
 Use this after a fork/reorg scenario to confirm vault replay converged.
+
+### Chain-derived vault (multi-node)
+
+- Live balances in `cerera.account.getAll` come from **`ReplayChain`** on the canonical block list (same path as block `stateRoot` validation), not from merging arbitrary peer account snapshots.
+- Off-chain **faucet** credits are stored in a **replicated journal** (pubsub `faucet_mint` on the accounts topic); all nodes apply the same journal during replay.
+- P2P **account pubsub** only bootstraps missing / `OP_ACC_NODE` registry entries — it does not overwrite consensus balances.
+- If `getAll` still diverges after upgrade, reset volumes once: `docker compose -p cerera-5nodes -f deployments/docker-compose-5nodes.yml down -v` then `up` again.

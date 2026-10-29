@@ -317,6 +317,9 @@ func (tx *GTransaction) unmarshalFromNewFormat(dec txJSONInput) error {
 	}
 
 	tx.setDecoded(inner, 0)
+	if dec.From != nil && !dec.From.IsEmpty() {
+		tx.SetFrom(*dec.From)
+	}
 	return nil
 }
 

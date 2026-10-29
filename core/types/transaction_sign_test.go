@@ -391,3 +391,35 @@ func TestSimpleSignerSignTransactionAndVerifySignature(t *testing.T) {
 		t.Fatal("nil chain ID should be equivalent to zero")
 	}
 }
+
+// SetFrom after pubsub JSON decode must not panic Sender (partial sigCache without signer).
+func TestSender_afterSetFromFromJSONDecode(t *testing.T) {
+	key, err := GenerateAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	to := HexToAddress("0x2000000000000000000000000000000000000000000000000000000000000002")
+	tx, err := CreateUnbroadcastTransaction(1, to, 0.1, 21000, big.NewInt(1), "msg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := NewSimpleSigner(big.NewInt(11))
+	signed, err := SignTx(tx, signer, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed.SetFrom(PubkeyToAddress(&key.PublicKey))
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Sender panicked after SetFrom: %v", r)
+		}
+	}()
+	from, err := Sender(signer, signed)
+	if err != nil {
+		t.Fatalf("Sender: %v", err)
+	}
+	if from != PubkeyToAddress(&key.PublicKey) {
+		t.Fatalf("from mismatch: got %s", from)
+	}
+}

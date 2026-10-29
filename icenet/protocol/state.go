@@ -8,6 +8,7 @@ import (
 type Status struct {
 	ChainID             int         `json:"chainId"`
 	GenesisHash         common.Hash `json:"genesisHash"`
+	HeadHash            common.Hash `json:"headHash,omitempty"`
 	StorageService      string      `json:"storageService,omitempty"`
 	StorageData         int         `json:"storageData,omitempty"` // Number of accounts
 	ContractCodes       int         `json:"contractCodes,omitempty"`
@@ -37,6 +38,8 @@ func GetStatus(serviceProvider *service.ServiceProvider) (Status, error) {
 		if genesis := serviceProvider.GetBlockByHeight(0); genesis != nil {
 			status.GenesisHash = genesis.Hash
 		}
+
+		status.HeadHash = serviceProvider.GetLatestHash()
 
 		// storage data (number of accounts)
 		status.StorageData = serviceProvider.GetStorageSize()

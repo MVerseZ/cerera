@@ -44,6 +44,10 @@ func (m *mockTxPool) AddRawTransaction(tx *types.GTransaction) error {
 	return nil
 }
 
+func (m *mockTxPool) AddLocalRawTransaction(tx *types.GTransaction) error {
+	return m.AddRawTransaction(tx)
+}
+
 func (m *mockTxPool) Stop() {}
 
 func (m *mockTxPool) GetTransaction(hash common.Hash) *types.GTransaction {

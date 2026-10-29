@@ -17,6 +17,9 @@ import (
 
 const cancelCheckInterval = 64
 
+// maxStateRootReseals bounds PoW retries when canonical state (faucet journal / chain) moves during mining.
+const maxStateRootReseals = 64
+
 // Worker представляет собой воркер для долгих вычислений.
 // stopCtx живёт всё время работы воркера; taskCancel отменяет только текущий поиск nonce,
 // чтобы Update мог перезапустить майнинг с новым набором транзакций.
@@ -280,6 +283,32 @@ func (w *Worker) createNewBlock(data *Task) *block.Block {
 	return newBlock
 }
 
+func (w *Worker) sealBlockStateRoot(block *block.Block) error {
+	w.mu.Lock()
+	rootFn := w.stateRootFn
+	w.mu.Unlock()
+	if rootFn == nil || block == nil || block.Head == nil {
+		return nil
+	}
+	root, err := rootFn(block)
+	if err != nil {
+		return err
+	}
+	block.Head.Root = root
+	block.Head.Size = len(block.ToBytes())
+	return nil
+}
+
+func (w *Worker) stateRootAfterSeal(block *block.Block) (common.Hash, error) {
+	w.mu.Lock()
+	rootFn := w.stateRootFn
+	w.mu.Unlock()
+	if rootFn == nil || block == nil {
+		return common.Hash{}, nil
+	}
+	return rootFn(block)
+}
+
 // doLongComputation выполняет долгое вычисление
 func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 	startTime := time.Now()
@@ -306,41 +335,46 @@ func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 		return
 	}
 
-	select {
-	case <-ctx.Done():
-		minerLogger().Debugw("[MINER] mining cancelled before nonce search")
-		return
-	default:
-		// Обновляем метрику difficulty
+	startNonce := block.Head.Nonce
+	var blockHash []byte
+
+sealLoop:
+	for reseal := 0; reseal < maxStateRootReseals; reseal++ {
+		if ctx.Err() != nil {
+			minerLogger().Debugw("[MINER] mining cancelled before nonce search")
+			return
+		}
+		if err := w.sealBlockStateRoot(block); err != nil {
+			minerLogger().Warnw("[MINER] state root computation failed", "err", err)
+			return
+		}
+		block.Head.Nonce = startNonce
+
 		minerCurrentDifficulty.Set(float64(block.Header().Difficulty))
 
-		// Рассчитываем хеш блока
-		blockHash, err := block.CalculateHash()
+		var err error
+		blockHash, err = block.CalculateHash()
 		if err != nil {
 			minerLogger().Errorw("Error calculating block hash", "err", err, "height", block.Header().Height)
 			return
 		}
 
-		// Защита от деления на ноль
 		if block.Header().Difficulty == 0 {
 			return
 		}
 		target := new(big.Int).Div(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(int64(block.Header().Difficulty)))
 
-		// Обновляем метрику target (используем логарифм для больших чисел)
 		targetLog := 256*math.Log2(2) - math.Log2(float64(block.Header().Difficulty))
 		minerCurrentTarget.Set(targetLog)
 
 		block.Hash = common.BytesToHash(blockHash)
 		blockHashInt := new(big.Int).SetBytes(blockHash)
 
-		// Вычисляем отношение хэша к target для мониторинга
 		hashBitLen := blockHashInt.BitLen()
 		hashLog := float64(hashBitLen)
 		ratio := hashLog - targetLog
 		minerHashToTargetRatio.Set(ratio)
 
-		// Проверяем начальный хэш
 		minerHashValidationTotal.Inc()
 		if blockHashInt.Cmp(target) < 0 {
 			minerHashValidTotal.Inc()
@@ -348,11 +382,9 @@ func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 			minerHashInvalidTotal.Inc()
 		}
 
-		// Начинаем отслеживание поиска nonce
 		nonceSearchStartTime := time.Now()
 		nonceSearchAttempts := uint64(0)
 
-		// Цикл поиска валидного nonce: продолжаем пока хеш >= target (невалидный)
 		for blockHashInt.Cmp(target) >= 0 {
 			if nonceSearchAttempts%cancelCheckInterval == 0 {
 				select {
@@ -365,9 +397,6 @@ func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 				}
 			}
 
-			// Increment nonce directly on the header pointer (block.Header() returns
-			// block.Head itself, not a copy, so assigning back would be a no-op).
-			// Detect uint64 overflow: if nonce wraps to 0 we have exhausted the space.
 			next, carry := bits.Add64(block.Head.Nonce, 1, 0)
 			if carry != 0 {
 				return
@@ -377,17 +406,14 @@ func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 			blockHash = newBlockHash
 			blockHashInt = new(big.Int).SetBytes(newBlockHash)
 
-			// Обновляем метрики поиска nonce
 			nonceSearchAttempts++
 			minerNonceSearchAttemptsTotal.Inc()
 
-			// Обновляем отношение хэша к target (используем логарифм через bitLen)
 			hashBitLen = blockHashInt.BitLen()
 			hashLog = float64(hashBitLen)
 			ratio = hashLog - targetLog
 			minerHashToTargetRatio.Set(ratio)
 
-			// Проверяем хэш на каждой итерации
 			minerHashValidationTotal.Inc()
 			if blockHashInt.Cmp(target) < 0 {
 				minerHashValidTotal.Inc()
@@ -396,19 +422,32 @@ func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 			}
 		}
 
-		// Обновляем метрики после нахождения валидного nonce
 		nonceSearchDuration := time.Since(nonceSearchStartTime).Seconds()
 		minerNonceSearchAttempts.Observe(float64(nonceSearchAttempts))
 		minerNonceSearchDurationSeconds.Observe(nonceSearchDuration)
 
-		// Обновляем block.Hash после нахождения валидного хеша
 		block.Hash = common.BytesToHash(blockHash)
+
+		rootAfter, err := w.stateRootAfterSeal(block)
+		if err != nil {
+			minerLogger().Warnw("[MINER] state root verification failed", "err", err)
+			return
+		}
+		if rootAfter != (common.Hash{}) && rootAfter != block.Head.Root {
+			minerLogger().Debugw("[MINER] state root drift during PoW, resealing block",
+				"height", block.Head.Height,
+				"sealed", block.Head.Root,
+				"current", rootAfter,
+				"attempt", reseal+1,
+			)
+			continue sealLoop
+		}
 
 		minerLogger().Infow("[MINER] Block mined",
 			"height", block.Header().Height,
 			"nonce", block.Header().Nonce,
 			"hash", fmt.Sprintf("%x", blockHash))
-
+		break sealLoop
 	}
 
 	if ctx.Err() != nil {

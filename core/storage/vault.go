@@ -287,6 +287,9 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 			db.Close()
 			return nil, fmt.Errorf("failed to sync vault: %w", err)
 		}
+		if err := v.loadFaucetJournalFromDB(); err != nil {
+			vltlogger().Warnw("Failed to load faucet journal", "err", err)
+		}
 		if v.accounts.GetAccount(rootSA.Address) == nil {
 			v.accounts.Append(rootSA.Address, rootSA)
 			if err := putAccountPayload(db, key, rootSA.Bytes()); err != nil {
@@ -373,7 +376,7 @@ func (v *D5Vault) Size() int64 {
 		if err != nil {
 			return -1
 		}
-		if isContractOrStorageKey(k) {
+		if isNonAccountVaultKey(k) {
 			continue
 		}
 		count++
@@ -555,6 +558,23 @@ func (v *D5Vault) Sync(saBytes []byte) {
 	}
 }
 
+// MergePeerAccountMetadata applies peer account bytes without overwriting consensus balances.
+func (v *D5Vault) MergePeerAccountMetadata(saBytes []byte) {
+	sa := types.BytesToStateAccount(saBytes)
+	if sa == nil {
+		return
+	}
+	existing := v.Get(sa.Address)
+	if existing == nil {
+		v.Sync(saBytes)
+		return
+	}
+	const opAccNode = byte(3)
+	if existing.Status == opAccNode && sa.Status == opAccNode {
+		v.Sync(saBytes)
+	}
+}
+
 func (v *D5Vault) Status() byte {
 	return v.status
 }
@@ -588,7 +608,7 @@ func (v *D5Vault) SyncFromDB() error {
 			continue
 		}
 
-		if isContractOrStorageKey(key) {
+		if isNonAccountVaultKey(key) {
 			continue
 		}
 

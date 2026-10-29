@@ -188,8 +188,13 @@ func (m *Manager) checkAndSync() {
 		currentHeight = m.serviceProvider.GetCurrentHeight()
 	}
 
+	localHead := common.Hash{}
+	if m.serviceProvider != nil {
+		localHead = m.serviceProvider.GetLatestHash()
+	}
+
 	// Find best peer after refresh
-	bestPeer := m.peerManager.GetBestPeer()
+	bestPeer := m.peerManager.GetBestPeer(localHead)
 	if bestPeer == nil {
 		return
 	}
@@ -395,21 +400,40 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 	if m.onSyncComplete != nil {
 		m.onSyncComplete()
 	}
+
+	if m.serviceProvider != nil {
+		if err := m.serviceProvider.SyncLiveVaultFromChain(); err != nil {
+			syncLogger().Errorw("SyncLiveVaultFromChain after chain sync failed", "error", err)
+		}
+	}
 }
 
 const storageSnapshotChunkLimit = 256
 
-func vaultSyncNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
-	if peer.AccountsFingerprint != (common.Hash{}) &&
-		local.AccountsFingerprint != peer.AccountsFingerprint {
-		return true
+func (m *Manager) repairVaultFromChain(reason string) {
+	if m.serviceProvider == nil {
+		return
 	}
-	return peer.StorageData > local.Accounts ||
-		peer.ContractCodes > local.ContractCodes ||
-		peer.ContractSlots > local.ContractSlots
+	syncLogger().Infow("Vault replay repair starting", "reason", reason)
+	if err := m.serviceProvider.SyncLiveVaultFromChain(); err != nil {
+		syncLogger().Errorw("Vault replay repair failed", "reason", reason, "error", err)
+		return
+	}
+	syncLogger().Infow("Vault replay repair completed", "reason", reason)
 }
 
-func accountsSnapshotNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
+func localChainLoaded(sp *service.ServiceProvider) bool {
+	if sp == nil {
+		return false
+	}
+	return sp.GetCurrentHeight() >= 1
+}
+
+func vaultSyncNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
+	if peer.ContractCodes > local.ContractCodes ||
+		peer.ContractSlots > local.ContractSlots {
+		return true
+	}
 	if peer.AccountsFingerprint != (common.Hash{}) &&
 		local.AccountsFingerprint != peer.AccountsFingerprint {
 		return true
@@ -417,14 +441,51 @@ func accountsSnapshotNeeded(local storage.VaultSyncStats, peer protocol.Status) 
 	return peer.StorageData > local.Accounts
 }
 
-// syncFullVaultWithPeer pulls accounts, contract code, and contract storage from the peer.
+func accountsSnapshotNeeded(local storage.VaultSyncStats, peer protocol.Status) bool {
+	if peer.StorageData > local.Accounts {
+		return true
+	}
+	if peer.AccountsFingerprint != (common.Hash{}) &&
+		local.AccountsFingerprint != peer.AccountsFingerprint {
+		return true
+	}
+	return false
+}
+
+// syncFullVaultWithPeer pulls contract vault data from the peer; account balances come from chain replay.
 func (m *Manager) syncFullVaultWithPeer(peerID peer.ID, local storage.VaultSyncStats, peer protocol.Status) {
-	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotAccounts, local.Accounts, peer.StorageData,
-		accountsSnapshotNeeded(local, peer))
+	if m.serviceProvider != nil && !peerHeadMatchesLocal(m.serviceProvider, peer) {
+		syncLogger().Debugw("Skipping vault sync — peer head hash mismatch",
+			"peer", peerID,
+			"localHead", m.serviceProvider.GetLatestHash(),
+			"peerHead", peer.HeadHash,
+		)
+		return
+	}
+
+	if m.serviceProvider != nil && localChainLoaded(m.serviceProvider) {
+		if accountsSnapshotNeeded(local, peer) {
+			m.repairVaultFromChain("account fingerprint drift")
+		}
+	} else if accountsSnapshotNeeded(local, peer) {
+		m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotAccounts, local.Accounts, peer.StorageData, true)
+	}
+
 	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractCode, local.ContractCodes, peer.ContractCodes,
 		peer.ContractCodes > local.ContractCodes)
 	m.syncVaultKindWithPeer(peerID, protocol.VaultSnapshotContractStorage, local.ContractSlots, peer.ContractSlots,
 		peer.ContractSlots > local.ContractSlots)
+}
+
+func peerHeadMatchesLocal(sp *service.ServiceProvider, peer protocol.Status) bool {
+	if sp == nil {
+		return true
+	}
+	localHead := sp.GetLatestHash()
+	if localHead == (common.Hash{}) || peer.HeadHash == (common.Hash{}) {
+		return true
+	}
+	return localHead == peer.HeadHash
 }
 
 // syncVaultKindWithPeer pulls one vault snapshot kind from the peer (chunked) and merges locally.
@@ -766,14 +827,16 @@ func (m *Manager) SetOnNewBlock(callback func(*block.Block)) {
 func (m *Manager) ForceSync() error {
 	m.refreshPeerStatuses()
 
-	bestPeer := m.peerManager.GetBestPeer()
-	if bestPeer == nil {
-		return fmt.Errorf("no peers available")
-	}
-
+	localHead := common.Hash{}
 	currentHeight := 0
 	if m.serviceProvider != nil {
+		localHead = m.serviceProvider.GetLatestHash()
 		currentHeight = m.serviceProvider.GetCurrentHeight()
+	}
+
+	bestPeer := m.peerManager.GetBestPeer(localHead)
+	if bestPeer == nil {
+		return fmt.Errorf("no peers available")
 	}
 
 	if bestPeer.Height <= currentHeight {

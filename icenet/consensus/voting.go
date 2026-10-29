@@ -207,6 +207,9 @@ func (vm *VotingManager) StartRound(b *block.Block, viewID, seqID int64) error {
 	if vm.currentRound != nil && !vm.currentRound.IsExpired() {
 		return fmt.Errorf("consensus round already in progress")
 	}
+	if vm.currentRound != nil {
+		vm.currentRound = nil
+	}
 
 	vm.currentRound = NewRoundState(b.Hash, b.Head.Height, viewID, seqID, VoteTimeout, vm.validatorSet.GetValidators())
 	vm.applyPendingVotesLocked(RoundKey{Height: b.Head.Height, ViewID: viewID, SequenceID: seqID})
