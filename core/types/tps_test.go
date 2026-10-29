@@ -613,28 +613,28 @@ func TestAddressMarshalUnmarshal(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkFloatToBigInt(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		FloatToBigInt(123.456789)
 	}
 }
 
 func BenchmarkBigIntToFloat(b *testing.B) {
 	bigInt := big.NewInt(123456789000000000)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		BigIntToFloat(bigInt)
 	}
 }
 
 func BenchmarkHexToAddress(b *testing.B) {
 	hexStr := "0x1234567890abcdef1234567890abcdef12345678"
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		HexToAddress(hexStr)
 	}
 }
 
 func BenchmarkIsHexAddress(b *testing.B) {
 	hexStr := "0x1234567890abcdef1234567890abcdef12345678"
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		address.IsHexAddress(hexStr)
 	}
 }

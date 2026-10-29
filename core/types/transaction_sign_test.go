@@ -319,7 +319,7 @@ func BenchmarkSignTx(b *testing.B) {
 	signer := NewSimpleSigner(big.NewInt(1))
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := SignTx(tx, signer, privKey)
 		if err != nil {
 			b.Fatal(err)
@@ -345,7 +345,7 @@ func BenchmarkSender(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := Sender(signer, tx)
 		if err != nil {
 			b.Fatal(err)
