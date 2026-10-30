@@ -20,11 +20,13 @@ const (
 type BlockLookup func(common.Hash) *block.Block
 
 // ReorgHandler replays vault/tx state after a chain reorg.
-var ReorgHandler func(blocks []*block.Block) error
+type ReorgHandler func(blocks []*block.Block) error
 
 // SetReorgHandler registers the callback invoked after Reorg truncates chain data.
-func SetReorgHandler(fn func(blocks []*block.Block) error) {
-	ReorgHandler = fn
+func (bc *Chain) SetReorgHandler(fn ReorgHandler) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	bc.reorgHandler = fn
 }
 
 // BlockDifficulty returns the header difficulty as big.Int.
@@ -402,11 +404,12 @@ func (bc *Chain) Reorg(newCanonical []*block.Block) error {
 		}
 	}
 
-	if ReorgHandler != nil {
-		bc.mu.RLock()
-		dataCopy := append([]*block.Block(nil), bc.data...)
-		bc.mu.RUnlock()
-		return ReorgHandler(dataCopy)
+	bc.mu.RLock()
+	handler := bc.reorgHandler
+	dataCopy := append([]*block.Block(nil), bc.data...)
+	bc.mu.RUnlock()
+	if handler != nil {
+		return handler(dataCopy)
 	}
 	return nil
 }

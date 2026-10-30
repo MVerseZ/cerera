@@ -555,7 +555,7 @@ func BenchmarkGetInfo(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		chain.GetInfo()
 	}
 }
@@ -578,7 +578,7 @@ func BenchmarkGetLatestBlock(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		chain.GetLatestBlock()
 	}
 }
@@ -601,7 +601,7 @@ func BenchmarkGetBlockByNumber(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		chain.GetBlockByNumber(0)
 	}
 }
@@ -642,8 +642,7 @@ func BenchmarkUpdateChain(b *testing.B) {
 		Root:       common.EmptyHash(),
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		newBlock := block.NewBlock(newBlockHeader)
 		newBlock.Hash = common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 		newBlock.Header().Index = uint64(i + 1)

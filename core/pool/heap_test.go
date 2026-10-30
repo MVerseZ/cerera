@@ -406,7 +406,7 @@ func BenchmarkTxHeapLess_Allocs(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = h.Less(0, 1)
 	}
 }
@@ -422,7 +422,7 @@ func BenchmarkGetTopN_10k(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = p.GetTopN(100)
 	}
 }

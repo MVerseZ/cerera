@@ -77,6 +77,7 @@ type Vault interface {
 	VerifyAccount(address types.Address, pass string) (types.Address, error)
 	Exec(method string, params []any) any
 	Close() error
+	SaveBaseline()
 	// Contract code storage methods
 	StoreContractCode(address types.Address, code []byte) error
 	GetContractCode(address types.Address) ([]byte, error)
@@ -302,6 +303,20 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 	vaultAccountsTotal.Set(float64(v.accounts.GetCount()))
 	v.updateSupplyMetrics()
 
+	return v, nil
+}
+
+// OpenNodeVault opens the production vault and snapshots baseline state for chain replay.
+func OpenNodeVault(ctx context.Context, cfg *config.Config) (*D5Vault, error) {
+	vi, err := NewD5Vault(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	v, ok := vi.(*D5Vault)
+	if !ok {
+		return nil, fmt.Errorf("vault: unexpected implementation %T", vi)
+	}
+	v.SaveBaseline()
 	return v, nil
 }
 
