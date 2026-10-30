@@ -176,11 +176,11 @@ func TestReorgSwitchesToHeavierBranch(t *testing.T) {
 	branchB := []*block.Block{gen, b1, b2}
 
 	replayed := 0
-	SetReorgHandler(func(blocks []*block.Block) error {
+	bc.SetReorgHandler(func(blocks []*block.Block) error {
 		replayed = len(blocks)
 		return nil
 	})
-	t.Cleanup(func() { SetReorgHandler(nil) })
+	t.Cleanup(func() { bc.SetReorgHandler(nil) })
 
 	if err := bc.Reorg(branchB); err != nil {
 		t.Fatalf("reorg to heavier branch: %v", err)

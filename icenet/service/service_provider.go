@@ -93,7 +93,7 @@ func (sp *ServiceProvider) AddBlock(b *block.Block) error {
 	return err
 }
 
-// Reorg switches canonical chain and replays state via chain.ReorgHandler.
+// Reorg switches canonical chain and replays state via the chain reorg handler.
 func (sp *ServiceProvider) Reorg(blocks []*block.Block) error {
 	if sp.chainRef == nil {
 		return fmt.Errorf("chain reference not configured")

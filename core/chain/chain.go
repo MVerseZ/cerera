@@ -185,6 +185,8 @@ type Chain struct {
 	heightMu     sync.Mutex
 	lockedHeight int
 	cancelCh     chan struct{}
+
+	reorgHandler ReorgHandler
 }
 
 func Mold(cfg *config.Config) (*Chain, error) {
