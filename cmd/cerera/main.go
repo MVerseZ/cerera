@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -36,7 +38,11 @@ type Cerera struct {
 	txTable  *storage.TxTable
 	registry *service.Registry
 	ice      *icenet.Ice
+	m        miner.Miner
 	status   [8]byte
+
+	shutdownOnce sync.Once
+	shutdownErr  error
 }
 
 // NewCerera создаёт и инициализирует экземпляр Cerera.
@@ -46,8 +52,6 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		return nil, fmt.Errorf("failed to create service registry: %w", err)
 	}
 	ctx = service.WithRegistry(ctx, registry)
-
-	// TODO Инициализация внутреннего пайплайна
 
 	// Инициализация внутренних компонентов
 	if err := gigea.Init(ctx, cfg.NetCfg.ADDR); err != nil {
@@ -179,13 +183,6 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 	// use of gigea.ConsensusManager as a façade.
 	// _ = gigea.NewConsensusManager(ctx, icenet.NewNetworkAdapter(ice), cfg.NetCfg.ADDR, sp)
 
-	// setup pipeline for internal services
-	// pipeline is a sequence of stages that process data and events in the system.
-	err = service.SetupPipeline(ctx, cfg, registry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to setup pipeline: %w", err)
-	}
-
 	return &Cerera{
 		bc:       bc,
 		g:        validatorInst,
@@ -194,8 +191,42 @@ func NewCerera(cfg *config.Config, ctx context.Context, mode, port string, httpP
 		txTable:  txTable,
 		registry: registry,
 		ice:      ice,
+		m:        minerInstance,
 		status:   [8]byte{0xf, validatorInst.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
+}
+
+// Shutdown stops node components in order: miner, pool, Ice, then vault.
+func (app *Cerera) Shutdown(ctx context.Context) error {
+	if app == nil {
+		return nil
+	}
+	app.shutdownOnce.Do(func() {
+		var errs []error
+
+		if app.m != nil {
+			appLog.Infow("Stopping miner...")
+			app.m.Stop()
+		}
+		if app.p != nil {
+			appLog.Infow("Stopping transaction pool...")
+			app.p.Stop()
+		}
+		if app.ice != nil {
+			appLog.Infow("Stopping Ice P2P network...")
+			app.ice.Stop(ctx)
+		}
+		if app.v != nil {
+			if err := app.v.Close(); err != nil {
+				appLog.Errorw("Failed to close vault", "err", err)
+				errs = append(errs, err)
+			} else {
+				appLog.Infow("Vault closed successfully")
+			}
+		}
+		app.shutdownErr = errors.Join(errs...)
+	})
+	return app.shutdownErr
 }
 
 // setupLogging настраивает логирование в файл.
@@ -287,31 +318,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	appLog.Infow("Cerera node running; press Ctrl+C to stop")
+	<-ctx.Done()
+	appLog.Infow("Shutdown signal received")
 
-	done := make(chan bool, 1)
-
-	go func() {
-		sig := <-sigs
-		fmt.Println("Received signal: ", sig)
-		// Закрываем vault (закрывает bitcask базу данных)
-		if app != nil && app.v != nil {
-			if err := app.v.Close(); err != nil {
-				appLog.Errorw("Ошибка при закрытии vault", "err", err)
-			} else {
-				appLog.Infow("Vault успешно закрыт")
-			}
-		}
-		// Закрываем Ice компонент
-		// if app != nil && app.ice != nil {
-		// 	appLog.Infow("Shutting down Ice component...")
-		// 	app.ice.Stop(ctx)
-		// }
-		time.Sleep(2 * time.Second)
-		done <- true
-	}()
-
-	<-done
-
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+	if err := app.Shutdown(shutdownCtx); err != nil {
+		appLog.Errorw("Shutdown completed with errors", "err", err)
+	}
 }
