@@ -285,6 +285,7 @@ func (cfg *Config) SetNodeKey(pemFilePath string) error {
 			if err != nil {
 				return err
 			}
+			defer f.Close()
 			b1 := make([]byte, 221)
 			n1, err := f.Read(b1)
 			if err != nil {

@@ -188,6 +188,7 @@ func GetChainSourceSize() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer f.Close()
 	fi, err2 := f.Stat()
 	if err2 != nil {
 		return 0, err2
