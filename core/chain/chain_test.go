@@ -41,10 +41,6 @@ func TestChainInitialization(t *testing.T) {
 	if chain.GetCurrentChainOwnerAddress() != cfg.NetCfg.ADDR {
 		t.Errorf("Expected chain owner address %s, got %s", cfg.NetCfg.ADDR, chain.GetCurrentChainOwnerAddress())
 	}
-
-	if chain.ServiceName() != CHAIN_SERVICE_NAME {
-		t.Errorf("Expected service name %s, got %s", CHAIN_SERVICE_NAME, chain.ServiceName())
-	}
 }
 
 func TestChainExec(t *testing.T) {

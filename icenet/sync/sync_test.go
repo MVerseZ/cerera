@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -66,11 +65,10 @@ func testSyncManager(t *testing.T, height int) (*Manager, *chain.Chain) {
 			t.Fatalf("Reorg setup: %v", err)
 		}
 	}
-	sp, err := service.NewServiceProvider(context.Background())
+	sp, err := service.NewServiceProvider(bc, nil, nil)
 	if err != nil {
 		t.Fatalf("NewServiceProvider: %v", err)
 	}
-	sp.SetChainRef(bc)
 	return &Manager{serviceProvider: sp}, bc
 }
 

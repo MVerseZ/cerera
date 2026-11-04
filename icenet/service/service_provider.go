@@ -1,87 +1,43 @@
 package service
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/ports"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validation"
 )
 
 var splogger = logger.Named("chain")
 
+// ServiceProvider is a facade from ICENet sync/consensus to chain and vault ports.
 type ServiceProvider struct {
-	ctx context.Context
-
+	chain    ports.ChainLedger
+	vault    ports.VaultStore
 	blockVal *validation.BlockValidator
-	chainRef *chain.Chain
-	vault    *storage.D5Vault
 }
 
-func (sp *ServiceProvider) SetVault(v *storage.D5Vault) {
-	sp.vault = v
+// NewServiceProvider wires chain and vault ports for in-process use (no RPC registry).
+func NewServiceProvider(chain ports.ChainLedger, vault ports.VaultStore, bv *validation.BlockValidator) (*ServiceProvider, error) {
+	return &ServiceProvider{
+		chain:    chain,
+		vault:    vault,
+		blockVal: bv,
+	}, nil
 }
 
-func (sp *ServiceProvider) SetChainRef(bc *chain.Chain) {
-	sp.chainRef = bc
-}
-
-func NewServiceProvider(ctx context.Context) (*ServiceProvider, error) {
-	return &ServiceProvider{ctx: ctx}, nil
-}
-
-func (sp *ServiceProvider) rpcCtx() context.Context {
-	if sp.ctx != nil {
-		return sp.ctx
-	}
-	return context.Background()
-}
-
-func (sp *ServiceProvider) callChain(method string, params ...any) (any, error) {
-	reg, ok := service.GetRegistryFromContext(sp.ctx)
-	if !ok {
-		return nil, fmt.Errorf("service registry not available")
-	}
-	svc, ok := reg.GetService(service.CHAIN_SERVICE_NAME)
-	if !ok || svc == nil {
-		return nil, fmt.Errorf("chain service %q not registered", service.CHAIN_SERVICE_NAME)
-	}
-	handler, ok := svc.Methods[method]
-	if !ok {
-		return nil, fmt.Errorf("chain method %q not found", method)
-	}
-	return handler(sp.rpcCtx(), params)
-}
-
-func (sp *ServiceProvider) callVault(method string, params ...any) (any, error) {
-	reg, ok := service.GetRegistryFromContext(sp.ctx)
-	if !ok {
-		return nil, fmt.Errorf("service registry not available")
-	}
-	svc, ok := reg.GetService(service.VAULT_SERVICE_NAME)
-	if !ok || svc == nil {
-		return nil, fmt.Errorf("vault service %q not registered", service.VAULT_SERVICE_NAME)
-	}
-	handler, ok := svc.Methods[method]
-	if !ok {
-		return nil, fmt.Errorf("vault method %q not found", method)
-	}
-	return handler(sp.rpcCtx(), params)
-}
-
-func (sp *ServiceProvider) vaultRef() *storage.D5Vault {
-	return sp.vault
+func (sp *ServiceProvider) SetBlockValidator(bv *validation.BlockValidator) {
+	sp.blockVal = bv
 }
 
 func (sp *ServiceProvider) EnsureAccount(addr types.Address) {
-	if v := sp.vaultRef(); v != nil {
-		v.EnsureAccount(addr)
+	if sp.vault != nil {
+		sp.vault.EnsureAccount(addr)
 	}
 }
 
@@ -89,16 +45,17 @@ func (sp *ServiceProvider) AddBlock(b *block.Block) error {
 	if b == nil {
 		return fmt.Errorf("block is nil")
 	}
-	_, err := sp.callChain("updateChain", b)
-	return err
+	if sp.chain == nil {
+		return fmt.Errorf("chain not configured")
+	}
+	return sp.chain.UpdateChain(b)
 }
 
-// Reorg switches canonical chain and replays state via the chain reorg handler.
 func (sp *ServiceProvider) Reorg(blocks []*block.Block) error {
-	if sp.chainRef == nil {
+	if sp.chain == nil {
 		return fmt.Errorf("chain reference not configured")
 	}
-	return sp.chainRef.Reorg(blocks)
+	return sp.chain.Reorg(blocks)
 }
 
 func (sp *ServiceProvider) ValidateOrphanBlock(b *block.Block, parent *block.Block) error {
@@ -109,92 +66,55 @@ func (sp *ServiceProvider) ValidateOrphanBlock(b *block.Block, parent *block.Blo
 }
 
 func (sp *ServiceProvider) GetBlockByHash(h common.Hash) *block.Block {
-	res, err := sp.callChain("getBlockByHash", h.Hex())
-	if err != nil {
-		splogger.Debugw("GetBlockByHash failed", "hash", h, "error", err)
+	if sp.chain == nil {
 		return nil
 	}
-	b, _ := res.(*block.Block)
-	return b
+	return sp.chain.GetBlock(h)
 }
 
 func (sp *ServiceProvider) GetBlockByHeight(height int) *block.Block {
-	if sp.chainRef != nil {
-		if b := sp.chainRef.GetBlockByHeight(height); b != nil {
-			return b
-		}
-	}
-	res, err := sp.callChain("getBlockByIndex", float64(height))
-	if err != nil {
-		splogger.Debugw("GetBlockByHeight failed", "height", height, "error", err)
+	if sp.chain == nil {
 		return nil
 	}
-	b, _ := res.(*block.Block)
-	return b
+	return sp.chain.GetBlockByHeight(height)
 }
 
 func (sp *ServiceProvider) GetChainID() int {
-	res, err := sp.callChain("getChainId")
-	if err != nil {
-		splogger.Errorw("GetChainID failed", "error", err)
+	if sp.chain == nil {
 		return 0
 	}
-	id, _ := res.(int)
-	return id
+	return sp.chain.GetChainId()
 }
 
 func (sp *ServiceProvider) GetCurrentHeight() int {
-	if sp.chainRef != nil {
-		if head := sp.chainRef.GetLatestBlock(); head != nil && head.Head != nil {
-			return head.Head.Height
-		}
-	}
-	res, err := sp.callChain("getCurrentHeight")
-	if err != nil {
-		splogger.Errorw("GetCurrentHeight failed", "error", err)
+	if sp.chain == nil {
 		return 0
 	}
-	height, _ := res.(int)
-	return height
+	if head := sp.chain.GetLatestBlock(); head != nil && head.Head != nil {
+		return head.Head.Height
+	}
+	return 0
 }
 
 func (sp *ServiceProvider) GetLatestHash() common.Hash {
-	if sp.chainRef != nil {
-		if head := sp.chainRef.GetLatestBlock(); head != nil {
-			return head.Hash
-		}
-	}
-	res, err := sp.callChain("getLatestBlock")
-	if err != nil {
-		splogger.Errorw("GetLatestHash failed", "error", err)
+	if sp.chain == nil {
 		return common.Hash{}
 	}
-	b, ok := res.(*block.Block)
-	if !ok || b == nil {
-		return common.Hash{}
+	if head := sp.chain.GetLatestBlock(); head != nil {
+		return head.Hash
 	}
-	return b.Hash
+	return common.Hash{}
 }
 
 func (sp *ServiceProvider) GetStorageSize() int {
-	if v := sp.vaultRef(); v != nil {
-		return v.GetCount()
-	}
-	res, err := sp.callVault("getCount")
-	if err != nil {
-		splogger.Debugw("GetStorageSize failed", "error", err)
+	if sp.vault == nil {
 		return 0
 	}
-	count, _ := res.(int)
-	return count
+	return sp.vault.GetCount()
 }
 
 func (sp *ServiceProvider) GetStorageServiceName() string {
 	return storage.VAULT_SERVICE_NAME
-}
-
-func (sp *ServiceProvider) SetBlockValidator(bv *validation.BlockValidator) {
-	sp.blockVal = bv
 }
 
 func (sp *ServiceProvider) ValidateBlock(b *block.Block) error {
@@ -233,8 +153,8 @@ func (sp *ServiceProvider) ValidateBlockPoW(b *block.Block) bool {
 }
 
 func (sp *ServiceProvider) GetVaultSyncStats() storage.VaultSyncStats {
-	if v := sp.vaultRef(); v != nil {
-		return v.VaultSyncStats()
+	if sp.vault != nil {
+		return sp.vault.VaultSyncStats()
 	}
 	return storage.VaultSyncStats{
 		Accounts: sp.GetStorageSize(),
@@ -242,22 +162,22 @@ func (sp *ServiceProvider) GetVaultSyncStats() storage.VaultSyncStats {
 }
 
 func (sp *ServiceProvider) ExportStorageAccountRange(offset, limit int) ([][]byte, int) {
-	if v := sp.vaultRef(); v != nil {
-		return v.ExportAccountRangeSortedByAddress(offset, limit)
+	if sp.vault != nil {
+		return sp.vault.ExportAccountRangeSortedByAddress(offset, limit)
 	}
 	return nil, 0
 }
 
 func (sp *ServiceProvider) ExportStorageContractCodeRange(offset, limit int) ([][]byte, int) {
-	if v := sp.vaultRef(); v != nil {
-		return v.ExportContractCodeRange(offset, limit)
+	if sp.vault != nil {
+		return sp.vault.ExportContractCodeRange(offset, limit)
 	}
 	return nil, 0
 }
 
 func (sp *ServiceProvider) ExportStorageContractStorageRange(offset, limit int) ([][]byte, int) {
-	if v := sp.vaultRef(); v != nil {
-		return v.ExportContractStorageRange(offset, limit)
+	if sp.vault != nil {
+		return sp.vault.ExportContractStorageRange(offset, limit)
 	}
 	return nil, 0
 }
@@ -278,29 +198,27 @@ func (sp *ServiceProvider) GetGenesisHash() common.Hash {
 }
 
 func (sp *ServiceProvider) ApplyStorageAccounts(accounts [][]byte) error {
-	v := sp.vaultRef()
-	if v == nil {
+	if sp.vault == nil {
 		return fmt.Errorf("vault not initialized")
 	}
 	for _, blob := range accounts {
 		if len(blob) == 0 {
 			continue
 		}
-		v.Sync(blob)
+		sp.vault.Sync(blob)
 	}
 	return nil
 }
 
 func (sp *ServiceProvider) ApplyStorageContractCodes(blobs [][]byte) error {
-	v := sp.vaultRef()
-	if v == nil {
+	if sp.vault == nil {
 		return fmt.Errorf("vault not initialized")
 	}
 	for _, blob := range blobs {
 		if len(blob) == 0 {
 			continue
 		}
-		if err := v.SyncContractCodeBlob(blob); err != nil {
+		if err := sp.vault.SyncContractCodeBlob(blob); err != nil {
 			return err
 		}
 	}
@@ -308,15 +226,14 @@ func (sp *ServiceProvider) ApplyStorageContractCodes(blobs [][]byte) error {
 }
 
 func (sp *ServiceProvider) ApplyStorageContractStorage(blobs [][]byte) error {
-	v := sp.vaultRef()
-	if v == nil {
+	if sp.vault == nil {
 		return fmt.Errorf("vault not initialized")
 	}
 	for _, blob := range blobs {
 		if len(blob) == 0 {
 			continue
 		}
-		if err := v.SyncContractStorageBlob(blob); err != nil {
+		if err := sp.vault.SyncContractStorageBlob(blob); err != nil {
 			return err
 		}
 	}

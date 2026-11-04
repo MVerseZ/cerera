@@ -1,7 +1,6 @@
 package fork
 
 import (
-	"context"
 	"testing"
 
 	"github.com/cerera/config"
@@ -33,11 +32,10 @@ func TestOnCompetingBlockStoresOrphan(t *testing.T) {
 		t.Fatalf("Mold: %v", err)
 	}
 
-	sp, err := service.NewServiceProvider(context.Background())
+	sp, err := service.NewServiceProvider(bc, nil, nil)
 	if err != nil {
 		t.Fatalf("NewServiceProvider: %v", err)
 	}
-	sp.SetChainRef(bc)
 	d := NewDetector(bc, sp)
 
 	local := bc.GetLatestBlock()

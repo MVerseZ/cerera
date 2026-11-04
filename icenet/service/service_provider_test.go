@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"testing"
 
 	"github.com/cerera/config"
@@ -10,12 +9,11 @@ import (
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validation"
 )
 
 func TestServiceProviderGuards(t *testing.T) {
-	sp, err := NewServiceProvider(context.Background())
+	sp, err := NewServiceProvider(nil, nil, nil)
 	if err != nil || sp == nil {
 		t.Fatal(err)
 	}
@@ -69,70 +67,21 @@ func TestServiceProviderGuards(t *testing.T) {
 	}
 	sp.EnsureAccount(types.Address{})
 	sp.SetBlockValidator(nil)
-	sp.SetVault(nil)
-	sp.SetChainRef(nil)
 	if sp.GetVaultSyncStats().Accounts != 0 {
 		t.Fatal(sp.GetVaultSyncStats())
 	}
 }
 
-func TestServiceProviderRPCAndChain(t *testing.T) {
-	want := &block.Block{Head: &block.Header{Height: 3}, Hash: common.BytesToHash([]byte("rpc-block"))}
-	registry, err := service.NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(service.NewService(service.CHAIN_SERVICE_NAME, map[string]service.RPCHandler{
-		"getBlockByHash": func(context.Context, []any) (any, error) { return want, nil },
-		"getBlockByIndex": func(context.Context, []any) (any, error) {
-			return "not-a-block", nil
-		},
-		"getChainId":       func(context.Context, []any) (any, error) { return 42, nil },
-		"getCurrentHeight": func(context.Context, []any) (any, error) { return 0, nil },
-		"getLatestBlock":   func(context.Context, []any) (any, error) { return want, nil },
-		"updateChain":      func(context.Context, []any) (any, error) { return true, nil },
-	})); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(service.NewService(service.VAULT_SERVICE_NAME, map[string]service.RPCHandler{
-		"getCount": func(context.Context, []any) (any, error) { return 9, nil },
-	})); err != nil {
-		t.Fatal(err)
-	}
-	sp, err := NewServiceProvider(service.WithRegistry(context.Background(), registry))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sp.GetBlockByHash(want.Hash) != want {
-		t.Fatal("hash lookup")
-	}
-	if sp.GetBlockByHeight(3) != nil {
-		t.Fatal("wrong rpc type should be ignored")
-	}
-	if sp.GetChainID() != 42 || sp.GetCurrentHeight() != 0 || sp.GetLatestHash() != want.Hash {
-		t.Fatalf("id=%d height=%d hash=%s", sp.GetChainID(), sp.GetCurrentHeight(), sp.GetLatestHash())
-	}
-	if err := sp.AddBlock(&block.Block{Head: &block.Header{Height: 1}}); err != nil {
-		t.Fatal(err)
-	}
-	if sp.GetStorageSize() != 9 {
-		t.Fatal(sp.GetStorageSize())
-	}
-	if sp.GetVaultSyncStats().Accounts != 9 {
-		t.Fatal(sp.GetVaultSyncStats())
-	}
-
-	mismatch := &block.Block{Head: &block.Header{Height: 1, PrevHash: common.BytesToHash([]byte("other"))}}
-	if err := sp.ValidateBlock(mismatch); err == nil {
-		t.Fatal("expected prev hash mismatch")
-	}
-
+func TestServiceProviderChainDirect(t *testing.T) {
 	cfg := &config.Config{Chain: config.ChainConfig{ChainID: 11, Path: "EMPTY"}, IN_MEM: true}
 	bc, err := chain.Mold(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sp.SetChainRef(bc)
+	sp, err := NewServiceProvider(bc, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if sp.GetCurrentHeight() != bc.GetLatestBlock().Head.Height {
 		t.Fatal("chain height")
 	}
@@ -143,13 +92,16 @@ func TestServiceProviderRPCAndChain(t *testing.T) {
 		t.Fatal("genesis via chain")
 	}
 	if sp.GetBlockByHeight(99) != nil {
-		t.Fatal("missing height should not use the string rpc result")
+		t.Fatal("missing height")
 	}
 	if sp.GetGenesisHash() == (common.Hash{}) {
 		t.Fatal("genesis hash")
 	}
 	if err := sp.Reorg(nil); err == nil {
 		t.Fatal("empty reorg")
+	}
+	if sp.GetChainID() != bc.GetChainId() {
+		t.Fatal("chain id")
 	}
 
 	sp.SetBlockValidator(&validation.BlockValidator{ChainID: 11, SkipPoWAtGenesis: true})
@@ -180,7 +132,7 @@ func TestServiceProviderVaultApply(t *testing.T) {
 		Vault:  config.VaultConfig{MEM: true, PATH: "EMPTY"},
 		IN_MEM: true,
 	}
-	vault, err := storage.NewD5Vault(context.Background(), cfg)
+	vault, err := storage.NewD5Vault(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,11 +140,10 @@ func TestServiceProviderVaultApply(t *testing.T) {
 	if !ok {
 		t.Fatal("expected concrete vault")
 	}
-	sp, err := NewServiceProvider(context.Background())
+	sp, err := NewServiceProvider(nil, concrete, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sp.SetVault(concrete)
 	sp.EnsureAccount(types.Address{})
 	if sp.GetStorageSize() < 1 {
 		t.Fatal(sp.GetStorageSize())

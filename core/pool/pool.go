@@ -2,8 +2,6 @@ package pool
 
 import (
 	"container/heap"
-	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -11,8 +9,6 @@ import (
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/observer"
-	"github.com/cerera/internal/service"
 	"github.com/cerera/pallada"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -91,8 +87,8 @@ type Pool struct {
 
 	Status byte
 
-	sources   []observer.Source
-	observers []observer.Observer
+	sources   []TxSource
+	observers []TxObserver
 
 	Info MemPoolInfo
 
@@ -131,15 +127,12 @@ type TxPool interface {
 	GetMiningPackage(n int) []*types.GTransaction
 	// Exec(method string, params []any) any
 	QueueTransaction(tx *types.GTransaction)
-	Register(observer observer.Observer)
-	RegisterSource(source observer.Source)
+	Register(observer TxObserver)
+	RegisterSource(source TxSource)
 	RemoveFromPool(txHash common.Hash) error
 	RequeueTransactions(txs []types.GTransaction)
 	SetTxValidator(func(*types.GTransaction) bool)
-	ServiceName() string
 	Stop()
-
-	Methods() map[string]service.RPCHandler
 }
 
 // SetTxValidator sets optional admission validation (must return true to accept).
@@ -147,6 +140,13 @@ func (p *Pool) SetTxValidator(fn func(*types.GTransaction) bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.txValidator = fn
+}
+
+// TxValidatorReady reports whether admission validation is configured.
+func (p *Pool) TxValidatorReady() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.txValidator != nil
 }
 
 func InitPool(maxSize int) (TxPool, error) {
@@ -160,8 +160,8 @@ func InitPool(maxSize int) (TxPool, error) {
 		maxSize:        maxSize,
 		stopCh:         make(chan struct{}),
 		Status:         0xa,
-		observers:      make([]observer.Observer, 0),
-		sources:        make([]observer.Source, 0),
+		observers:      make([]TxObserver, 0),
+		sources:        make([]TxSource, 0),
 	}
 	pLogger.Infow("Init pool",
 		"maxSize", p.maxSize,
@@ -196,7 +196,7 @@ func (p *Pool) Stop() {
 }
 
 // removeFromSlice removes an observer from the slice by swapping with the last element.
-func removeFromSlice(observerList []observer.Observer, observerToRemove observer.Observer) []observer.Observer {
+func removeFromSlice(observerList []TxObserver, observerToRemove TxObserver) []TxObserver {
 	observerListLength := len(observerList)
 	for i, obs := range observerList {
 		if observerToRemove.GetID() == obs.GetID() {
@@ -433,7 +433,7 @@ func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 // Called outside p.mu to prevent deadlocks when observers call back into the pool.
 func (p *Pool) NotifyAll(tx *types.GTransaction) {
 	p.observersMu.RLock()
-	observers := make([]observer.Observer, len(p.observers))
+	observers := make([]TxObserver, len(p.observers))
 	copy(observers, p.observers)
 	p.observersMu.RUnlock()
 
@@ -455,14 +455,14 @@ func (p *Pool) PoolServiceLoop() {
 }
 
 // Register adds an observer to receive new transaction events.
-func (p *Pool) Register(observer observer.Observer) {
+func (p *Pool) Register(observer TxObserver) {
 	p.observersMu.Lock()
 	defer p.observersMu.Unlock()
 	pLogger.Infow("Register new pool observer", "observerID", observer.GetID())
 	p.observers = append(p.observers, observer)
 }
 
-func (p *Pool) RegisterSource(source observer.Source) {
+func (p *Pool) RegisterSource(source TxSource) {
 	p.sourcesMu.Lock()
 	defer p.sourcesMu.Unlock()
 	pLogger.Infow("Register new pool source", "sourceID", source.GetID())
@@ -498,13 +498,8 @@ func (p *Pool) RequeueTransactions(txs []types.GTransaction) {
 	}
 }
 
-// ServiceName returns the service identifier string.
-func (p *Pool) ServiceName() string {
-	return POOL_SERVICE_NAME
-}
-
 // UnRegister removes an observer from the notification list.
-func (p *Pool) UnRegister(observer observer.Observer) {
+func (p *Pool) UnRegister(observer TxObserver) {
 	p.observersMu.Lock()
 	defer p.observersMu.Unlock()
 	p.observers = removeFromSlice(p.observers, observer)
@@ -532,82 +527,4 @@ func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	p.mu.Unlock()
 
 	p.NotifyAll(stored)
-}
-
-func (p *Pool) Methods() map[string]service.RPCHandler {
-	return map[string]service.RPCHandler{
-		"getInfo": func(ctx context.Context, params []any) (any, error) {
-			return p.GetInfo(), nil
-		},
-		"minGas": func(ctx context.Context, params []any) (any, error) {
-			return p.GetMinimalGasValue(), nil
-		},
-		"getPendingTransactions": func(ctx context.Context, params []any) (any, error) {
-			return p.GetPendingTransactions(), nil
-		},
-		"getTransaction": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, errors.New("transaction hash required")
-			}
-			hashStr, ok := params[0].(string)
-			if !ok {
-				return nil, errors.New("transaction hash must be string")
-			}
-			return p.GetTransaction(common.HexToHash(hashStr)), nil
-		},
-		"sendRawTransaction": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, errors.New("signed transaction JSON required")
-			}
-			raw, ok := params[0].(string)
-			if !ok {
-				return nil, errors.New("signed transaction must be a JSON string")
-			}
-			var tx types.GTransaction
-			if err := json.Unmarshal([]byte(raw), &tx); err != nil {
-				return nil, errors.New("invalid signed transaction JSON: " + err.Error())
-			}
-			if !tx.IsSigned() || tx.Type() != types.LegacyTxType {
-				return nil, errors.New("expected a signed legacy transaction")
-			}
-			if p.txValidator == nil {
-				return nil, errors.New("transaction validator is not configured")
-			}
-			if err := p.AddRawTransaction(&tx); err != nil {
-				return nil, err
-			}
-			return tx.Hash().Hex(), nil
-		},
-		"getTopN": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, errors.New("n required")
-			}
-			n, ok := params[0].(int)
-			if !ok {
-				return nil, errors.New("n must be int")
-			}
-			return p.GetTopN(n), nil
-		},
-		"getMiningPackage": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, errors.New("n required")
-			}
-			n, ok := params[0].(int)
-			if !ok {
-				return nil, errors.New("n must be int")
-			}
-			return p.GetMiningPackage(n), nil
-		},
-		"removeFromPool": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, errors.New("transaction hash required")
-			}
-			hashStr, ok := params[0].(string)
-			if !ok {
-				return nil, errors.New("transaction hash must be string")
-			}
-			err := p.RemoveFromPool(common.HexToHash(hashStr))
-			return err == nil, err
-		},
-	}
 }

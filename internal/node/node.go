@@ -14,8 +14,10 @@ import (
 	"github.com/cerera/gigea"
 	"github.com/cerera/icenet"
 	"github.com/cerera/icenet/fork"
+	iceservice "github.com/cerera/icenet/service"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/network"
+	"github.com/cerera/internal/rpc"
 	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validator"
 	"github.com/cerera/miner"
@@ -55,10 +57,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if err != nil {
 		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
-	if err := registry.Register(&service.Service{
-		Name:    vault.ServiceName(),
-		Methods: vault.Methods(),
-	}); err != nil {
+	if err := rpc.RegisterVault(registry, vault); err != nil {
 		return nil, fmt.Errorf("register vault RPC service: %w", err)
 	}
 
@@ -66,10 +65,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if err != nil {
 		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
-	if err := registry.Register(&service.Service{
-		Name:    bc.ServiceName(),
-		Methods: bc.Methods(),
-	}); err != nil {
+	if err := rpc.RegisterChain(registry, bc); err != nil {
 		return nil, fmt.Errorf("register chain RPC service: %w", err)
 	}
 
@@ -90,10 +86,11 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if err != nil {
 		return nil, fmt.Errorf("failed to init pool: %w", err)
 	}
-	if err := registry.Register(&service.Service{
-		Name:    mempool.ServiceName(),
-		Methods: mempool.Methods(),
-	}); err != nil {
+	txPool, ok := mempool.(*pool.Pool)
+	if !ok {
+		return nil, fmt.Errorf("expected *pool.Pool mempool")
+	}
+	if err := rpc.RegisterPool(registry, txPool); err != nil {
 		return nil, fmt.Errorf("register pool RPC service: %w", err)
 	}
 
@@ -112,7 +109,15 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	mempool.SetTxValidator(func(tx *types.GTransaction) bool {
 		return validatorInst.ValidateRawTransaction(*tx)
 	})
-	ice.AttachBlockValidator(validatorInst.GetBlockValidator())
+
+	blockVal := validatorInst.GetBlockValidator()
+	sp, err := iceservice.NewServiceProvider(bc, vault, blockVal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ICENet service provider: %w", err)
+	}
+	ice.SetServiceProvider(sp)
+
+	ice.AttachBlockValidator(blockVal)
 	ice.SetTxValidator(func(tx *types.GTransaction) bool {
 		return validatorInst.ValidateRawTransaction(*tx)
 	})
@@ -120,11 +125,6 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	ice.SetVault(vault)
 
 	bc.SetReorgHandler(validatorInst.ReplayChain)
-	sp := ice.ServiceProviderPtr()
-	if sp != nil {
-		sp.SetChainRef(bc)
-		sp.SetVault(vault)
-	}
 
 	minerInstance, err := miner.Init(ctx, cfg)
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/core/params"
 )
 
 // faucetMint is an RPC faucet credit that lives outside the chain.
@@ -44,11 +44,11 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	if cnt == nil || cnt.Sign() <= 0 {
 		return ErrInvalidMintAmount
 	}
-	if cnt.Cmp(coinbase.MinFaucetAmount) < 0 {
-		return fmt.Errorf("faucet amount %s is below minimum %s", cnt.String(), coinbase.MinFaucetAmount.String())
+	if cnt.Cmp(params.MinFaucetAmount) < 0 {
+		return fmt.Errorf("faucet amount %s is below minimum %s", cnt.String(), params.MinFaucetAmount.String())
 	}
-	if cnt.Cmp(coinbase.MaxFaucetAmount) > 0 {
-		return fmt.Errorf("faucet amount %s exceeds maximum %s", cnt.String(), coinbase.MaxFaucetAmount.String())
+	if cnt.Cmp(params.MaxFaucetAmount) > 0 {
+		return fmt.Errorf("faucet amount %s exceeds maximum %s", cnt.String(), params.MaxFaucetAmount.String())
 	}
 
 	v.faucetMu.Lock()
@@ -57,7 +57,7 @@ func (v *D5Vault) DropFaucet(to types.Address, cnt *big.Int, txHash common.Hash)
 	}
 	lastRequest, exists := v.faucetLastRequest[to]
 	if exists {
-		cooldownDuration := time.Duration(coinbase.FaucetCooldownHours * float64(time.Hour))
+		cooldownDuration := time.Duration(params.FaucetCooldownHours * float64(time.Hour))
 		timeSinceLastRequest := time.Since(lastRequest)
 		if timeSinceLastRequest < cooldownDuration {
 			remainingTime := cooldownDuration - timeSinceLastRequest
