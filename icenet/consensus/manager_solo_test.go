@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cerera/core/block"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/peers"
+	"github.com/cerera/internal/observer"
 	"github.com/libp2p/go-libp2p"
 )
 
@@ -26,13 +27,20 @@ func TestManager_SoloModeFinalizesBlock(t *testing.T) {
 	mgr := NewManager(ctx, h, pm, scorer, types.Address{}, nil)
 	mgr.SetBroadcastFunc(func(int, []byte, []byte) error { return nil })
 
+	bus := observer.NewBus()
 	finalized := make(chan struct{}, 1)
-	mgr.SetOnBlockFinalized(func(b *block.Block) {
-		if b == nil || b.Hash != testBlock(1, "solo-block").Hash {
-			t.Errorf("unexpected finalized block: %+v", b)
+	bus.Subscribe(observer.SubscriberFunc(func(ev events.Event) error {
+		if ev.Kind != events.ChainHeadUpdated || ev.HeadSource != events.HeadFinalized {
+			return nil
+		}
+		b := testBlock(1, "solo-block")
+		if ev.Block == nil || ev.Block.Hash != b.Hash {
+			t.Errorf("unexpected finalized block: %+v", ev.Block)
 		}
 		finalized <- struct{}{}
-	})
+		return nil
+	}))
+	mgr.SetEventPublisher(bus)
 
 	mgr.Start()
 	defer mgr.Stop()

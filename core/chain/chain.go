@@ -12,6 +12,7 @@ import (
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 
 	"github.com/cerera/internal/logger"
 
@@ -184,7 +185,14 @@ type Chain struct {
 	lockedHeight int
 	cancelCh     chan struct{}
 
-	reorgHandler ReorgHandler
+	events events.Publisher
+}
+
+// SetEventPublisher wires the node event bus for chain lifecycle notifications.
+func (bc *Chain) SetEventPublisher(pub events.Publisher) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	bc.events = pub
 }
 
 func Mold(cfg *config.Config) (*Chain, error) {

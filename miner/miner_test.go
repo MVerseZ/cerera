@@ -10,11 +10,10 @@ import (
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/coinbase"
-	"github.com/cerera/internal/observer"
-	"github.com/cerera/internal/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -81,17 +80,11 @@ func (m *mockTxPool) QueueTransaction(tx *types.GTransaction) {
 	m.txs = append(m.txs, *tx)
 }
 
-func (m *mockTxPool) ServiceName() string { return "POOL_CERERA_001_1_3" }
-
-func (m *mockTxPool) Register(observer.Observer) {}
-
-func (m *mockTxPool) RegisterSource(observer.Source) {}
-
 func (m *mockTxPool) RequeueTransactions([]types.GTransaction) {}
 
 func (m *mockTxPool) SetTxValidator(func(*types.GTransaction) bool) {}
 
-func (m *mockTxPool) Methods() map[string]service.RPCHandler { return nil }
+func (m *mockTxPool) SetEventPublisher(events.Publisher) {}
 
 func (m *mockTxPool) GetMiningPackage(n int) []*types.GTransaction {
 	return m.GetTopN(n)
@@ -193,7 +186,7 @@ func TestMiner_Update(t *testing.T) {
 				mining: tt.mining,
 			}
 			assert.NotPanics(t, func() {
-				m.Update(testTx(1, 21000, "test"))
+				_ = m.Handle(events.Event{Kind: events.TxAccepted, Tx: testTx(1, 21000, "test")})
 			})
 		})
 	}

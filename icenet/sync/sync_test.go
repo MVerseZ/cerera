@@ -9,7 +9,9 @@ import (
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/icenet/service"
+	"github.com/cerera/internal/observer"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -128,16 +130,23 @@ func TestSyncBatchPrevHashMismatchRoutesToForkDetector(t *testing.T) {
 	}
 }
 
-func TestSetOnNewBlock(t *testing.T) {
-	m := &Manager{}
+func TestSetEventPublisher(t *testing.T) {
+	bus := observer.NewBus()
 	called := 0
-	m.SetOnNewBlock(func(*block.Block) { called++ })
-	if m.onNewBlock == nil {
-		t.Fatal("callback not stored")
-	}
-	m.onNewBlock(block.NewBlock(&block.Header{Height: 1}))
+	bus.Subscribe(observer.SubscriberFunc(func(ev events.Event) error {
+		if ev.Kind == events.ChainHeadUpdated {
+			called++
+		}
+		return nil
+	}))
+	m := &Manager{eventsPublisher: bus}
+	m.eventsPublisher.Publish(events.Event{
+		Kind:       events.ChainHeadUpdated,
+		Block:      block.NewBlock(&block.Header{Height: 1}),
+		HeadSource: events.HeadSynced,
+	})
 	if called != 1 {
-		t.Fatalf("expected callback once, got %d", called)
+		t.Fatalf("expected publish once, got %d", called)
 	}
 }
 

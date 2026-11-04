@@ -65,9 +65,6 @@ type Miner interface {
 	SetValidator(v validator.Validator)
 	SetBlockPublisher(publisher BlockPublisher)
 	SetHeightLock(lock HeightLockChecker)
-	OnBlockFinalized(b *block.Block)
-	OnChainReorg(b *block.Block)
-	Update(tx *types.GTransaction)
 }
 
 // BlockPublisher proposes a mined block to the network consensus layer.
@@ -346,24 +343,6 @@ func (m *miner) Stop() {
 	minerLogger().Info("[MINER] Miner stopped")
 }
 
-func (m *miner) Update(tx *types.GTransaction) {
-	if tx == nil {
-		return
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.mining || m.worker == nil {
-		return
-	}
-
-	txs := m.pool.GetMiningPackage(m.pool.GetInfo().Size)
-
-	minerLogger().Infow("[MINER] New pool tx, restarting miner", "tx", tx.Hash(), "txs", len(txs))
-	m.worker.Compute(m.newTask(txs))
-}
-
 func (m *miner) Status() byte {
 	return m.status
 }
@@ -396,14 +375,6 @@ func (m *miner) SetBlockPublisher(publisher BlockPublisher) {
 
 func (m *miner) SetHeightLock(lock HeightLockChecker) {
 	m.heightLock = lock
-}
-
-func (m *miner) OnBlockFinalized(b *block.Block) {
-	m.onChainHeadUpdated(b)
-}
-
-func (m *miner) OnChainReorg(b *block.Block) {
-	m.onChainHeadUpdated(b)
 }
 
 func (m *miner) applyBlock(b *block.Block) {

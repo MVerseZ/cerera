@@ -17,6 +17,7 @@ import (
 	iceservice "github.com/cerera/icenet/service"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/internal/network"
+	"github.com/cerera/internal/observer"
 	"github.com/cerera/internal/rpc"
 	"github.com/cerera/internal/service"
 	"github.com/cerera/internal/validator"
@@ -35,6 +36,7 @@ type Node struct {
 	registry *service.Registry
 	ice      *icenet.Ice
 	m        miner.Miner
+	bus      *observer.Bus
 	status   [8]byte
 
 	shutdownOnce sync.Once
@@ -43,6 +45,8 @@ type Node struct {
 
 // New creates and wires a Cerera node.
 func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort int, mine bool) (*Node, error) {
+	bus := observer.NewBus()
+
 	registry, err := service.NewRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service registry: %w", err)
@@ -57,6 +61,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if err != nil {
 		return nil, fmt.Errorf("failed to init vault: %w", err)
 	}
+	vault.SetEventPublisher(bus)
 	if err := rpc.RegisterVault(registry, vault); err != nil {
 		return nil, fmt.Errorf("register vault RPC service: %w", err)
 	}
@@ -65,6 +70,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if err != nil {
 		return nil, fmt.Errorf("failed to mold blockchain parts: %w", err)
 	}
+	bc.SetEventPublisher(bus)
 	if err := rpc.RegisterChain(registry, bc); err != nil {
 		return nil, fmt.Errorf("register chain RPC service: %w", err)
 	}
@@ -74,6 +80,9 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	validatorInst, err := validator.NewValidator(ctx, *cfg, vault, txTable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init validator: %w", err)
+	}
+	if sub := validator.AsSubscriber(validatorInst); sub != nil {
+		bus.Subscribe(sub)
 	}
 	if err := registry.Register(&service.Service{
 		Name:    validatorInst.ServiceName(),
@@ -90,6 +99,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if !ok {
 		return nil, fmt.Errorf("expected *pool.Pool mempool")
 	}
+	txPool.SetEventPublisher(bus)
 	if err := rpc.RegisterPool(registry, txPool); err != nil {
 		return nil, fmt.Errorf("register pool RPC service: %w", err)
 	}
@@ -102,6 +112,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Ice: %w", err)
 	}
+	ice.SetEventPublisher(bus)
 
 	validatorInst.SetPool(mempool)
 	validatorInst.SetChain(bc)
@@ -124,11 +135,14 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	ice.SetTxSubmitter(mempool.AddRawTransaction)
 	ice.SetVault(vault)
 
-	bc.SetReorgHandler(validatorInst.ReplayChain)
+	bus.Subscribe(icenet.NewEventSubscriber(ice))
 
 	minerInstance, err := miner.Init(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init miner: %w", err)
+	}
+	if sub := miner.AsSubscriber(minerInstance); sub != nil {
+		bus.Subscribe(sub)
 	}
 	minerInstance.SetChain(bc)
 	minerInstance.SetPool(mempool)
@@ -137,18 +151,14 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 	minerInstance.SetHeightLock(bc)
 
 	forkDet := fork.NewDetector(bc, sp)
-	forkDet.SetOnReorg(minerInstance.OnChainReorg)
 	ice.SetForkDetector(forkDet)
 
-	ice.SetOnBlockFinalized(minerInstance.OnBlockFinalized)
 	if mine {
 		if err := minerInstance.Start(); err != nil {
 			log.Errorw("Failed to start miner", "err", err)
 			return nil, fmt.Errorf("failed to start miner: %w", err)
 		}
 	}
-
-	mempool.Register(minerInstance)
 
 	return &Node{
 		bc:       bc,
@@ -159,6 +169,7 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 		registry: registry,
 		ice:      ice,
 		m:        minerInstance,
+		bus:      bus,
 		status:   [8]byte{0xf, validatorInst.Status(), 0x4, vault.Status(), 0x0, 0x3, 0x1, 0x7},
 	}, nil
 }

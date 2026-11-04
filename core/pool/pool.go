@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
 	"github.com/cerera/pallada"
@@ -87,16 +88,12 @@ type Pool struct {
 
 	Status byte
 
-	sources   []TxSource
-	observers []TxObserver
-
 	Info MemPoolInfo
 
-	mu          sync.Mutex
-	observersMu sync.RWMutex
-	sourcesMu   sync.RWMutex
+	mu sync.Mutex
 
 	txValidator func(*types.GTransaction) bool
+	events      events.Publisher
 }
 
 // var (
@@ -127,12 +124,25 @@ type TxPool interface {
 	GetMiningPackage(n int) []*types.GTransaction
 	// Exec(method string, params []any) any
 	QueueTransaction(tx *types.GTransaction)
-	Register(observer TxObserver)
-	RegisterSource(source TxSource)
 	RemoveFromPool(txHash common.Hash) error
 	RequeueTransactions(txs []types.GTransaction)
 	SetTxValidator(func(*types.GTransaction) bool)
+	SetEventPublisher(events.Publisher)
 	Stop()
+}
+
+func (p *Pool) SetEventPublisher(pub events.Publisher) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = pub
+}
+
+func (p *Pool) publishTxAccepted(tx *types.GTransaction) {
+	pub := p.events
+	if pub == nil || tx == nil {
+		return
+	}
+	_ = pub.Publish(events.Event{Kind: events.TxAccepted, Tx: tx})
 }
 
 // SetTxValidator sets optional admission validation (must return true to accept).
@@ -160,8 +170,6 @@ func InitPool(maxSize int) (TxPool, error) {
 		maxSize:        maxSize,
 		stopCh:         make(chan struct{}),
 		Status:         0xa,
-		observers:      make([]TxObserver, 0),
-		sources:        make([]TxSource, 0),
 	}
 	pLogger.Infow("Init pool",
 		"maxSize", p.maxSize,
@@ -193,18 +201,6 @@ func InitPool(maxSize int) (TxPool, error) {
 func (p *Pool) Stop() {
 	p.maintainTicker.Stop()
 	close(p.stopCh)
-}
-
-// removeFromSlice removes an observer from the slice by swapping with the last element.
-func removeFromSlice(observerList []TxObserver, observerToRemove TxObserver) []TxObserver {
-	observerListLength := len(observerList)
-	for i, obs := range observerList {
-		if observerToRemove.GetID() == obs.GetID() {
-			observerList[observerListLength-1], observerList[i] = observerList[i], observerList[observerListLength-1]
-			return observerList[:observerListLength-1]
-		}
-	}
-	return observerList
 }
 
 // AddRawTransaction validates and adds a transaction to the pool.
@@ -256,7 +252,7 @@ func (p *Pool) AddRawTransaction(tx *types.GTransaction) error {
 	p.calcInfo()
 	p.mu.Unlock()
 
-	p.NotifyAll(tx)
+	p.publishTxAccepted(tx)
 	return nil
 }
 
@@ -429,19 +425,6 @@ func (p *Pool) GetTransaction(transactionHash common.Hash) *types.GTransaction {
 	return &cp
 }
 
-// NotifyAll delivers a transaction event to all registered observers.
-// Called outside p.mu to prevent deadlocks when observers call back into the pool.
-func (p *Pool) NotifyAll(tx *types.GTransaction) {
-	p.observersMu.RLock()
-	observers := make([]TxObserver, len(p.observers))
-	copy(observers, p.observers)
-	p.observersMu.RUnlock()
-
-	for _, obs := range observers {
-		obs.Update(tx)
-	}
-}
-
 // PoolServiceLoop runs the pool maintenance ticker until Stop is called.
 func (p *Pool) PoolServiceLoop() {
 	for {
@@ -452,21 +435,6 @@ func (p *Pool) PoolServiceLoop() {
 			return
 		}
 	}
-}
-
-// Register adds an observer to receive new transaction events.
-func (p *Pool) Register(observer TxObserver) {
-	p.observersMu.Lock()
-	defer p.observersMu.Unlock()
-	pLogger.Infow("Register new pool observer", "observerID", observer.GetID())
-	p.observers = append(p.observers, observer)
-}
-
-func (p *Pool) RegisterSource(source TxSource) {
-	p.sourcesMu.Lock()
-	defer p.sourcesMu.Unlock()
-	pLogger.Infow("Register new pool source", "sourceID", source.GetID())
-	p.sources = append(p.sources, source)
 }
 
 // RemoveFromPool deletes a transaction from the pool by hash.
@@ -498,13 +466,6 @@ func (p *Pool) RequeueTransactions(txs []types.GTransaction) {
 	}
 }
 
-// UnRegister removes an observer from the notification list.
-func (p *Pool) UnRegister(observer TxObserver) {
-	p.observersMu.Lock()
-	defer p.observersMu.Unlock()
-	p.observers = removeFromSlice(p.observers, observer)
-}
-
 // UpdateTx replaces an existing transaction in the pool (gas or message update, not value).
 // heap.Fix repositions the item in O(log n) after the fee may have changed.
 func (p *Pool) UpdateTx(newTx types.GTransaction) {
@@ -526,5 +487,5 @@ func (p *Pool) UpdateTx(newTx types.GTransaction) {
 	p.calcInfo()
 	p.mu.Unlock()
 
-	p.NotifyAll(stored)
+	p.publishTxAccepted(stored)
 }

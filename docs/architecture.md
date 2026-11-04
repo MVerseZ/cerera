@@ -60,7 +60,9 @@ flowchart LR
 | Запуск и композиция | `cmd/cerera`, `internal/node` | CLI и wiring узла: registry, RPC-адаптеры, ICENet service provider, майнер. |
 | RPC-адаптеры | `internal/rpc` | JSON-RPC handlers для chain, vault, pool (Anti-Corruption Layer над `core`). |
 | Доменные параметры | `core/params` | Экономика сети: эмиссия, halving, лимиты faucet. |
-| Порты ICENet | `core/ports` | Интерфейсы `ChainLedger` / `VaultStore` для sync и consensus без loopback RPC. |
+| События узла | `core/events` | Типы событий и интерфейс `Publisher` для chain, pool, vault, ICENet. |
+| Порты ICENet | `core/ports` | Интерфейсы `ChainLedger` / `VaultStore` для sync и consensus. |
+| Подписчики узла | `internal/observer` | Синхронная шина событий: validator, miner, ICENet metrics/gossip. |
 | Конфигурация | `config` | Параметры цепочки, сети, пула, хранения и HTTP/TLS. |
 | HTTP API | `internal/network` | JSON-RPC, WebSocket, `/metrics`; вызывает `service.Registry` (внешняя граница RPC). |
 | Реестр сервисов | `internal/service` | Разбор `cerera.<service>.<method>` и dispatch только для HTTP/WebSocket клиентов. |
@@ -78,7 +80,7 @@ flowchart LR
 `cmd/cerera/main.go` выполняет композицию зависимостей примерно в таком порядке:
 
 1. Загружает конфигурацию, настраивает журналирование и контекст остановки.
-2. Создаёт `internal/service.Registry` и помещает его в контекст.
+2. Создаёт `observer.Bus` и `internal/service.Registry`, помещает registry в контекст.
 3. Инициализирует `gigea`, vault и chain; регистрирует RPC через `internal/rpc` в registry.
 4. Создаёт валидатор и pool; регистрирует validator RPC; запускает HTTP.
 5. Запускает `icenet.Start` (транспорт без service provider).
@@ -129,13 +131,14 @@ ICENet предоставляет транспорт и сетевые серв�
 - `core` не импортирует `internal/service`, `internal/coinbase`, `internal/observer` (CI: `go run ./scripts/check_core_imports.go`).
 - `internal/network` и `internal/rpc` — driving adapters; `service.Registry` только для внешних JSON-RPC клиентов.
 - `icenet/service.ServiceProvider` зависит от `core/ports`, не от registry.
+- Доменные события (`core/events`) публикуются из chain/pool/vault/consensus/sync; подписчики регистрируются на `observer.Bus` в `internal/node`.
 - `miner` зависит от интерфейсов пула, цепочки и валидатора и публикует подготовленные блоки через ICENet.
 - `pallada` — отдельный пакет VM; выполнение контрактного кода вызывается из логики исполнения транзакций.
 
 ## Реализация и текущие ограничения
 
 - В `internal/node` вызывается `gigea.Init`; консенсус создаётся при `ice.SetServiceProvider`.
-- Внутренний event pipeline для обработки стадий между сервисами не реализован; при необходимости его можно добавить отдельно.
+- Miner и validator подписаны на [`internal/observer`](internal/observer) Bus (`ChainReorged`, `ChainHeadUpdated`, `TxAccepted`, `AccountCreated`); HTTP RPC registry и bus — разные границы.
 - `internal/mesh` содержит отдельную сетевую реализацию; основная точка запуска узла использует `icenet.Start` и libp2p.
 - Локальный vault и данные цепочки — отдельные хранилища. Конкретные пути и режим памяти определяются конфигурацией и параметрами запуска.
 

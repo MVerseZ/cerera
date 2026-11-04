@@ -73,7 +73,6 @@ func TestProcessOrphanWithoutService(t *testing.T) {
 	if d.Orphans().Count() != 1 {
 		t.Fatalf("orphans %d", d.Orphans().Count())
 	}
-	d.SetOnReorg(func(*block.Block) {})
 	d.OnBlockLinked(genesis)
 	d.OnBlockLinked(nil)
 	if d.lookup(orphan.Hash) == nil && d.lookup(genesis.Hash) == nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/consensus"
@@ -62,8 +63,8 @@ type Ice struct {
 	// Dev-mode: treat connected peers as validators.
 	devValidators bool
 
-	onBlockFinalized func(*block.Block)
-	txSubmitter      func(*types.GTransaction) error
+	eventsPublisher events.Publisher
+	txSubmitter     func(*types.GTransaction) error
 
 	serviceProviderPtr *service.ServiceProvider
 	forkDetector       *fork.Detector
@@ -184,6 +185,13 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	return ice, nil
 }
 
+// SetEventPublisher wires the node event bus into ICENet publishers.
+func (ice *Ice) SetEventPublisher(pub events.Publisher) {
+	ice.mu.Lock()
+	ice.eventsPublisher = pub
+	ice.mu.Unlock()
+}
+
 // SetApiProvider sets the api provider, creates sync manager and handler with it, and starts sync.
 func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.mu.Lock()
@@ -202,23 +210,13 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 		)
 		// Wire consensus callbacks.
 		consMgr.SetBroadcastFunc(ice.broadcastConsensusMsg)
-		consMgr.SetOnBlockFinalized(func(b *block.Block) {
-			if b != nil && b.Head != nil {
-				metrics.SetBlockHeight(b.Head.Height)
-			}
-			if ice.PubSub != nil && b != nil {
-				if err := ice.BroadcastBlock(b); err != nil {
-					iceLogger().Warnw("BroadcastBlock after finalize failed", "err", err)
-				}
-			}
-			ice.mu.RLock()
-			cb := ice.onBlockFinalized
-			ice.mu.RUnlock()
-			if cb != nil {
-				cb(b)
-			}
-		})
 		ice.Consensus = consMgr
+		ice.mu.RLock()
+		pub := ice.eventsPublisher
+		ice.mu.RUnlock()
+		if pub != nil {
+			consMgr.SetEventPublisher(pub)
+		}
 		ice.Consensus.Start()
 		// In dev-mode, validators are auto-registered when peers connect.
 		go ice.Consensus.MonitorValidators()
@@ -235,26 +233,12 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 
 	// Sync manager using provider as chain
 	ice.SyncManager = icesync.NewManager(ice.ctx, ice.Host, ice.Handler, ice.PeerManager, provider)
-	ice.SyncManager.SetOnNewBlock(func(b *block.Block) {
-		if b != nil && b.Head != nil {
-			metrics.SetBlockHeight(b.Head.Height)
-		}
-		ice.mu.RLock()
-		cb := ice.onBlockFinalized
-		ice.mu.RUnlock()
-		if cb != nil {
-			cb(b)
-		}
-	})
-
-	if ice.PubSub != nil {
-		storage.AccountCreatedHook = func(b []byte) {
-			if err := ice.PubSub.BroadcastAccountState(b); err != nil {
-				iceLogger().Warnw("BroadcastAccountState failed", "err", err)
-			}
-		}
-	} else {
-		storage.AccountCreatedHook = nil
+	ice.mu.RLock()
+	pub := ice.eventsPublisher
+	ice.mu.RUnlock()
+	if pub != nil {
+		ice.Consensus.SetEventPublisher(pub)
+		ice.SyncManager.SetEventPublisher(pub)
 	}
 
 	ice.mu.Unlock()
@@ -311,13 +295,6 @@ func (ice *Ice) SetTxValidator(fn func(*types.GTransaction) bool) {
 func (ice *Ice) SetTxSubmitter(submit func(*types.GTransaction) error) {
 	ice.mu.Lock()
 	ice.txSubmitter = submit
-	ice.mu.Unlock()
-}
-
-// SetOnBlockFinalized registers a callback invoked when consensus finalizes a block.
-func (ice *Ice) SetOnBlockFinalized(callback func(*block.Block)) {
-	ice.mu.Lock()
-	ice.onBlockFinalized = callback
 	ice.mu.Unlock()
 }
 
@@ -589,8 +566,6 @@ func (ice *Ice) GetConsensusStatus() *consensus.ConsensusStatus {
 // Stop gracefully shuts down the Ice component
 func (ice *Ice) Stop(ctx context.Context) {
 	iceLogger().Infow("Stopping Ice P2P network...")
-
-	storage.AccountCreatedHook = nil
 
 	// Stop consensus
 	if ice.Consensus != nil {

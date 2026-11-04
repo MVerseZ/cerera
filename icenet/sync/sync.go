@@ -9,6 +9,7 @@ import (
 
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/icenet/peers"
 	"github.com/cerera/icenet/protocol"
@@ -65,9 +66,9 @@ type Manager struct {
 	isSyncing bool
 	syncPeer  peer.ID
 
-	// Callbacks
+	eventsPublisher events.Publisher
+
 	onSyncComplete func()
-	onNewBlock     func(*block.Block)
 
 	forkDetector ForkDetector
 }
@@ -357,9 +358,13 @@ func (m *Manager) syncChainWithPeer(peerID peer.ID, startHeight, targetHeight in
 			processedCount++
 			currentHeight = b.Head.Height
 
-			// Call callback
-			if m.onNewBlock != nil {
-				m.onNewBlock(b)
+			// Notify subscribers
+			if m.eventsPublisher != nil {
+				_ = m.eventsPublisher.Publish(events.Event{
+					Kind:       events.ChainHeadUpdated,
+					Block:      b,
+					HeadSource: events.HeadSynced,
+				})
 			}
 			if m.forkDetector != nil {
 				m.forkDetector.OnBlockLinked(b)
@@ -677,9 +682,12 @@ func (m *Manager) HandleNewBlock(b *block.Block, fromPeer peer.ID) error {
 			"from", fromPeer,
 		)
 
-		// Call callback
-		if m.onNewBlock != nil {
-			m.onNewBlock(b)
+		if m.eventsPublisher != nil {
+			_ = m.eventsPublisher.Publish(events.Event{
+				Kind:       events.ChainHeadUpdated,
+				Block:      b,
+				HeadSource: events.HeadSynced,
+			})
 		}
 		if m.forkDetector != nil {
 			m.forkDetector.OnBlockLinked(b)
@@ -732,9 +740,11 @@ func (m *Manager) SetForkDetector(det ForkDetector) {
 	m.forkDetector = det
 }
 
-// SetOnNewBlock sets the callback for new blocks
-func (m *Manager) SetOnNewBlock(callback func(*block.Block)) {
-	m.onNewBlock = callback
+// SetEventPublisher wires the node event bus for synced blocks.
+func (m *Manager) SetEventPublisher(pub events.Publisher) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.eventsPublisher = pub
 }
 
 // ForceSync forces a sync with the best available peer

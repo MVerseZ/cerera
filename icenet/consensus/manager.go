@@ -11,6 +11,7 @@ import (
 
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/metrics"
@@ -45,9 +46,8 @@ type Manager struct {
 	currentView int64
 	sequenceID  int64
 
-	// Callbacks
-	onBlockFinalized func(*block.Block)
-	broadcastMsg     func(int, []byte, []byte) error
+	eventsPublisher events.Publisher
+	broadcastMsg    func(int, []byte, []byte) error
 
 	forkCompeting interface {
 		OnCompetingBlock(local, remote *block.Block, from peer.ID)
@@ -602,9 +602,13 @@ func (m *Manager) handleCommitQuorum(blockHash common.Hash, height int) {
 		)
 	}
 
-	// Notify.
-	if m.onBlockFinalized != nil {
-		m.onBlockFinalized(b)
+	// Notify via node event bus.
+	if m.eventsPublisher != nil {
+		_ = m.eventsPublisher.Publish(events.Event{
+			Kind:       events.ChainHeadUpdated,
+			Block:      b,
+			HeadSource: events.HeadFinalized,
+		})
 	}
 
 	// Cleanup cache entry and reset vote gauges for next round
@@ -828,9 +832,11 @@ func (m *Manager) SetForkCompeting(fc interface {
 	m.forkCompeting = fc
 }
 
-// SetOnBlockFinalized sets the callback for finalized blocks
-func (m *Manager) SetOnBlockFinalized(callback func(*block.Block)) {
-	m.onBlockFinalized = callback
+// SetEventPublisher wires the node event bus for finalized blocks.
+func (m *Manager) SetEventPublisher(pub events.Publisher) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.eventsPublisher = pub
 }
 
 // SetBroadcastFunc sets the function for broadcasting consensus messages

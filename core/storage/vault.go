@@ -16,6 +16,7 @@ import (
 	"github.com/cerera/config"
 	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/types"
 	"github.com/cerera/core/params"
 	"github.com/cerera/internal/logger"
@@ -112,21 +113,28 @@ type D5Vault struct {
 	contractMu      sync.RWMutex
 
 	baselineSnapshot AccountSnapshot
+
+	events events.Publisher
 }
 
-// AccountCreatedHook is invoked with StateAccount.Bytes() after a successful Vault.Create.
-// The node wires this to P2P (e.g. GossipSub) so peers can merge the same account state.
-var AccountCreatedHook func(accountBytes []byte)
+// SetEventPublisher wires the node event bus for vault lifecycle notifications.
+func (v *D5Vault) SetEventPublisher(pub events.Publisher) {
+	v.events = pub
+}
 
-func notifyAccountCreated(sa *account.StateAccount) {
-	if AccountCreatedHook == nil || sa == nil {
+func notifyAccountCreated(v *D5Vault, sa *account.StateAccount) {
+	if v == nil || sa == nil {
 		return
 	}
 	b := sa.Bytes()
 	if len(b) == 0 {
 		return
 	}
-	AccountCreatedHook(b)
+	pub := v.events
+	if pub == nil {
+		return
+	}
+	_ = pub.Publish(events.Event{Kind: events.AccountCreated, AccountBytes: b})
 }
 
 var (

@@ -7,7 +7,9 @@ import (
 
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/types"
+	"github.com/cerera/internal/observer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -382,43 +384,33 @@ func TestSendTransactionUpdatesMetrics(t *testing.T) {
 	assert.Equal(t, tx.Hash(), info.Hashes[0], "Transaction hash should be in Info.Hashes")
 }
 
-// TestUnRegisterWithLock tests that UnRegister works correctly with locking
-func TestUnRegisterWithLock(t *testing.T) {
+// TestTxAcceptedEvent verifies the pool publishes TxAccepted to the event bus.
+func TestTxAcceptedEvent(t *testing.T) {
 	tPool, err := InitPool(maxCap * 10)
 	require.NoError(t, err)
-	require.NotNil(t, tPool)
 
-	// Create a mock observer
-	mockObserver := &mockObserver{id: "test-observer-1"}
+	bus := observer.NewBus()
+	var gotTx bool
+	bus.Subscribe(observer.SubscriberFunc(func(ev events.Event) error {
+		if ev.Kind == events.TxAccepted && ev.Tx != nil {
+			gotTx = true
+		}
+		return nil
+	}))
 
-	// Register observer
-	tPool.Register(mockObserver)
-
-	// Unregister observer concurrently
 	pool := tPool.(*Pool)
-	var wg sync.WaitGroup
-	numGoroutines := 5
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			pool.UnRegister(mockObserver)
-		}()
-	}
+	pool.SetEventPublisher(bus)
 
-	wg.Wait()
-	// Test should complete without race condition
-}
-
-// mockObserver is a simple observer implementation for testing
-type mockObserver struct {
-	id string
-}
-
-func (m *mockObserver) GetID() string {
-	return m.id
-}
-
-func (m *mockObserver) Update(tx *types.GTransaction) {
-	// Mock implementation
+	tx := types.NewTransaction(
+		1,
+		types.HexToAddress("0x24F369F35D4323dF9980eDF0E1bEdb882C4705e984Bb01aceE5B80F4b6Ad1A81a976278d1245dC6863CfF8ec7F99b5B6"),
+		big.NewInt(100000000),
+		3333,
+		big.NewInt(3333),
+		[]byte{0xa, 0xb},
+	)
+	hash, err := pool.SendTransaction(*tx)
+	require.NoError(t, err)
+	assert.Equal(t, tx.Hash(), hash)
+	assert.True(t, gotTx, "expected TxAccepted event")
 }
