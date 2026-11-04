@@ -35,7 +35,7 @@ func TestBusPublishOrder(t *testing.T) {
 	}
 }
 
-func TestBusPublishStopsOnError(t *testing.T) {
+func TestBusPublishContinuesOnError(t *testing.T) {
 	bus := NewBus()
 	first := &recordingSub{}
 	second := &recordingSub{errOn: events.ChainReorged}
@@ -51,7 +51,7 @@ func TestBusPublishStopsOnError(t *testing.T) {
 	if len(first.kinds) != 1 {
 		t.Fatal("first should run")
 	}
-	if len(third.kinds) != 0 {
-		t.Fatal("third should not run after error")
+	if len(third.kinds) != 1 {
+		t.Fatal("third should still run after earlier subscriber error")
 	}
 }

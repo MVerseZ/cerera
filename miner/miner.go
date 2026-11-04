@@ -3,13 +3,13 @@ package miner
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/chain"
+	"github.com/cerera/core/common"
 	"github.com/cerera/core/pool"
 	"github.com/cerera/core/types"
 	"github.com/cerera/internal/logger"
@@ -94,6 +94,7 @@ type HeightLockChecker interface {
 
 type miner struct {
 	mu         sync.Mutex
+	stopOnce   sync.Once
 	ctx        context.Context
 	status     byte
 	config     *config.Config
@@ -112,6 +113,9 @@ type miner struct {
 	worker       *Worker
 
 	pendingBlock *block.Block
+
+	// lastAppliedHead avoids duplicate apply/restart when height-lock cancel and bus both notify.
+	lastAppliedHead common.Hash
 }
 
 func Init(ctx context.Context, cfg *config.Config) (*miner, error) {
@@ -182,6 +186,15 @@ func (m *miner) Start() error {
 	}
 	m.attachStateRootFn(w)
 	m.worker.Start()
+	m.mu.Unlock()
+
+	m.bootstrapValidatorState()
+
+	m.mu.Lock()
+	if !m.mining {
+		m.mu.Unlock()
+		return nil
+	}
 	if m.shouldWaitForPeers() {
 		go m.waitForPeersAndMine()
 	} else {
@@ -192,6 +205,27 @@ func (m *miner) Start() error {
 	go m.resultLoop()
 	go m.watchHeightLock()
 	return nil
+}
+
+func (m *miner) bootstrapValidatorState() {
+	if m.valid == nil || m.chain == nil {
+		return
+	}
+	blocks := m.chain.GetData()
+	if len(blocks) == 0 {
+		return
+	}
+	if err := m.valid.ReplayChain(blocks); err != nil {
+		minerLogger().Warnw("[MINER] validator replay before mining failed", "err", err, "blocks", len(blocks))
+		return
+	}
+	if len(blocks) > 0 {
+		head := blocks[len(blocks)-1]
+		if head != nil {
+			m.lastAppliedHead = head.Hash
+		}
+	}
+	minerLogger().Infow("[MINER] validator synced from chain", "blocks", len(blocks))
 }
 
 func (m *miner) newTask(txs []*types.GTransaction) *Task {
@@ -207,9 +241,9 @@ func (m *miner) resultLoop() {
 	for {
 		select {
 		case data := <-m.worker.resultCh:
-			m.handleResult(data)
+			go m.handleResult(data)
 		case <-m.stopChan:
-			fmt.Println("Miner stopped")
+			minerLogger().Infow("[MINER] result loop stopped")
 			if m.worker != nil {
 				m.worker.Stop()
 			}
@@ -235,11 +269,32 @@ func (m *miner) watchHeightLock() {
 	}
 }
 
+func (m *miner) applyValidatorForBlock(b *block.Block) {
+	if b == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.valid == nil {
+		m.mu.Unlock()
+		return
+	}
+	headHash := b.Hash
+	if headHash != (common.Hash{}) && headHash == m.lastAppliedHead {
+		m.mu.Unlock()
+		return
+	}
+	m.applyBlock(b)
+	m.clearProcessedTransactions(b.Transactions)
+	if headHash != (common.Hash{}) {
+		m.lastAppliedHead = headHash
+	}
+	m.mu.Unlock()
+}
+
 func (m *miner) onChainHeadUpdated(finalized *block.Block) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if !m.mining || m.worker == nil || m.chain == nil {
+		m.mu.Unlock()
 		return
 	}
 
@@ -248,8 +303,14 @@ func (m *miner) onChainHeadUpdated(finalized *block.Block) {
 		blockToApply = m.pendingBlock
 	}
 	if blockToApply != nil {
-		m.applyBlock(blockToApply)
-		m.clearProcessedTransactions(blockToApply.Transactions)
+		headHash := blockToApply.Hash
+		if headHash == (common.Hash{}) || headHash != m.lastAppliedHead {
+			m.applyBlock(blockToApply)
+			m.clearProcessedTransactions(blockToApply.Transactions)
+			if headHash != (common.Hash{}) {
+				m.lastAppliedHead = headHash
+			}
+		}
 	}
 	m.pendingBlock = nil
 
@@ -257,22 +318,28 @@ func (m *miner) onChainHeadUpdated(finalized *block.Block) {
 	if current := m.worker.GetCurrentTask(); current != nil {
 		txs = remainingTxs(current, blockToApply)
 	}
-	m.worker.Compute(m.newTask(txs))
+	task := m.newTask(txs)
+	worker := m.worker
+	m.mu.Unlock()
+	if worker != nil && task != nil {
+		worker.Compute(task)
+	}
 }
 
 func (m *miner) handleResult(data Result) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if !m.mining || m.worker == nil {
+		m.mu.Unlock()
 		return
 	}
 	if data.Error != nil {
 		minerLogger().Errorw("[MINER] mining error", "error", data.Error)
+		m.mu.Unlock()
 		return
 	}
 	if m.worker.isStale(data.jobID) {
 		minerLogger().Debugw("[MINER] ignoring stale mining result")
+		m.mu.Unlock()
 		return
 	}
 
@@ -281,64 +348,114 @@ func (m *miner) handleResult(data Result) {
 			minerLogger().Debugw("[MINER] height already locked, skipping proposal",
 				"height", data.Value.Head.Height,
 			)
-			m.worker.Compute(m.newTask(nil))
+			task := m.newTask(nil)
+			worker := m.worker
+			m.mu.Unlock()
+			if worker != nil && task != nil {
+				worker.Compute(task)
+			}
 			return
 		}
 	}
 
-	if m.publisher != nil {
+	publisher := m.publisher
+	chain := m.chain
+	m.mu.Unlock()
+
+	if publisher != nil {
 		if m.shouldWaitForPeers() {
 			minerLogger().Infow("[MINER] waiting for peers before proposing block")
 			go m.waitForPeersAndMine()
 			return
 		}
-		if err := m.publisher.ProposeBlock(data.Value); err != nil {
+		if err := publisher.ProposeBlock(data.Value); err != nil {
 			minerLogger().Errorw("[MINER] failed to propose block", "error", err)
-			current := m.worker.GetCurrentTask()
-			var txs []*types.GTransaction
-			if current != nil {
-				txs = current.txs
+			m.mu.Lock()
+			if m.mining && m.worker != nil {
+				current := m.worker.GetCurrentTask()
+				var txs []*types.GTransaction
+				if current != nil {
+					txs = current.txs
+				}
+				task := m.newTask(txs)
+				worker := m.worker
+				m.mu.Unlock()
+				if worker != nil && task != nil {
+					worker.Compute(task)
+				}
+			} else {
+				m.mu.Unlock()
 			}
-			m.worker.Compute(m.newTask(txs))
 			return
 		}
 		minerLogger().Infow("[MINER] block proposed for consensus",
 			"height", data.Value.Head.Height,
 			"hash", data.Value.Hash,
 		)
-		m.pendingBlock = data.Value
-		return
-	}
-
-	if err := m.chain.UpdateChain(data.Value); err != nil {
-		minerLogger().Errorw("[MINER] failed to update chain", "error", err)
-		current := m.worker.GetCurrentTask()
-		var txs []*types.GTransaction
-		if current != nil {
-			txs = current.txs
+		m.mu.Lock()
+		if m.mining {
+			m.pendingBlock = data.Value
 		}
-		m.worker.Compute(m.newTask(txs))
+		m.mu.Unlock()
 		return
 	}
 
+	if chain == nil {
+		return
+	}
+	if err := chain.UpdateChain(data.Value); err != nil {
+		minerLogger().Errorw("[MINER] failed to update chain", "error", err)
+		m.mu.Lock()
+		if m.mining && m.worker != nil {
+			current := m.worker.GetCurrentTask()
+			var txs []*types.GTransaction
+			if current != nil {
+				txs = current.txs
+			}
+			task := m.newTask(txs)
+			worker := m.worker
+			m.mu.Unlock()
+			if worker != nil && task != nil {
+				worker.Compute(task)
+			}
+		} else {
+			m.mu.Unlock()
+		}
+		return
+	}
+
+	m.mu.Lock()
+	if !m.mining || m.worker == nil {
+		m.mu.Unlock()
+		return
+	}
 	m.applyBlock(data.Value)
 	m.clearProcessedTransactions(data.Value.Transactions)
 	remaining := remainingTxs(m.worker.GetCurrentTask(), data.Value)
-	m.worker.Compute(m.newTask(remaining))
+	task := m.newTask(remaining)
+	worker := m.worker
+	m.mu.Unlock()
+	if worker != nil && task != nil {
+		worker.Compute(task)
+	}
 }
 
 func (m *miner) Stop() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.status = 0x0
 	m.mining = false
 	minerStatus.Set(0)
-	if m.worker != nil {
-		m.worker.Stop()
-	}
-	if m.stopChan != nil {
-		close(m.stopChan)
+	worker := m.worker
+	stopChan := m.stopChan
+	m.mu.Unlock()
+
+	m.stopOnce.Do(func() {
+		if stopChan != nil {
+			close(stopChan)
+		}
+	})
+	if worker != nil {
+		worker.Stop()
 	}
 	minerLogger().Info("[MINER] Miner stopped")
 }

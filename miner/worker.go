@@ -426,7 +426,10 @@ func (w *Worker) mine(ctx context.Context, task *Task, jobID uint64) {
 		Elapsed: elapsed,
 		jobID:   jobID,
 	}:
-		fmt.Printf("✅ Mining completed! Result: %s (time: %v)\n",
-			block.Hash, elapsed)
+		minerLogger().Infow("[MINER] mining completed",
+			"hash", block.Hash,
+			"height", block.Header().Height,
+			"elapsed", elapsed,
+		)
 	}
 }

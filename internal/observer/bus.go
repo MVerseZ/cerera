@@ -37,11 +37,14 @@ func (b *Bus) Publish(ev events.Event) error {
 	subs := append([]Subscriber(nil), b.subs...)
 	b.mu.RUnlock()
 
+	var firstErr error
 	for _, s := range subs {
 		if err := s.Handle(ev); err != nil {
 			busLog.Errorw("event subscriber failed", "kind", ev.Kind, "err", err)
-			return err
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
-	return nil
+	return firstErr
 }

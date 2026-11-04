@@ -24,9 +24,12 @@ func (s *EventSubscriber) Handle(ev events.Event) error {
 			metrics.SetBlockHeight(ev.Block.Head.Height)
 		}
 		if ev.HeadSource == events.HeadFinalized && ev.Block != nil && s.ice.PubSub != nil {
-			if err := s.ice.BroadcastBlock(ev.Block); err != nil {
-				iceLogger().Warnw("BroadcastBlock after finalize failed", "err", err)
-			}
+			block := ev.Block
+			go func() {
+				if err := s.ice.BroadcastBlock(block); err != nil {
+					iceLogger().Warnw("BroadcastBlock after finalize failed", "err", err)
+				}
+			}()
 		}
 	case events.AccountCreated:
 		if len(ev.AccountBytes) > 0 && s.ice.PubSub != nil {

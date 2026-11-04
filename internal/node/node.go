@@ -121,6 +121,19 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 		return validatorInst.ValidateRawTransaction(*tx)
 	})
 
+	minerInstance, err := miner.Init(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init miner: %w", err)
+	}
+	if sub := miner.AsSubscriber(minerInstance); sub != nil {
+		bus.Subscribe(sub)
+	}
+	minerInstance.SetChain(bc)
+	minerInstance.SetPool(mempool)
+	minerInstance.SetValidator(validatorInst)
+	minerInstance.SetBlockPublisher(ice)
+	minerInstance.SetHeightLock(bc)
+
 	blockVal := validatorInst.GetBlockValidator()
 	sp, err := iceservice.NewServiceProvider(bc, vault, blockVal)
 	if err != nil {
@@ -137,23 +150,11 @@ func New(cfg *config.Config, ctx context.Context, mode, port string, httpPort in
 
 	bus.Subscribe(icenet.NewEventSubscriber(ice))
 
-	minerInstance, err := miner.Init(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init miner: %w", err)
-	}
-	if sub := miner.AsSubscriber(minerInstance); sub != nil {
-		bus.Subscribe(sub)
-	}
-	minerInstance.SetChain(bc)
-	minerInstance.SetPool(mempool)
-	minerInstance.SetValidator(validatorInst)
-	minerInstance.SetBlockPublisher(ice)
-	minerInstance.SetHeightLock(bc)
-
 	forkDet := fork.NewDetector(bc, sp)
 	ice.SetForkDetector(forkDet)
 
 	if mine {
+		log.Infow("Starting miner...")
 		if err := minerInstance.Start(); err != nil {
 			log.Errorw("Failed to start miner", "err", err)
 			return nil, fmt.Errorf("failed to start miner: %w", err)
@@ -194,12 +195,33 @@ func (n *Node) Shutdown(ctx context.Context) error {
 			log.Infow("Stopping Ice P2P network...")
 			n.ice.Stop(ctx)
 		}
+		if n.bc != nil {
+			log.Infow("Stopping chain maintenance...")
+			n.bc.Stop()
+		}
+		gigea.StopEngine()
 		if n.v != nil {
-			if err := n.v.Close(); err != nil {
-				log.Errorw("Failed to close vault", "err", err)
-				errs = append(errs, err)
+			closeVault := func() {
+				if err := n.v.Close(); err != nil {
+					log.Errorw("Failed to close vault", "err", err)
+					errs = append(errs, err)
+				} else {
+					log.Infow("Vault closed successfully")
+				}
+			}
+			if ctx != nil {
+				done := make(chan struct{})
+				go func() {
+					closeVault()
+					close(done)
+				}()
+				select {
+				case <-done:
+				case <-ctx.Done():
+					log.Warnw("Vault close timed out")
+				}
 			} else {
-				log.Infow("Vault closed successfully")
+				closeVault()
 			}
 		}
 		n.shutdownErr = errors.Join(errs...)

@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -61,6 +64,9 @@ func runTUI(args []string) {
 	restoreTerminal := setupTerminal()
 	defer restoreTerminal()
 
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
 	view := viewOverview
 	var managed *managedNode
 	message := ""
@@ -89,6 +95,11 @@ func runTUI(args []string) {
 		}
 		var key rune
 		select {
+		case <-ctx.Done():
+			if managed != nil && managed.running() {
+				_ = stopManagedNode(managed)
+			}
+			return
 		case <-ticker.C:
 			continue
 		case result := <-keys:
@@ -124,6 +135,13 @@ func runTUI(args []string) {
 		}
 		switch strings.ToLower(string(key)) {
 		case "q":
+			if managed != nil && managed.running() {
+				if err := stopManagedNode(managed); err != nil {
+					message = "Не удалось остановить ноду: " + err.Error()
+					continue
+				}
+				managed = nil
+			}
 			return
 		case "1", "o":
 			view = viewOverview

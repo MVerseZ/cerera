@@ -185,6 +185,9 @@ type Chain struct {
 	lockedHeight int
 	cancelCh     chan struct{}
 
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
 	events events.Publisher
 }
 
@@ -250,6 +253,7 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		storage:   storage,
 		chainPath: chainPath,
 		cancelCh:  make(chan struct{}),
+		stopCh:    make(chan struct{}),
 	}
 
 	chain.info.Size = int64(initialTotalSize)
@@ -554,9 +558,23 @@ func (bc *Chain) Start() {
 	bc.mu.RUnlock()
 	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", total)
 	for {
-		<-bc.maintainTicker.C
-		clogger.Debug("chain tick maintain")
+		select {
+		case <-bc.maintainTicker.C:
+			clogger.Debug("chain tick maintain")
+		case <-bc.stopCh:
+			return
+		}
 	}
+}
+
+// Stop ends the chain maintenance loop.
+func (bc *Chain) Stop() {
+	bc.stopOnce.Do(func() {
+		if bc.maintainTicker != nil {
+			bc.maintainTicker.Stop()
+		}
+		close(bc.stopCh)
+	})
 }
 
 // TryLockHeight locks the given height (e.g. when block is added from sync/consensus).

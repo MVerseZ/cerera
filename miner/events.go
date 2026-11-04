@@ -8,8 +8,19 @@ import (
 // Handle implements observer.Subscriber for node event bus wiring.
 func (m *miner) Handle(ev events.Event) error {
 	switch ev.Kind {
-	case events.ChainReorged, events.ChainHeadUpdated:
+	case events.ChainReorged:
 		m.onChainHeadUpdated(ev.Block)
+	case events.ChainHeadUpdated:
+		if ev.Block == nil {
+			return nil
+		}
+		switch ev.HeadSource {
+		case events.HeadSynced:
+			// Sync updates chain only; refresh validator state without restarting PoW.
+			m.applyValidatorForBlock(ev.Block)
+		case events.HeadFinalized:
+			m.onChainHeadUpdated(ev.Block)
+		}
 	case events.TxAccepted:
 		if ev.Tx != nil {
 			m.onTxAccepted(ev.Tx)
@@ -36,11 +47,20 @@ func (m *miner) onTxAccepted(tx *types.GTransaction) {
 		return
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.mining || m.worker == nil {
+	if !m.mining || m.worker == nil || m.pool == nil {
+		m.mu.Unlock()
 		return
 	}
-	txs := m.pool.GetMiningPackage(m.pool.GetInfo().Size)
+	packageSize := m.pool.GetInfo().Size
+	worker := m.worker
+	m.mu.Unlock()
+
+	txs := m.pool.GetMiningPackage(packageSize)
 	minerLogger().Infow("[MINER] New pool tx, restarting miner", "tx", tx.Hash(), "txs", len(txs))
-	m.worker.Compute(m.newTask(txs))
+	if worker != nil {
+		task := m.newTask(txs)
+		if task != nil {
+			worker.Compute(task)
+		}
+	}
 }

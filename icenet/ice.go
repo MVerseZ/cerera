@@ -197,10 +197,11 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.mu.Lock()
 	ice.ServiceProvider = *provider
 	ice.serviceProviderPtr = provider
-
-	// Initialize consensus engine if not yet created.
-	if ice.Consensus == nil {
-		consMgr := consensus.NewManager(
+	pub := ice.eventsPublisher
+	createConsensus := ice.Consensus == nil
+	var newConsensus *consensus.Manager
+	if createConsensus {
+		newConsensus = consensus.NewManager(
 			ice.ctx,
 			ice.Host,
 			ice.PeerManager,
@@ -208,41 +209,32 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 			ice.cfg.NetCfg.ADDR,
 			provider,
 		)
-		// Wire consensus callbacks.
-		consMgr.SetBroadcastFunc(ice.broadcastConsensusMsg)
-		ice.Consensus = consMgr
-		ice.mu.RLock()
-		pub := ice.eventsPublisher
-		ice.mu.RUnlock()
+		newConsensus.SetBroadcastFunc(ice.broadcastConsensusMsg)
+		ice.Consensus = newConsensus
 		if pub != nil {
-			consMgr.SetEventPublisher(pub)
+			newConsensus.SetEventPublisher(pub)
 		}
-		ice.Consensus.Start()
-		// In dev-mode, validators are auto-registered when peers connect.
-		go ice.Consensus.MonitorValidators()
 	}
 
-	// Consensus uses same provider for AddBlock/GetBlockByHash
 	if ice.Consensus != nil {
 		ice.Consensus.SetServiceProvider(provider)
+		if pub != nil {
+			ice.Consensus.SetEventPublisher(pub)
+		}
 	}
 
-	// Handler with chain + txPool from same provider
 	ice.Handler = protocol.NewHandler(ice.Host, provider, ice.cfg.NetCfg.ADDR, ice.cfg.GetVersion())
-	ice.Handler.RegisterHandlers()
-
-	// Sync manager using provider as chain
 	ice.SyncManager = icesync.NewManager(ice.ctx, ice.Host, ice.Handler, ice.PeerManager, provider)
-	ice.mu.RLock()
-	pub := ice.eventsPublisher
-	ice.mu.RUnlock()
 	if pub != nil {
-		ice.Consensus.SetEventPublisher(pub)
 		ice.SyncManager.SetEventPublisher(pub)
 	}
-
 	ice.mu.Unlock()
 
+	ice.Handler.RegisterHandlers()
+	if createConsensus && newConsensus != nil {
+		newConsensus.Start()
+		go newConsensus.MonitorValidators()
+	}
 	ice.SyncManager.Start()
 
 	iceLogger().Infow("API provider set, sync manager and handler started")
@@ -565,46 +557,61 @@ func (ice *Ice) GetConsensusStatus() *consensus.ConsensusStatus {
 
 // Stop gracefully shuts down the Ice component
 func (ice *Ice) Stop(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	iceLogger().Infow("Stopping Ice P2P network...")
 
-	// Stop consensus
 	if ice.Consensus != nil {
 		ice.Consensus.Stop()
 	}
-
-	// Stop sync manager
 	if ice.SyncManager != nil {
 		ice.SyncManager.Stop()
 	}
-
-	// Stop PubSub
 	if ice.PubSub != nil {
 		ice.PubSub.Stop()
 	}
 
-	// Stop discovery
-	if ice.Discovery != nil {
-		ice.Discovery.Stop()
-	}
-
-	// Stop peer manager
-	if ice.PeerManager != nil {
-		ice.PeerManager.Stop()
-	}
-
-	// Close host
-	if ice.Host != nil {
-		if err := ice.Host.Close(); err != nil {
-			iceLogger().Warnw("Error closing host", "err", err)
+	stopDiscovery := func() {
+		if ice.Discovery != nil {
+			ice.Discovery.Stop()
+		}
+		if ice.PeerManager != nil {
+			ice.PeerManager.Stop()
 		}
 	}
+	runWithCtx(ctx, stopDiscovery, "discovery/peer shutdown")
 
-	// Cancel context
+	if ice.Host != nil {
+		host := ice.Host
+		runWithCtx(ctx, func() {
+			if err := host.Close(); err != nil {
+				iceLogger().Warnw("Error closing host", "err", err)
+			}
+		}, "libp2p host close")
+	}
+
 	if ice.cancel != nil {
 		ice.cancel()
 	}
 
 	iceLogger().Infow("Ice P2P network stopped")
+}
+
+func runWithCtx(ctx context.Context, fn func(), label string) {
+	if fn == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		iceLogger().Warnw("Ice shutdown step timed out", "step", label)
+	}
 }
 
 // Status represents the current status of the Ice network component

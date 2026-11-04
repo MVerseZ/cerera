@@ -252,17 +252,20 @@ func NewD5Vault(ctx context.Context, cfg *config.Config) (Vault, error) {
 
 	v.path = vaultPath
 
-	dbDir := v.path
-	if err := os.MkdirAll(dbDir, 0700); err != nil {
-		vltlogger().Errorw("Failed to create vault directory", "path", dbDir, "err", err)
+	if err := os.MkdirAll(v.path, 0700); err != nil {
+		vltlogger().Errorw("Failed to create vault directory", "path", v.path, "err", err)
 		return nil, fmt.Errorf("failed to create vault directory: %w", err)
 	}
 
-	if err := ensureVaultKeys(dbDir); err != nil {
+	if err := ensureVaultKeys(v.path); err != nil {
 		vltlogger().Errorw("Failed to load vault encryption keys", "err", err)
 		return nil, fmt.Errorf("failed to load vault encryption keys: %w", err)
 	}
 
+	dbDir, err := resolvePogrebDBDir(v.path)
+	if err != nil {
+		return nil, err
+	}
 	db, err := pogreb.Open(dbDir, nil)
 	if err != nil {
 		vltlogger().Errorw("Failed to open pogreb database", "path", dbDir, "err", err)
