@@ -1,7 +1,6 @@
 package fork
 
 import (
-	"context"
 	"testing"
 
 	"github.com/cerera/config"
@@ -33,11 +32,10 @@ func TestOnCompetingBlockStoresOrphan(t *testing.T) {
 		t.Fatalf("Mold: %v", err)
 	}
 
-	sp, err := service.NewServiceProvider(context.Background())
+	sp, err := service.NewServiceProvider(bc, nil, nil)
 	if err != nil {
 		t.Fatalf("NewServiceProvider: %v", err)
 	}
-	sp.SetChainRef(bc)
 	d := NewDetector(bc, sp)
 
 	local := bc.GetLatestBlock()
@@ -46,6 +44,43 @@ func TestOnCompetingBlockStoresOrphan(t *testing.T) {
 
 	if got := d.BestCandidate(); got == nil || got.Hash != remote.Hash {
 		t.Fatal("expected competing block stored as candidate")
+	}
+	d.OnCompetingBlock(local, nil, peer.ID("peer-1"))
+	d.OnPrevHashMismatch(local, nil, peer.ID("peer-1"))
+}
+
+func TestProcessOrphanWithoutService(t *testing.T) {
+	cfg := &config.Config{
+		Chain:  config.ChainConfig{ChainID: 25331, Path: "EMPTY"},
+		IN_MEM: true,
+	}
+	bc, err := chain.Mold(cfg)
+	if err != nil {
+		t.Fatalf("Mold: %v", err)
+	}
+	d := NewDetector(bc, nil)
+	if d.Orphans() == nil {
+		t.Fatal("missing orphan manager")
+	}
+	if d.ProcessOrphan(nil, peer.ID("p")) {
+		t.Fatal("nil block")
+	}
+	genesis := bc.GetLatestBlock()
+	orphan := detBlock(1, genesis.Hash, 1, "orphan-1")
+	if !d.ProcessOrphan(orphan, peer.ID("p")) {
+		t.Fatal("expected orphan to be stored")
+	}
+	if d.Orphans().Count() != 1 {
+		t.Fatalf("orphans %d", d.Orphans().Count())
+	}
+	d.OnBlockLinked(genesis)
+	d.OnBlockLinked(nil)
+	if d.lookup(orphan.Hash) == nil && d.lookup(genesis.Hash) == nil {
+		t.Fatal("lookup missed chain and orphan")
+	}
+	bare := NewDetector(nil, nil)
+	if bare.lookup(common.Hash{}) != nil {
+		t.Fatal("empty detector lookup")
 	}
 }
 

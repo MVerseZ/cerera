@@ -46,7 +46,7 @@ func (v *D5Vault) Create(pass string) (string, string, string, *types.Address, e
 		return "", "", "", nil, fmt.Errorf("failed to save account to vault: %w", err)
 	}
 
-	notifyAccountCreated(newAccount)
+	notifyAccountCreated(v, newAccount)
 	return crypto.EncodePrivateKeyToToString(privateKey), crypto.EncodePublicKeyToString(pubkey), mnemonic, &address, nil
 }
 

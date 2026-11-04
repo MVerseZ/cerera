@@ -27,10 +27,28 @@ func TestParseRequestIDsAndValidation(t *testing.T) {
 		`{"jsonrpc":"2.0","method":"svc.ok","params":true,"id":1}`,
 		`{"jsonrpc":"2.0","method":"svc.ok","id":false}`,
 		`{"jsonrpc":"2.0","method":"svc.ok","id":1} {}`,
+		`{"jsonrpc":"2.0","method":"   ","id":1}`,
+		`{"jsonrpc":"2.0","method":1}`,
+		`{"jsonrpc":"2.0","method":"svc.ok","params":"x","id":1}`,
+		`{"jsonrpc":"2.0","method":"svc.ok","id":{"a":1}}`,
+		`not-json`,
 	} {
 		if _, err := parseRequest([]byte(body)); err == nil {
 			t.Errorf("parseRequest(%s) unexpectedly succeeded", body)
 		}
+	}
+	if _, err := parseRequest([]byte(`{"jsonrpc":"2.0","method":"svc.ok","params":{"a":1}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := constructResponse(json.RawMessage("1"), "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := constructResponse(json.RawMessage("1"), make(chan int)); err == nil {
+		t.Fatal("expected marshal error")
+	}
+	body, err := constructErrorResponse(json.RawMessage(`"id"`), -32600, "boom")
+	if err != nil || !strings.Contains(string(body), "boom") {
+		t.Fatalf("%s %v", body, err)
 	}
 }
 

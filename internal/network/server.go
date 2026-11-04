@@ -26,7 +26,7 @@ func SetUpHttp(ctx context.Context, cfg *config.Config, port int) error {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return fmt.Errorf("listen for HTTP RPC on port %d: %w", port, err)
+		return fmt.Errorf("listen for HTTP RPC on port %d: %w (stop other cerera.exe or use --http=<other port>)", port, err)
 	}
 	server := &http.Server{
 		Handler:           mux,

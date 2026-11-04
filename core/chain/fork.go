@@ -8,6 +8,7 @@ import (
 
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/types"
 )
 
@@ -18,14 +19,6 @@ const (
 
 // BlockLookup resolves a block hash from canonical chain and/or orphan store.
 type BlockLookup func(common.Hash) *block.Block
-
-// ReorgHandler replays vault/tx state after a chain reorg.
-var ReorgHandler func(blocks []*block.Block) error
-
-// SetReorgHandler registers the callback invoked after Reorg truncates chain data.
-func SetReorgHandler(fn func(blocks []*block.Block) error) {
-	ReorgHandler = fn
-}
 
 // BlockDifficulty returns the header difficulty as big.Int.
 func BlockDifficulty(b *block.Block) *big.Int {
@@ -402,11 +395,21 @@ func (bc *Chain) Reorg(newCanonical []*block.Block) error {
 		}
 	}
 
-	if ReorgHandler != nil {
-		bc.mu.RLock()
-		dataCopy := append([]*block.Block(nil), bc.data...)
-		bc.mu.RUnlock()
-		return ReorgHandler(dataCopy)
+	bc.mu.RLock()
+	dataCopy := append([]*block.Block(nil), bc.data...)
+	bc.mu.RUnlock()
+	if bc.events != nil {
+		var head *block.Block
+		if len(dataCopy) > 0 {
+			head = dataCopy[len(dataCopy)-1]
+		}
+		if err := bc.events.Publish(events.Event{
+			Kind:   events.ChainReorged,
+			Blocks: dataCopy,
+			Block:  head,
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -1,7 +1,6 @@
 package chain
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,9 +12,9 @@ import (
 	"github.com/cerera/core/address"
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 
 	"github.com/cerera/internal/logger"
-	"github.com/cerera/internal/service"
 
 	"github.com/cerera/core/types"
 	"github.com/cerera/core/types/trie"
@@ -185,6 +184,18 @@ type Chain struct {
 	heightMu     sync.Mutex
 	lockedHeight int
 	cancelCh     chan struct{}
+
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
+	events events.Publisher
+}
+
+// SetEventPublisher wires the node event bus for chain lifecycle notifications.
+func (bc *Chain) SetEventPublisher(pub events.Publisher) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	bc.events = pub
 }
 
 func Mold(cfg *config.Config) (*Chain, error) {
@@ -242,6 +253,7 @@ func Mold(cfg *config.Config) (*Chain, error) {
 		storage:   storage,
 		chainPath: chainPath,
 		cancelCh:  make(chan struct{}),
+		stopCh:    make(chan struct{}),
 	}
 
 	chain.info.Size = int64(initialTotalSize)
@@ -539,19 +551,30 @@ func (bc *Chain) GetLatestBlock() *block.Block {
 	return bc.currentBlock
 }
 
-func (bc *Chain) ServiceName() string {
-	return CHAIN_SERVICE_NAME
-}
-
+// Start begins the chain maintenance loop.
 func (bc *Chain) Start() {
 	bc.mu.RLock()
 	total := bc.info.Total
 	bc.mu.RUnlock()
 	clogger.Infow("chain started", "chainId", bc.chainId, "owner", bc.currentAddress, "total", total)
 	for {
-		<-bc.maintainTicker.C
-		clogger.Debug("chain tick maintain")
+		select {
+		case <-bc.maintainTicker.C:
+			clogger.Debug("chain tick maintain")
+		case <-bc.stopCh:
+			return
+		}
 	}
+}
+
+// Stop ends the chain maintenance loop.
+func (bc *Chain) Stop() {
+	bc.stopOnce.Do(func() {
+		if bc.maintainTicker != nil {
+			bc.maintainTicker.Stop()
+		}
+		close(bc.stopCh)
+	})
 }
 
 // TryLockHeight locks the given height (e.g. when block is added from sync/consensus).
@@ -716,62 +739,4 @@ func (bc *Chain) SetChainConfigStatus(status byte) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	bc.status = status
-}
-
-func (bc *Chain) Methods() map[string]service.RPCHandler {
-	return map[string]service.RPCHandler{
-		"getLatestBlock": func(ctx context.Context, params []any) (any, error) {
-			return bc.GetLatestBlock(), nil
-		},
-		"getBlockByIndex": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, fmt.Errorf("height required")
-			}
-			height, ok := params[0].(float64)
-			if !ok {
-				return nil, fmt.Errorf("height must be int")
-			}
-			return bc.GetBlockByNumber(int(height)), nil
-		},
-		"getBlockByHash": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, fmt.Errorf("hash required")
-			}
-			hashStr, ok := params[0].(string)
-			if !ok {
-				return nil, fmt.Errorf("hash must be string")
-			}
-			return bc.GetBlock(common.HexToHash(hashStr)), nil
-		},
-		"getCurrentHeight": func(ctx context.Context, params []any) (any, error) {
-			latest := bc.GetLatestBlock()
-			if latest == nil || latest.Head == nil {
-				return 0, nil
-			}
-			return latest.Header().Height, nil
-		},
-		"getChainId": func(ctx context.Context, params []any) (any, error) {
-			return bc.GetChainId(), nil
-		},
-		"getInfo": func(ctx context.Context, params []any) (any, error) {
-			return bc.GetInfo(), nil
-		},
-		"height": func(ctx context.Context, params []any) (any, error) {
-			latest := bc.GetLatestBlock()
-			if latest == nil || latest.Head == nil {
-				return 0, nil
-			}
-			return latest.Header().Height, nil
-		},
-		"updateChain": func(ctx context.Context, params []any) (any, error) {
-			if len(params) < 1 {
-				return nil, fmt.Errorf("block required")
-			}
-			b, ok := params[0].(*block.Block)
-			if !ok || b == nil {
-				return nil, fmt.Errorf("block must be *block.Block")
-			}
-			return nil, bc.UpdateChain(b)
-		},
-	}
 }

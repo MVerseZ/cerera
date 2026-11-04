@@ -1,8 +1,3 @@
 package observer
 
-import "github.com/cerera/core/types"
-
-type Observer interface {
-	Update(tx *types.GTransaction)
-	GetID() string
-}
+// Package observer provides the node event bus and subscriber wiring.

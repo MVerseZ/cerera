@@ -9,6 +9,7 @@ import (
 
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
+	"github.com/cerera/core/events"
 	"github.com/cerera/core/storage"
 	"github.com/cerera/core/types"
 	"github.com/cerera/icenet/consensus"
@@ -62,8 +63,8 @@ type Ice struct {
 	// Dev-mode: treat connected peers as validators.
 	devValidators bool
 
-	onBlockFinalized func(*block.Block)
-	txSubmitter      func(*types.GTransaction) error
+	eventsPublisher events.Publisher
+	txSubmitter     func(*types.GTransaction) error
 
 	serviceProviderPtr *service.ServiceProvider
 	forkDetector       *fork.Detector
@@ -181,13 +182,14 @@ func Start(cfg *config.Config, ctx context.Context, port string) (*Ice, error) {
 	// Update metrics
 	metrics.SetPubSubTopicsJoined(4) // blocks, txs, consensus, accounts
 
-	sp, err := service.NewServiceProvider(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start service provider: %w", err)
-	}
-	ice.SetServiceProvider(sp)
-
 	return ice, nil
+}
+
+// SetEventPublisher wires the node event bus into ICENet publishers.
+func (ice *Ice) SetEventPublisher(pub events.Publisher) {
+	ice.mu.Lock()
+	ice.eventsPublisher = pub
+	ice.mu.Unlock()
 }
 
 // SetApiProvider sets the api provider, creates sync manager and handler with it, and starts sync.
@@ -195,10 +197,11 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 	ice.mu.Lock()
 	ice.ServiceProvider = *provider
 	ice.serviceProviderPtr = provider
-
-	// Initialize consensus engine if not yet created.
-	if ice.Consensus == nil {
-		consMgr := consensus.NewManager(
+	pub := ice.eventsPublisher
+	createConsensus := ice.Consensus == nil
+	var newConsensus *consensus.Manager
+	if createConsensus {
+		newConsensus = consensus.NewManager(
 			ice.ctx,
 			ice.Host,
 			ice.PeerManager,
@@ -206,65 +209,32 @@ func (ice *Ice) SetServiceProvider(provider *service.ServiceProvider) {
 			ice.cfg.NetCfg.ADDR,
 			provider,
 		)
-		// Wire consensus callbacks.
-		consMgr.SetBroadcastFunc(ice.broadcastConsensusMsg)
-		consMgr.SetOnBlockFinalized(func(b *block.Block) {
-			if b != nil && b.Head != nil {
-				metrics.SetBlockHeight(b.Head.Height)
-			}
-			if ice.PubSub != nil && b != nil {
-				if err := ice.BroadcastBlock(b); err != nil {
-					iceLogger().Warnw("BroadcastBlock after finalize failed", "err", err)
-				}
-			}
-			ice.mu.RLock()
-			cb := ice.onBlockFinalized
-			ice.mu.RUnlock()
-			if cb != nil {
-				cb(b)
-			}
-		})
-		ice.Consensus = consMgr
-		ice.Consensus.Start()
-		// In dev-mode, validators are auto-registered when peers connect.
-		go ice.Consensus.MonitorValidators()
+		newConsensus.SetBroadcastFunc(ice.broadcastConsensusMsg)
+		ice.Consensus = newConsensus
+		if pub != nil {
+			newConsensus.SetEventPublisher(pub)
+		}
 	}
 
-	// Consensus uses same provider for AddBlock/GetBlockByHash
 	if ice.Consensus != nil {
 		ice.Consensus.SetServiceProvider(provider)
+		if pub != nil {
+			ice.Consensus.SetEventPublisher(pub)
+		}
 	}
 
-	// Handler with chain + txPool from same provider
 	ice.Handler = protocol.NewHandler(ice.Host, provider, ice.cfg.NetCfg.ADDR, ice.cfg.GetVersion())
-	ice.Handler.RegisterHandlers()
-
-	// Sync manager using provider as chain
 	ice.SyncManager = icesync.NewManager(ice.ctx, ice.Host, ice.Handler, ice.PeerManager, provider)
-	ice.SyncManager.SetOnNewBlock(func(b *block.Block) {
-		if b != nil && b.Head != nil {
-			metrics.SetBlockHeight(b.Head.Height)
-		}
-		ice.mu.RLock()
-		cb := ice.onBlockFinalized
-		ice.mu.RUnlock()
-		if cb != nil {
-			cb(b)
-		}
-	})
-
-	if ice.PubSub != nil {
-		storage.AccountCreatedHook = func(b []byte) {
-			if err := ice.PubSub.BroadcastAccountState(b); err != nil {
-				iceLogger().Warnw("BroadcastAccountState failed", "err", err)
-			}
-		}
-	} else {
-		storage.AccountCreatedHook = nil
+	if pub != nil {
+		ice.SyncManager.SetEventPublisher(pub)
 	}
-
 	ice.mu.Unlock()
 
+	ice.Handler.RegisterHandlers()
+	if createConsensus && newConsensus != nil {
+		newConsensus.Start()
+		go newConsensus.MonitorValidators()
+	}
 	ice.SyncManager.Start()
 
 	iceLogger().Infow("API provider set, sync manager and handler started")
@@ -317,13 +287,6 @@ func (ice *Ice) SetTxValidator(fn func(*types.GTransaction) bool) {
 func (ice *Ice) SetTxSubmitter(submit func(*types.GTransaction) error) {
 	ice.mu.Lock()
 	ice.txSubmitter = submit
-	ice.mu.Unlock()
-}
-
-// SetOnBlockFinalized registers a callback invoked when consensus finalizes a block.
-func (ice *Ice) SetOnBlockFinalized(callback func(*block.Block)) {
-	ice.mu.Lock()
-	ice.onBlockFinalized = callback
 	ice.mu.Unlock()
 }
 
@@ -594,48 +557,61 @@ func (ice *Ice) GetConsensusStatus() *consensus.ConsensusStatus {
 
 // Stop gracefully shuts down the Ice component
 func (ice *Ice) Stop(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	iceLogger().Infow("Stopping Ice P2P network...")
 
-	storage.AccountCreatedHook = nil
-
-	// Stop consensus
 	if ice.Consensus != nil {
 		ice.Consensus.Stop()
 	}
-
-	// Stop sync manager
 	if ice.SyncManager != nil {
 		ice.SyncManager.Stop()
 	}
-
-	// Stop PubSub
 	if ice.PubSub != nil {
 		ice.PubSub.Stop()
 	}
 
-	// Stop discovery
-	if ice.Discovery != nil {
-		ice.Discovery.Stop()
-	}
-
-	// Stop peer manager
-	if ice.PeerManager != nil {
-		ice.PeerManager.Stop()
-	}
-
-	// Close host
-	if ice.Host != nil {
-		if err := ice.Host.Close(); err != nil {
-			iceLogger().Warnw("Error closing host", "err", err)
+	stopDiscovery := func() {
+		if ice.Discovery != nil {
+			ice.Discovery.Stop()
+		}
+		if ice.PeerManager != nil {
+			ice.PeerManager.Stop()
 		}
 	}
+	runWithCtx(ctx, stopDiscovery, "discovery/peer shutdown")
 
-	// Cancel context
+	if ice.Host != nil {
+		host := ice.Host
+		runWithCtx(ctx, func() {
+			if err := host.Close(); err != nil {
+				iceLogger().Warnw("Error closing host", "err", err)
+			}
+		}, "libp2p host close")
+	}
+
 	if ice.cancel != nil {
 		ice.cancel()
 	}
 
 	iceLogger().Infow("Ice P2P network stopped")
+}
+
+func runWithCtx(ctx context.Context, fn func(), label string) {
+	if fn == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		iceLogger().Warnw("Ice shutdown step timed out", "step", label)
+	}
 }
 
 // Status represents the current status of the Ice network component

@@ -8,7 +8,7 @@ import (
 	"github.com/cerera/core/account"
 	"github.com/cerera/core/common"
 	"github.com/cerera/core/types"
-	"github.com/cerera/internal/coinbase"
+	"github.com/cerera/core/params"
 )
 
 func TestRestoreBaseline_DoesNotMutateSavedSnapshot(t *testing.T) {
@@ -27,7 +27,7 @@ func TestRestoreBaseline_DoesNotMutateSavedSnapshot(t *testing.T) {
 	v.SaveBaseline()
 
 	v.RestoreBaseline()
-	if err := v.RewardMiner(addr, coinbase.BlockReward(0), common.Hash{1}); err != nil {
+	if err := v.RewardMiner(addr, params.BlockReward(0), common.Hash{1}); err != nil {
 		t.Fatalf("RewardMiner: %v", err)
 	}
 
@@ -58,7 +58,7 @@ func TestRestoreAccounts_DeepClonesSnapshot(t *testing.T) {
 		t.Fatal("missing account")
 	}
 	live.Status = 0
-	live.SetBalanceBI(coinbase.BlockReward(0))
+	live.SetBalanceBI(params.BlockReward(0))
 
 	v.RestoreAccounts(snap)
 	restored := v.Get(addr)

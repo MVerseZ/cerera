@@ -6,7 +6,12 @@ import (
 	"github.com/cerera/config"
 	"github.com/cerera/core/block"
 	"github.com/cerera/core/common"
+	"github.com/cerera/core/events"
 )
+
+type eventsPublisherFunc func(events.Event) error
+
+func (f eventsPublisherFunc) Publish(ev events.Event) error { return f(ev) }
 
 func forkTestBlock(height int, prev common.Hash, difficulty uint64, seed string) *block.Block {
 	h := common.BytesToHash([]byte(seed))
@@ -176,11 +181,12 @@ func TestReorgSwitchesToHeavierBranch(t *testing.T) {
 	branchB := []*block.Block{gen, b1, b2}
 
 	replayed := 0
-	SetReorgHandler(func(blocks []*block.Block) error {
-		replayed = len(blocks)
+	bc.SetEventPublisher(eventsPublisherFunc(func(ev events.Event) error {
+		if ev.Kind == events.ChainReorged {
+			replayed = len(ev.Blocks)
+		}
 		return nil
-	})
-	t.Cleanup(func() { SetReorgHandler(nil) })
+	}))
 
 	if err := bc.Reorg(branchB); err != nil {
 		t.Fatalf("reorg to heavier branch: %v", err)

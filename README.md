@@ -1,8 +1,7 @@
 # Cerera Blockchain
 
 [![Go](https://github.com/MVerseZ/cerera/actions/workflows/go.yml/badge.svg)](https://github.com/MVerseZ/cerera/actions/workflows/go.yml)
-[![Go Version](https://img.shields.io/badge/go-1.25-blue?logo=go)](https://golang.org/dl/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/MVerseZ/cerera)](https://goreportcard.com/report/github.com/MVerseZ/cerera)
+[![Go Version](https://img.shields.io/badge/go-1.27-blue?logo=go)](https://golang.org/dl/)
 [![License: GPL v2](https://img.shields.io/badge/license-GPL--v2-blue)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
 [![GitHub stars](https://img.shields.io/github/stars/MVerseZ/cerera?style=flat)](https://github.com/MVerseZ/cerera/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/MVerseZ/cerera?style=flat)](https://github.com/MVerseZ/cerera/network/members)

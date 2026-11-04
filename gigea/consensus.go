@@ -72,6 +72,7 @@ var (
 	G      CSP
 	Status []byte
 	mu     sync.RWMutex // Mutex for protecting global variables
+	engineStopOnce sync.Once
 )
 
 var (
@@ -130,6 +131,18 @@ func Init(ctx context.Context, lAddr types.Address) error {
 	updateConsensusMetrics()
 
 	return nil
+}
+
+// StopEngine stops the gigea engine background loop.
+func StopEngine() {
+	engineStopOnce.Do(func() {
+		if E.MaintainTicker != nil {
+			E.MaintainTicker.Stop()
+		}
+		if E.stopCh != nil {
+			close(E.stopCh)
+		}
+	})
 }
 
 func SetStatus(s int) {

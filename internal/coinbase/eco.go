@@ -1,21 +1,16 @@
 package coinbase
 
 import (
-	"math/big"
-
-	"github.com/cerera/core/common"
+	"github.com/cerera/core/params"
 )
 
-// economy structs
-var TotalValue = common.FloatToBigInt(700000000000.0)
-var FaucetInitialBalance = common.FloatToBigInt(1000000.0)
-var QuarterValue = big.NewInt(0).Div(TotalValue, big.NewInt(4))
-var InitialReward = common.FloatToBigInt(10000.0)
-var HalvingInterval = uint64(2100)
-var InitialNodeBalance = 0.0000
-var FaucetValue = common.FloatToBigInt(100.0000)
-
-// Faucet limits and constraints
-var MaxFaucetAmount = common.FloatToBigInt(1000.0) // Maximum amount per request
-var MinFaucetAmount = common.FloatToBigInt(1.0)    // Minimum amount per request
-var FaucetCooldownHours = 0.01
+var TotalValue = params.TotalValue
+var FaucetInitialBalance = params.FaucetInitialBalance
+var QuarterValue = params.QuarterValue
+var InitialReward = params.InitialReward
+var HalvingInterval = params.HalvingInterval
+var InitialNodeBalance = params.InitialNodeBalance
+var FaucetValue = params.FaucetValue
+var MaxFaucetAmount = params.MaxFaucetAmount
+var MinFaucetAmount = params.MinFaucetAmount
+var FaucetCooldownHours = params.FaucetCooldownHours

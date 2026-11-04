@@ -22,8 +22,6 @@ type Detector struct {
 	orphans *chain.OrphanManager
 	sp      *service.ServiceProvider
 
-	onReorg func(*block.Block)
-
 	pendingHead *block.Block
 }
 
@@ -47,13 +45,6 @@ func (d *Detector) lookup(h common.Hash) *block.Block {
 		return d.orphans.Get(h)
 	}
 	return nil
-}
-
-// SetOnReorg registers a callback after a successful reorg (e.g. miner restart).
-func (d *Detector) SetOnReorg(fn func(*block.Block)) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.onReorg = fn
 }
 
 // Orphans returns the orphan manager for tests and metrics.
@@ -173,12 +164,6 @@ func (d *Detector) tryReorgFromHead(head *block.Block) {
 		return
 	}
 	metrics.RecordReorg(head.Head.Height)
-	d.mu.Lock()
-	cb := d.onReorg
-	d.mu.Unlock()
-	if cb != nil {
-		cb(head)
-	}
 }
 
 // BestCandidate returns the pending competing head if any.
